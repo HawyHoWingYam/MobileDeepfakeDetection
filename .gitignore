@@ -1,0 +1,10 @@
+dataset/
+experiments/
+*.pyc
+__pycache__/
+*/__pycache__/
+**/__pycache__/
+
+# Generated manifest files (too large for GitHub)
+manifests/*.csv
+!manifests/.gitkeep

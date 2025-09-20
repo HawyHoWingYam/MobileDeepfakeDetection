@@ -1,0 +1,43 @@
+{
+  "experiment": {
+    "name": "celebdf_baseline_efficientnet",
+    "description": "EfficientNetV2-B3 baseline model training on CelebDF-v2 dataset",
+    "tags": ["baseline", "efficientnet", "stage0", "celebdf"]
+  },
+  "data": {
+    "config_path": "configs/dataset_paths.json",
+    "image_size": 256
+  },
+  "model": {
+    "architecture": "efficientnetv2_rw_s",
+    "num_classes": 2,
+    "pretrained": true,
+    "dropout_rate": 0.2
+  },
+  "training": {
+    "batch_size": 32,
+    "num_epochs": 50,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "num_workers": 4,
+    "use_class_weights": true,
+    "early_stopping_patience": 10,
+    "save_checkpoints": true
+  },
+  "optimization": {
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "gradient_clipping": 1.0,
+    "warmup_epochs": 5
+  },
+  "monitoring": {
+    "log_interval": 100,
+    "save_interval": 5,
+    "eval_interval": 1
+  },
+  "target_metrics": {
+    "min_auc": 0.88,
+    "min_accuracy": 0.85,
+    "max_loss": 0.5
+  }
+}
