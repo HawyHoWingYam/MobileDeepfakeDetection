@@ -9,8 +9,8 @@
     "image_size": 256
   },
   "model": {
-    "architecture": "efficientnetv2_rw_s",
-    "num_classes": 2,
+    "architecture": "tf_efficientnetv2_b3",
+    "num_classes": 1,
     "pretrained": true,
     "dropout_rate": 0.2
   },

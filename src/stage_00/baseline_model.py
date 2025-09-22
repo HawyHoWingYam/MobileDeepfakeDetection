@@ -23,6 +23,7 @@ class EfficientNetV2B3Baseline(nn.Module):
     Supported models:
     - tf_efficientnetv2_b0: 1280 features, 5.9M parameters
     - efficientnetv2_rw_t: 1024 features, 12.6M parameters
+    - tf_efficientnetv2_b3: 1536 features, 12.2M parameters
     """
     
     def __init__(self, 
@@ -39,12 +40,12 @@ class EfficientNetV2B3Baseline(nn.Module):
             pretrained: Whether to use pretrained weights
             dropout_rate: Dropout rate for regularization
             freeze_backbone: Whether to freeze backbone weights
-            model_name: EfficientNetV2 model variant ('tf_efficientnetv2_b0' or 'efficientnetv2_rw_t')
+            model_name: EfficientNetV2 model variant ('tf_efficientnetv2_b0', 'efficientnetv2_rw_t', or 'tf_efficientnetv2_b3')
         """
         super().__init__()
         
         # Validate model name
-        supported_models = ['tf_efficientnetv2_b0', 'efficientnetv2_rw_t']
+        supported_models = ['tf_efficientnetv2_b0', 'efficientnetv2_rw_t', 'tf_efficientnetv2_b3']
         if model_name not in supported_models:
             raise ValueError(f"model_name must be one of {supported_models}, got {model_name}")
         

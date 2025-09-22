@@ -142,8 +142,8 @@ class CelebDFDataset(Dataset):
             transformed = self.transform(image=image)
             image_tensor = transformed['image']
             
-            # Convert label to tensor
-            label_tensor = torch.tensor(label, dtype=torch.long)
+            # Convert label to tensor - use float for BCE compatibility
+            label_tensor = torch.tensor(label, dtype=torch.float)
             
             return image_tensor, label_tensor
             
@@ -151,7 +151,7 @@ class CelebDFDataset(Dataset):
             print(f"Error loading image {image_path}: {str(e)}")
             # Return a blank image and label
             blank_image = torch.zeros(3, self.image_size, self.image_size)
-            return blank_image, torch.tensor(0, dtype=torch.long)
+            return blank_image, torch.tensor(0, dtype=torch.float)
     
     def get_class_weights(self) -> torch.Tensor:
         """

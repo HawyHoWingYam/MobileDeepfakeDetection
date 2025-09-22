@@ -31,6 +31,43 @@ from utils.experiment_utils import ExperimentManager, ExperimentConfig
 from utils.metrics import AcademicMetrics
 from utils.visualization import AcademicVisualizer
 
+class MultiDatasetWrapper(Dataset):
+    """
+    Wrapper for ConcatDataset that supports get_class_counts() method
+    """
+    def __init__(self, datasets):
+        self.datasets = datasets
+        self.concat_dataset = ConcatDataset(datasets)
+
+    def __len__(self):
+        return len(self.concat_dataset)
+
+    def __getitem__(self, idx):
+        return self.concat_dataset[idx]
+
+    def get_class_counts(self) -> torch.Tensor:
+        """
+        Get total class counts across all datasets
+
+        Returns:
+            Tensor with [real_count, fake_count]
+        """
+        total_real = 0
+        total_fake = 0
+
+        for dataset in self.datasets:
+            if hasattr(dataset, 'get_class_counts'):
+                counts = dataset.get_class_counts()
+                total_real += counts[0].item()
+                total_fake += counts[1].item()
+            else:
+                # Fallback: count labels in dataset
+                labels = [dataset[i][1].item() for i in range(len(dataset))]
+                total_real += labels.count(0)
+                total_fake += labels.count(1)
+
+        return torch.tensor([total_real, total_fake], dtype=torch.float)
+
 class UnifiedDeepfakeDataset(Dataset):
     """Dataset class for multi-dataset deepfake detection"""
     
@@ -83,7 +120,7 @@ class UnifiedDeepfakeDataset(Dataset):
             if self.transform:
                 image = self.transform(image)
             
-            return image, label
+            return image, torch.tensor(label, dtype=torch.float)
             
         except Exception as e:
             print(f"Error loading {image_path}: {e}")
@@ -92,7 +129,7 @@ class UnifiedDeepfakeDataset(Dataset):
                 black_image = self.transform(Image.new('RGB', (256, 256), 'black'))
             else:
                 black_image = torch.zeros(3, 256, 256)
-            return black_image, label
+            return black_image, torch.tensor(0.0, dtype=torch.float)
 
 def create_multi_dataset_loaders(config_path, batch_size=32, num_workers=0, subset_ratio=1.0):
     """Create data loaders for multi-dataset training
@@ -160,10 +197,10 @@ def create_multi_dataset_loaders(config_path, batch_size=32, num_workers=0, subs
         val_datasets.append(val_dataset)
         test_datasets.append(test_dataset)
     
-    # Combine datasets
-    combined_train = ConcatDataset(train_datasets)
-    combined_val = ConcatDataset(val_datasets)
-    combined_test = ConcatDataset(test_datasets)
+    # Combine datasets using our custom wrapper
+    combined_train = MultiDatasetWrapper(train_datasets)
+    combined_val = MultiDatasetWrapper(val_datasets)
+    combined_test = MultiDatasetWrapper(test_datasets)
     
     print(f"\\nCombined dataset sizes:")
     print(f"Train: {len(combined_train):,} samples")

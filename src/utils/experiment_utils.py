@@ -474,7 +474,223 @@ class ExperimentManager:
             json.dump(result_dict, f, indent=2)
         
         print(f"Saved experiment result: {result_path}")
-    
+
+    def save_plot(self,
+                  figure,
+                  filename: str,
+                  experiment_id: Optional[str] = None) -> Path:
+        """
+        Save matplotlib figure as experiment artifact
+
+        Args:
+            figure: Matplotlib figure object
+            filename: Name for the saved file (without extension)
+            experiment_id: Experiment ID (uses current if None)
+
+        Returns:
+            Path to saved file
+        """
+        exp_id = experiment_id or self.current_experiment
+        if not exp_id:
+            raise ValueError("No experiment ID provided and no current experiment")
+
+        exp_dir = self.base_path / exp_id
+        plots_dir = exp_dir / "plots"
+        plots_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save as both PNG and PDF
+        png_path = plots_dir / f"{filename}.png"
+        pdf_path = plots_dir / f"{filename}.pdf"
+
+        figure.savefig(png_path, dpi=300, bbox_inches='tight')
+        figure.savefig(pdf_path, bbox_inches='tight')
+
+        print(f"Saved plot: {png_path}")
+        return png_path
+
+    def save_metrics_csv(self,
+                        metrics_dict: Dict[str, Any],
+                        filename: str = "metrics",
+                        experiment_id: Optional[str] = None) -> Path:
+        """
+        Save metrics as CSV file
+
+        Args:
+            metrics_dict: Dictionary of metrics to save
+            filename: Name for the CSV file (without extension)
+            experiment_id: Experiment ID (uses current if None)
+
+        Returns:
+            Path to saved file
+        """
+        exp_id = experiment_id or self.current_experiment
+        if not exp_id:
+            raise ValueError("No experiment ID provided and no current experiment")
+
+        exp_dir = self.base_path / exp_id
+        results_dir = exp_dir / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+
+        csv_path = results_dir / f"{filename}.csv"
+
+        # Convert to DataFrame for easier CSV export
+        df = pd.DataFrame([metrics_dict])
+        df.to_csv(csv_path, index=False)
+
+        print(f"Saved metrics CSV: {csv_path}")
+        return csv_path
+
+    def save_predictions(self,
+                        y_true: np.ndarray,
+                        y_pred: np.ndarray,
+                        y_scores: Optional[np.ndarray] = None,
+                        metadata: Optional[Dict] = None,
+                        experiment_id: Optional[str] = None) -> Path:
+        """
+        Save model predictions as experiment artifact
+
+        Args:
+            y_true: True labels
+            y_pred: Predicted labels
+            y_scores: Prediction scores/probabilities (optional)
+            metadata: Additional metadata (optional)
+            experiment_id: Experiment ID (uses current if None)
+
+        Returns:
+            Path to saved file
+        """
+        exp_id = experiment_id or self.current_experiment
+        if not exp_id:
+            raise ValueError("No experiment ID provided and no current experiment")
+
+        exp_dir = self.base_path / exp_id
+        results_dir = exp_dir / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+
+        predictions_path = results_dir / "predictions.npz"
+
+        save_dict = {
+            'y_true': y_true,
+            'y_pred': y_pred
+        }
+
+        if y_scores is not None:
+            save_dict['y_scores'] = y_scores
+
+        if metadata is not None:
+            save_dict['metadata'] = metadata
+
+        np.savez_compressed(predictions_path, **save_dict)
+
+        print(f"Saved predictions: {predictions_path}")
+        return predictions_path
+
+    def save_config_snapshot(self,
+                            config_dict: Dict[str, Any],
+                            filename: str = "runtime_config",
+                            experiment_id: Optional[str] = None) -> Path:
+        """
+        Save configuration snapshot during experiment
+
+        Args:
+            config_dict: Configuration dictionary to save
+            filename: Name for the config file (without extension)
+            experiment_id: Experiment ID (uses current if None)
+
+        Returns:
+            Path to saved file
+        """
+        exp_id = experiment_id or self.current_experiment
+        if not exp_id:
+            raise ValueError("No experiment ID provided and no current experiment")
+
+        exp_dir = self.base_path / exp_id
+        config_path = exp_dir / f"{filename}.json"
+
+        with open(config_path, 'w') as f:
+            json.dump(config_dict, f, indent=2, default=str)
+
+        print(f"Saved config snapshot: {config_path}")
+        return config_path
+
+    def save_model_onnx(self,
+                       model: torch.nn.Module,
+                       input_shape: Tuple[int, ...],
+                       filename: str = "model",
+                       experiment_id: Optional[str] = None) -> Path:
+        """
+        Export model to ONNX format for deployment
+
+        Args:
+            model: PyTorch model to export
+            input_shape: Input tensor shape (batch_size, channels, height, width)
+            filename: Name for the ONNX file (without extension)
+            experiment_id: Experiment ID (uses current if None)
+
+        Returns:
+            Path to saved ONNX file
+        """
+        exp_id = experiment_id or self.current_experiment
+        if not exp_id:
+            raise ValueError("No experiment ID provided and no current experiment")
+
+        exp_dir = self.base_path / exp_id
+        models_dir = exp_dir / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+
+        onnx_path = models_dir / f"{filename}.onnx"
+
+        # Create dummy input
+        dummy_input = torch.randn(*input_shape)
+        model.eval()
+
+        try:
+            torch.onnx.export(
+                model,
+                dummy_input,
+                onnx_path,
+                export_params=True,
+                opset_version=11,
+                do_constant_folding=True,
+                input_names=['input'],
+                output_names=['output'],
+                dynamic_axes={
+                    'input': {0: 'batch_size'},
+                    'output': {0: 'batch_size'}
+                }
+            )
+            print(f"Saved ONNX model: {onnx_path}")
+        except Exception as e:
+            print(f"Failed to save ONNX model: {e}")
+            return None
+
+        return onnx_path
+
+    def get_artifact_paths(self, experiment_id: str) -> Dict[str, List[Path]]:
+        """
+        Get all artifact paths for an experiment
+
+        Args:
+            experiment_id: Experiment ID
+
+        Returns:
+            Dictionary mapping artifact types to lists of paths
+        """
+        exp_dir = self.base_path / experiment_id
+        if not exp_dir.exists():
+            return {}
+
+        artifacts = {
+            'checkpoints': list((exp_dir / "checkpoints").glob("*.pth")) if (exp_dir / "checkpoints").exists() else [],
+            'plots': list((exp_dir / "plots").glob("*")) if (exp_dir / "plots").exists() else [],
+            'results': list((exp_dir / "results").glob("*")) if (exp_dir / "results").exists() else [],
+            'logs': list((exp_dir / "logs").glob("*")) if (exp_dir / "logs").exists() else [],
+            'models': list((exp_dir / "models").glob("*")) if (exp_dir / "models").exists() else [],
+            'configs': list(exp_dir.glob("*.json"))
+        }
+
+        return artifacts
+
     def load_experiment_result(self, experiment_id: str) -> ExperimentResult:
         """
         Load experiment result
