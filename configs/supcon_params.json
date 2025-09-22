@@ -1,0 +1,148 @@
+{
+  "metadata": {
+    "name": "SupCon_Parameters",
+    "description": "Supervised Contrastive Learning specific parameters",
+    "version": "1.0.0",
+    "reference": "Khosla et al. 2020 - Supervised Contrastive Learning"
+  },
+  "loss_function": {
+    "temperature": {
+      "default": 0.07,
+      "search_range": [0.05, 0.2],
+      "description": "Temperature parameter for softmax normalization",
+      "tunable": true
+    },
+    "base_temperature": {
+      "default": 0.07,
+      "description": "Base temperature for normalization",
+      "tunable": false
+    },
+    "contrast_mode": {
+      "options": ["one", "all"],
+      "default": "all",
+      "description": "Contrast against one positive or all positives"
+    },
+    "numerical_stability": {
+      "enabled": true,
+      "eps": 1e-8,
+      "max_exp": 88.0,
+      "description": "Prevent overflow/underflow in exponential operations"
+    }
+  },
+  "batch_construction": {
+    "min_samples_per_class": {
+      "default": 4,
+      "range": [2, 8],
+      "description": "Minimum samples per class in each batch"
+    },
+    "balanced_sampling": {
+      "enabled": true,
+      "strategy": "class_balanced",
+      "description": "Ensure balanced positive/negative pairs"
+    },
+    "positive_pairs_min": 6,
+    "negative_pairs_min": 6,
+    "total_pairs_target": 16
+  },
+  "feature_space": {
+    "projection_dimension": {
+      "default": 512,
+      "options": [128, 256, 512, 1024],
+      "description": "Dimensionality of projection head output"
+    },
+    "normalization": {
+      "type": "L2",
+      "enabled": true,
+      "description": "Normalize features to unit sphere"
+    },
+    "feature_extraction": {
+      "layer": "global_avg_pool",
+      "freeze_backbone": false,
+      "description": "Feature extraction configuration"
+    }
+  },
+  "augmentation": {
+    "strong_augmentation": {
+      "enabled": true,
+      "transforms": [
+        {
+          "name": "RandomHorizontalFlip",
+          "probability": 0.5
+        },
+        {
+          "name": "ColorJitter",
+          "brightness": 0.4,
+          "contrast": 0.4,
+          "saturation": 0.4,
+          "hue": 0.1
+        },
+        {
+          "name": "RandomGrayscale",
+          "probability": 0.2
+        },
+        {
+          "name": "GaussianBlur",
+          "kernel_size": 23,
+          "probability": 0.5
+        },
+        {
+          "name": "RandomResizedCrop",
+          "size": 256,
+          "scale": [0.8, 1.0]
+        }
+      ]
+    },
+    "consistency_regularization": {
+      "enabled": true,
+      "alpha": 0.1,
+      "description": "Consistency loss between augmented views"
+    }
+  },
+  "validation": {
+    "small_scale_experiment": {
+      "sample_count": 1000,
+      "real_samples": 500,
+      "fake_samples": 500,
+      "epochs": 10,
+      "description": "Quick validation parameters"
+    },
+    "success_criteria": {
+      "min_improvement_auc": 0.01,
+      "target_improvement_auc": 0.03,
+      "statistical_significance": 0.05,
+      "convergence_epochs": 5
+    }
+  },
+  "ablation_studies": {
+    "temperature_sweep": {
+      "values": [0.05, 0.07, 0.1, 0.15, 0.2],
+      "metric": "validation_auc",
+      "description": "Temperature parameter sensitivity analysis"
+    },
+    "projection_dim_sweep": {
+      "values": [128, 256, 512, 1024],
+      "metric": "validation_auc",
+      "description": "Projection dimension impact analysis"
+    },
+    "augmentation_ablation": {
+      "baseline": "minimal",
+      "strong": "full_contrastive",
+      "description": "Data augmentation impact study"
+    }
+  },
+  "theoretical_foundation": {
+    "mathematical_formulation": "SupCon Loss = -1/N Σᵢ [1/|P(i)| Σₚ∈P(i) log(exp(zᵢ·zₚ/τ) / Σₐ∈A(i) exp(zᵢ·zₐ/τ))]",
+    "key_concepts": [
+      "Supervised contrastive learning",
+      "Authenticity modeling paradigm",
+      "Feature space geometry optimization",
+      "Temperature-scaled similarity"
+    ],
+    "advantages": [
+      "Better feature space structure",
+      "Improved generalization",
+      "Robustness to data distribution",
+      "Interpretable similarity metrics"
+    ]
+  }
+}
