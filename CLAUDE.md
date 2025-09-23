@@ -11,11 +11,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 AWARE-NET/
 ├── project_instruction/           # Complete project documentation
-│   ├── stage/                    # 10 detailed stage specifications (stage_00.md - stage_09.md)  
+│   ├── stage/                    # 10 detailed stage specifications (stage_00.md - stage_09.md)
 │   ├── implementation/           # Implementation plans and guides
-│   └── history/                  # Project evolution documentation
-├── src/                          # Source code (to be implemented)
-└── tool/                         # Development tools and utilities
+│   ├── history/                  # Project evolution documentation
+│   └── docs/                     # Unified documentation system
+│       ├── general/              # General project documentation
+│       └── stage_XX/             # Stage-specific documentation and diagnostics
+├── src/                          # Core source code implementation
+├── tools/                        # Unified development tools and utilities ✨ NEW
+│   ├── validation/               # Stage validation and gate checking tools
+│   └── scripts/                  # Utility scripts for setup and profiling
+├── configs/                      # Reorganized configuration system ✨ UPDATED
+│   ├── stage_00/, stage_01/, stage_02/  # Stage-specific configurations
+│   ├── deployment/               # Deployment configurations
+│   ├── data/                     # Dataset configurations
+│   └── system/                   # System-wide configurations
+└── tests/                        # Comprehensive test suite
 ```
 
 ### Project Phases
