@@ -28,7 +28,10 @@
       "Read(//d/work/**)",
       "Bash(git filter-branch:*)",
       "mcp__sequential-thinking__sequentialthinking",
-      "Bash(copy:*)"
+      "Bash(copy:*)",
+      "Bash(xargs ls:*)",
+      "Bash(del:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

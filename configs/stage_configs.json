@@ -1,0 +1,348 @@
+{
+  "metadata": {
+    "name": "AWARE-NET Stage Configurations",
+    "description": "Unified configuration for all AWARE-NET project stages",
+    "version": "1.0.0",
+    "created_at": "2025-09-24",
+    "consolidates": [
+      "stage_01/stage1_config.json",
+      "stage_01/supcon_params.json",
+      "stage_02/spatial_expert_config.json",
+      "stage_02/genconvit_expert_config.json",
+      "stage_02/stage2_data_manifest.json"
+    ]
+  },
+  "stage_00": {
+    "name": "Infrastructure & Baseline",
+    "description": "Foundation infrastructure and baseline model establishment",
+    "model": {
+      "architecture": "tf_efficientnetv2_b3",
+      "num_classes": 1,
+      "pretrained": true,
+      "dropout_rate": 0.2
+    },
+    "training": {
+      "loss_function": "bce_with_logits",
+      "optimizer": "adamw",
+      "learning_rate": 0.001,
+      "weight_decay": 0.0001,
+      "batch_size": 32,
+      "epochs": 50
+    },
+    "target_metrics": {
+      "min_auc": 0.88,
+      "min_accuracy": 0.85,
+      "max_loss": 0.5
+    }
+  },
+  "stage_01": {
+    "name": "SupCon Rapid Filter",
+    "description": "SupCon-based rapid filtering system for authenticity modeling",
+    "paradigm": "authenticity_modeling",
+    "model": {
+      "architecture": "MobileNetV4-Hybrid-Medium",
+      "backbone": "mobilenetv4_hybrid_medium",
+      "pretrained": true,
+      "num_classes": 2,
+      "projection_dim": 512,
+      "dropout_rate": 0.2,
+      "freeze_backbone": false
+    },
+    "loss": {
+      "type": "SupConLoss",
+      "temperature": 0.07,
+      "base_temperature": 0.07,
+      "contrast_mode": "all",
+      "numerical_stability": true,
+      "temperature_search_range": [0.05, 0.2]
+    },
+    "training": {
+      "optimizer": "AdamW",
+      "learning_rate": 1e-3,
+      "weight_decay": 1e-4,
+      "batch_size": 32,
+      "epochs": 50,
+      "warmup_epochs": 5,
+      "scheduler": "CosineAnnealingLR",
+      "gradient_clipping": 1.0,
+      "mixed_precision": true
+    },
+    "batch_construction": {
+      "min_samples_per_class": 4,
+      "balance_sampling": true,
+      "positive_pairs_min": 6,
+      "negative_pairs_min": 6,
+      "total_pairs_target": 16
+    },
+    "feature_space": {
+      "projection_dimension": 512,
+      "normalization": "L2",
+      "layer": "global_avg_pool"
+    },
+    "calibration": {
+      "method": "temperature_scaling",
+      "search_range": [0.1, 5.0],
+      "search_steps": 100,
+      "validation_split": 0.2
+    },
+    "cascade": {
+      "conservative_threshold": {
+        "high_confidence": 0.99,
+        "low_confidence": 0.01,
+        "filter_rate_target": 0.90,
+        "false_negative_rate_max": 0.05
+      }
+    },
+    "performance": {
+      "inference_time_target_ms": 50,
+      "memory_limit_gb": 2,
+      "mobile_compatibility": true,
+      "quantization_ready": true
+    },
+    "stage_gate": {
+      "technical": {
+        "min_auc": 0.90,
+        "baseline_improvement_min": 0.03,
+        "inference_time_max_ms": 50,
+        "memory_max_gb": 2,
+        "calibration_ece_max": 0.05
+      },
+      "academic": {
+        "statistical_significance": 0.05,
+        "confidence_interval": 0.95,
+        "cross_dataset_validation": true,
+        "feature_space_analysis": true
+      },
+      "system": {
+        "cascade_filter_rate_min": 0.90,
+        "false_negative_rate_max": 0.05,
+        "mobile_deployment_ready": true,
+        "package_size_max_mb": 50
+      }
+    },
+    "validation": {
+      "small_scale_experiment": {
+        "sample_count": 1000,
+        "real_samples": 500,
+        "fake_samples": 500,
+        "epochs": 10
+      },
+      "success_criteria": {
+        "min_improvement_auc": 0.01,
+        "target_improvement_auc": 0.03,
+        "statistical_significance": 0.05,
+        "convergence_epochs": 5
+      }
+    },
+    "ablation_studies": {
+      "temperature_sweep": [0.05, 0.07, 0.1, 0.15, 0.2],
+      "projection_dim_sweep": [128, 256, 512, 1024],
+      "augmentation_ablation": ["minimal", "full_contrastive"]
+    }
+  },
+  "stage_02": {
+    "name": "Heterogeneous Expert Models",
+    "description": "Spatial and generative detection experts with complementarity",
+    "experts": {
+      "spatial_expert": {
+        "name": "EfficientNetV2-B0 Spatial Expert",
+        "expert_type": "spatial",
+        "model_architecture": {
+          "model_name": "efficientnetv2_rw_s",
+          "pretrained": true,
+          "num_classes": 1,
+          "dropout_rate": 0.2,
+          "backbone_frozen_epochs": 5,
+          "progressive_unfreezing": true
+        },
+        "multi_resolution_support": {
+          "supported_resolutions": [224, 256, 288, 320],
+          "default_resolution": 256,
+          "adaptive_resolution": true
+        },
+        "spatial_specialization": {
+          "spatial_attention": {
+            "enabled": true,
+            "attention_type": "channel_spatial",
+            "reduction_ratio": 8
+          },
+          "edge_enhancement": {
+            "enabled": true,
+            "sobel_filters": true,
+            "edge_weight": 0.1
+          },
+          "texture_analysis": {
+            "enabled": true,
+            "patch_size": 8,
+            "consistency_threshold": 0.7
+          }
+        },
+        "training": {
+          "loss_function": "focal_loss",
+          "alpha": 0.25,
+          "gamma": 2.0,
+          "optimizer": "AdamW",
+          "learning_rate": 1e-3,
+          "weight_decay": 1e-4
+        }
+      },
+      "generative_expert": {
+        "name": "GenConViT Generative Expert",
+        "expert_type": "generative",
+        "model_architecture": {
+          "backbone": {
+            "convnext_variant": "convnext_small",
+            "swin_variant": "swin_small_patch4_window7_224",
+            "pretrained": true,
+            "feature_fusion_dim": 768,
+            "cross_attention_layers": 2
+          },
+          "reconstruction_head": {
+            "decoder_type": "vae",
+            "latent_dim": 256,
+            "reconstruction_loss": "l1_perceptual",
+            "kl_weight": 0.001,
+            "perceptual_weight": 0.1
+          },
+          "classification_head": {
+            "num_classes": 1,
+            "dropout_rate": 0.3,
+            "hidden_dims": [512, 256]
+          },
+          "dual_task_weighting": {
+            "classification_weight": 0.7,
+            "reconstruction_weight": 0.3,
+            "adaptive_weighting": true
+          }
+        },
+        "generative_specialization": {
+          "reconstruction_quality_analysis": {
+            "enabled": true,
+            "ssim_threshold": 0.85,
+            "lpips_threshold": 0.15,
+            "multi_scale_ssim": true
+          },
+          "latent_space_analysis": {
+            "enabled": true,
+            "anomaly_detection": true,
+            "distribution_matching": true
+          }
+        }
+      }
+    },
+    "fusion_system": {
+      "complementarity_analysis": {
+        "enabled": true,
+        "correlation_threshold": 0.7,
+        "diversity_weight": 0.3
+      },
+      "ensemble_method": "weighted_voting",
+      "dynamic_weighting": true,
+      "confidence_calibration": true
+    },
+    "stage_gate": {
+      "technical": {
+        "min_auc": 0.92,
+        "complementarity_score_min": 0.8,
+        "ensemble_improvement_min": 0.02
+      },
+      "academic": {
+        "ablation_studies_complete": true,
+        "complementarity_analysis": true,
+        "statistical_validation": true
+      }
+    },
+    "training_strategy": {
+      "expert_training": "sequential",
+      "joint_optimization": false,
+      "progressive_fusion": true
+    }
+  },
+  "stage_03": {
+    "name": "Temporal Modeling Expert",
+    "description": "Temporal consistency and motion analysis",
+    "status": "planned",
+    "model": {
+      "architecture": "ResNet3D + Transformer",
+      "temporal_window": 16,
+      "motion_analysis": true
+    }
+  },
+  "stage_04": {
+    "name": "Feature Fusion System",
+    "description": "LightGBM meta-model for expert fusion",
+    "status": "planned",
+    "meta_model": {
+      "type": "LightGBM",
+      "feature_stacking": true,
+      "ensemble_weights": "learned"
+    }
+  },
+  "stage_05": {
+    "name": "SAT Framework",
+    "description": "Self-supervised Adversarial Training",
+    "status": "planned",
+    "training": {
+      "adversarial_component": true,
+      "self_supervised": true,
+      "consistency_regularization": true
+    }
+  },
+  "stage_06": {
+    "name": "Cascade System Integration",
+    "description": "Full cascade system with dynamic routing",
+    "status": "planned",
+    "cascade": {
+      "stages": ["rapid_filter", "expert_ensemble", "meta_classifier"],
+      "dynamic_routing": true,
+      "adaptive_thresholds": true
+    }
+  },
+  "stage_07": {
+    "name": "Continual Learning",
+    "description": "Adaptive learning mechanisms",
+    "status": "planned",
+    "continual_learning": {
+      "memory_replay": true,
+      "elastic_weight_consolidation": true,
+      "progressive_networks": false
+    }
+  },
+  "stage_08": {
+    "name": "Mobile Deployment",
+    "description": "Mobile optimization and deployment",
+    "status": "planned",
+    "mobile_optimization": {
+      "quantization": "int8",
+      "pruning": true,
+      "knowledge_distillation": true
+    }
+  },
+  "stage_09": {
+    "name": "Comprehensive Evaluation",
+    "description": "Final evaluation and academic analysis",
+    "status": "planned",
+    "evaluation": {
+      "cross_dataset": true,
+      "robustness_testing": true,
+      "academic_benchmarking": true
+    }
+  },
+  "common_settings": {
+    "experiment_tracking": {
+      "wandb_project": "AWARE-NET",
+      "mlflow_enabled": true,
+      "artifact_saving": true
+    },
+    "reproducibility": {
+      "seed": 42,
+      "deterministic": true,
+      "environment_tracking": true
+    },
+    "validation": {
+      "cross_validation": true,
+      "bootstrap_samples": 1000,
+      "confidence_level": 0.95
+    }
+  }
+}
