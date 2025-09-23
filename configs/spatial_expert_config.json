@@ -1,0 +1,306 @@
+{
+  "metadata": {
+    "name": "EfficientNetV2-B0_Spatial_Expert",
+    "description": "Configuration for EfficientNetV2-B0 spatial artifact detection expert",
+    "version": "1.0.0",
+    "expert_type": "spatial",
+    "stage": "stage_02"
+  },
+  "model_architecture": {
+    "model_name": "efficientnetv2_rw_s",
+    "pretrained": true,
+    "num_classes": 1,
+    "dropout_rate": 0.2,
+    "backbone_frozen_epochs": 5,
+    "progressive_unfreezing": true
+  },
+  "multi_resolution_support": {
+    "supported_resolutions": [224, 256, 288, 320],
+    "default_resolution": 256,
+    "adaptive_resolution": true,
+    "resolution_selection_strategy": "auto",
+    "aspect_ratio_preservation": true,
+    "resize_interpolation": "bilinear"
+  },
+  "spatial_specialization": {
+    "spatial_attention": {
+      "enabled": true,
+      "attention_type": "channel_spatial",
+      "reduction_ratio": 8
+    },
+    "edge_enhancement": {
+      "enabled": true,
+      "sobel_filters": true,
+      "edge_weight": 0.1,
+      "adaptive_edge_weight": false
+    },
+    "texture_analysis": {
+      "enabled": true,
+      "patch_size": 8,
+      "consistency_threshold": 0.7,
+      "local_texture_descriptors": true
+    },
+    "frequency_analysis": {
+      "enabled": false,
+      "fft_based": true,
+      "frequency_bands": [0.1, 0.3, 0.5, 0.7, 0.9],
+      "note": "Optional advanced feature"
+    }
+  },
+  "progressive_validation": {
+    "concept_validation": {
+      "model_variant": "efficientnetv2_rw_s",
+      "resolution": 256,
+      "sample_size": 1000,
+      "epochs": 10,
+      "batch_size": 32,
+      "target_metrics": {
+        "min_auc": 0.92,
+        "spatial_artifact_auc": 0.95,
+        "baseline_improvement": 0.03,
+        "max_inference_time_ms": 100
+      }
+    },
+    "resolution_comparison": {
+      "resolutions_to_test": [224, 256, 288, 320],
+      "samples_per_resolution": 500,
+      "efficiency_weight": 0.3,
+      "quality_weight": 0.7,
+      "evaluation_metrics": ["auc", "inference_time", "memory_usage", "spatial_specialization"]
+    },
+    "model_upgrade_decision": {
+      "upgrade_candidates": ["efficientnetv2_rw_m", "efficientnetv2_b1"],
+      "upgrade_threshold_auc": 0.95,
+      "cost_benefit_ratio": 2.0,
+      "max_inference_time_ms": 120,
+      "max_memory_gb": 6
+    }
+  },
+  "training_optimization": {
+    "graduated_learning_rates": {
+      "enabled": true,
+      "backbone_lr_multiplier": 0.1,
+      "classifier_lr_multiplier": 1.0,
+      "spatial_modules_lr_multiplier": 1.0,
+      "warmup_epochs": 3
+    },
+    "loss_configuration": {
+      "primary_loss": "focal_loss",
+      "focal_alpha": 0.25,
+      "focal_gamma": 2.0,
+      "label_smoothing": 0.1,
+      "auxiliary_losses": {
+        "texture_consistency_loss": {
+          "enabled": true,
+          "weight": 0.1
+        },
+        "edge_preservation_loss": {
+          "enabled": true,
+          "weight": 0.05
+        }
+      }
+    },
+    "regularization": {
+      "dropout_rate": 0.2,
+      "weight_decay": 1e-5,
+      "stochastic_depth": 0.1,
+      "mixup_alpha": 0.2,
+      "cutmix_alpha": 1.0
+    },
+    "data_augmentation": {
+      "spatial_artifact_preserving": true,
+      "edge_preservation_ratio": 0.9,
+      "texture_consistency_check": true,
+      "augmentation_strategies": {
+        "geometric": {
+          "horizontal_flip": 0.5,
+          "rotation_degrees": 5,
+          "scale_range": [0.9, 1.0],
+          "shear_range": [-2, 2]
+        },
+        "photometric": {
+          "brightness": 0.1,
+          "contrast": 0.1,
+          "saturation": 0.1,
+          "hue": 0.05
+        },
+        "spatial_preserving": {
+          "gaussian_noise": {
+            "enabled": true,
+            "std": 0.01,
+            "probability": 0.3
+          },
+          "motion_blur": {
+            "enabled": true,
+            "blur_limit": 3,
+            "probability": 0.2
+          }
+        }
+      }
+    }
+  },
+  "inference_optimization": {
+    "mixed_precision": {
+      "enabled": true,
+      "amp_level": "O1"
+    },
+    "batch_processing": {
+      "optimal_batch_sizes": {
+        "224": 64,
+        "256": 48,
+        "288": 32,
+        "320": 24
+      },
+      "dynamic_batching": true,
+      "memory_efficient_attention": true
+    },
+    "model_optimization": {
+      "torch_script": true,
+      "onnx_export": true,
+      "quantization_ready": true,
+      "pruning_compatible": true
+    }
+  },
+  "evaluation_metrics": {
+    "primary_metrics": [
+      "auc", "f1_score", "precision", "recall",
+      "inference_time_ms", "memory_usage_mb"
+    ],
+    "spatial_specialization_metrics": [
+      "spatial_artifact_auc",
+      "edge_blending_detection_auc",
+      "texture_inconsistency_auc",
+      "face_swap_detection_auc"
+    ],
+    "efficiency_metrics": [
+      "throughput_images_per_second",
+      "latency_p50_ms",
+      "latency_p95_ms",
+      "memory_peak_mb"
+    ],
+    "complementarity_metrics": [
+      "correlation_with_stage01",
+      "correlation_with_genconvit",
+      "error_pattern_overlap",
+      "fusion_potential_score"
+    ]
+  },
+  "grad_cam_visualization": {
+    "enabled": true,
+    "target_layers": ["last_conv"],
+    "guided_backprop": true,
+    "save_attention_maps": true,
+    "overlay_on_input": true,
+    "heatmap_colormap": "jet"
+  },
+  "baseline_comparison": {
+    "stage_00_efficientnetv2_b3": {
+      "reference_auc": 0.89,
+      "reference_inference_ms": 85,
+      "target_improvement": 0.03,
+      "statistical_test": "paired_t_test"
+    },
+    "stage_01_mobilenetv4": {
+      "reference_auc": 0.91,
+      "reference_inference_ms": 50,
+      "target_improvement": 0.02,
+      "complementarity_target": 0.7
+    },
+    "general_spatial_baselines": {
+      "cnn_baselines": ["resnet50", "convnext_small"],
+      "detection_baselines": ["face_xray", "faceforensics_detector"]
+    }
+  },
+  "professional_domain_validation": {
+    "spatial_artifact_types": {
+      "edge_blending": {
+        "target_auc": 0.95,
+        "test_datasets": ["faceswap_edge_cases", "deepfacelab_blending"],
+        "evaluation_method": "artifact_specific_split"
+      },
+      "texture_inconsistency": {
+        "target_auc": 0.93,
+        "test_datasets": ["lighting_mismatch", "texture_transfer"],
+        "evaluation_method": "texture_analysis"
+      },
+      "spatial_frequency": {
+        "target_auc": 0.91,
+        "test_datasets": ["compression_artifacts", "frequency_domain_forgeries"],
+        "evaluation_method": "frequency_analysis"
+      }
+    },
+    "cross_manipulation_validation": {
+      "deepfakes": 0.88,
+      "face2face": 0.90,
+      "faceswap": 0.95,
+      "neuraltextures": 0.87,
+      "note": "Spatial expert should excel at faceswap due to edge artifacts"
+    }
+  },
+  "resource_constraints": {
+    "training_resources": {
+      "max_gpu_memory_gb": 8,
+      "recommended_batch_size": 32,
+      "estimated_training_hours": 12,
+      "checkpoint_frequency": 5
+    },
+    "inference_resources": {
+      "max_inference_time_ms": 100,
+      "target_inference_time_ms": 80,
+      "max_memory_mb": 1500,
+      "target_memory_mb": 1200
+    },
+    "storage_requirements": {
+      "model_size_mb": 20,
+      "checkpoint_size_mb": 25,
+      "config_size_kb": 5,
+      "visualization_artifacts_mb": 50
+    }
+  },
+  "integration_specifications": {
+    "unified_feature_extractor": {
+      "feature_dimension": 512,
+      "normalized_features": true,
+      "standardized_output_format": true,
+      "expert_type_annotation": "spatial"
+    },
+    "heterogeneous_system": {
+      "parallel_inference_compatible": true,
+      "memory_sharing_optimized": false,
+      "feature_fusion_ready": true,
+      "cascade_system_compatible": true
+    },
+    "stage_03_preparation": {
+      "temporal_expert_integration": true,
+      "feature_alignment": true,
+      "three_expert_system_ready": true
+    }
+  },
+  "quality_assurance": {
+    "automated_testing": {
+      "unit_tests": true,
+      "integration_tests": true,
+      "performance_regression_tests": true,
+      "memory_leak_tests": true
+    },
+    "validation_pipeline": {
+      "statistical_significance_testing": true,
+      "cross_validation": true,
+      "holdout_test_validation": true,
+      "baseline_comparison_automated": true
+    },
+    "monitoring": {
+      "training_metrics_logging": true,
+      "inference_performance_monitoring": true,
+      "resource_usage_tracking": true,
+      "error_pattern_analysis": true
+    }
+  },
+  "deployment_readiness": {
+    "model_export_formats": ["pytorch", "onnx", "torchscript"],
+    "quantization_support": ["int8", "fp16"],
+    "mobile_optimization": true,
+    "batch_inference_optimization": true,
+    "real_time_inference_capable": true
+  }
+}

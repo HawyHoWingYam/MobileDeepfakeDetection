@@ -402,15 +402,15 @@ Generated on: 2025-09-22 | Last Updated: 2025-09-23
 
   - [x] Plan GenConViT dual-variant architecture (ED/VAE)
 
-  - [ ] Lock Stage 02 data manifest with manipulation coverage and resolution splits
+  - [x] Lock Stage 02 data manifest with manipulation coverage and resolution splits ✅ **COMPLETED**
 
-  - [ ] Document compute and training resource plan for multi-expert runs
+  - [x] Document compute and training resource plan for multi-expert runs ✅ **COMPLETED**
 
-  - [ ] Define unified feature extraction interface specification
+  - [x] Define unified feature extraction interface specification ✅ **COMPLETED**
 
-  - [ ] Design progressive validation strategy framework
+  - [x] Design progressive validation strategy framework ✅ **COMPLETED**
 
-  - [ ] Draft Stage 02 gate rubric and reporting template
+  - [x] Draft Stage 02 gate rubric and reporting template ✅ **COMPLETED**
 
 
 
