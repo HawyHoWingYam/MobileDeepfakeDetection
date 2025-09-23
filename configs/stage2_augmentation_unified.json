@@ -1,0 +1,169 @@
+{
+  "metadata": {
+    "name": "Stage02_Unified_Augmentation_Configuration",
+    "description": "Unified data augmentation configuration for Stage 02 heterogeneous experts",
+    "version": "1.0.0",
+    "last_updated": "2025-09-23"
+  },
+  "spatial_expert_config": {
+    "horizontal_flip_prob": 0.5,
+    "rotation_degrees": 5.0,
+    "scale_range": [0.9, 1.0],
+    "shear_range": [-2, 2],
+    "brightness_range": 0.1,
+    "contrast_range": 0.1,
+    "saturation_range": 0.1,
+    "hue_range": 0.05,
+    "gaussian_noise_std": 0.01,
+    "gaussian_noise_prob": 0.3,
+    "motion_blur_limit": 3,
+    "motion_blur_prob": 0.2,
+    "jpeg_quality_range": [85, 100],
+    "jpeg_compression_prob": 0.3,
+    "edge_preservation_ratio": 0.9,
+    "texture_consistency_check": true,
+    "spatial_expert_mode": true,
+    "generative_expert_mode": false
+  },
+  "generative_expert_config": {
+    "horizontal_flip_prob": 0.5,
+    "rotation_degrees": 7.5,
+    "scale_range": [0.85, 1.05],
+    "shear_range": [-3, 3],
+    "brightness_range": 0.12,
+    "contrast_range": 0.12,
+    "saturation_range": 0.12,
+    "hue_range": 0.06,
+    "gaussian_noise_std": 0.015,
+    "gaussian_noise_prob": 0.4,
+    "motion_blur_limit": 5,
+    "motion_blur_prob": 0.25,
+    "jpeg_quality_range": [70, 100],
+    "jpeg_compression_prob": 0.45,
+    "edge_preservation_ratio": 0.8,
+    "texture_consistency_check": true,
+    "spatial_expert_mode": false,
+    "generative_expert_mode": true
+  },
+  "multi_resolution_settings": {
+    "supported_resolutions": [224, 256, 288, 320],
+    "default_resolution": 256,
+    "adaptive_scaling": true,
+    "resolution_specific_adjustments": {
+      "224": {
+        "motion_blur_scale_factor": 0.875,
+        "rotation_scale_factor": 0.9,
+        "noise_scale_factor": 0.9
+      },
+      "256": {
+        "motion_blur_scale_factor": 1.0,
+        "rotation_scale_factor": 1.0,
+        "noise_scale_factor": 1.0
+      },
+      "288": {
+        "motion_blur_scale_factor": 1.125,
+        "rotation_scale_factor": 1.05,
+        "noise_scale_factor": 1.05
+      },
+      "320": {
+        "motion_blur_scale_factor": 1.25,
+        "rotation_scale_factor": 1.1,
+        "noise_scale_factor": 1.1
+      }
+    }
+  },
+  "adaptive_scheduling": {
+    "enabled": true,
+    "early_training_factor": 0.7,
+    "mid_training_factor": 1.0,
+    "late_training_factor": 0.8,
+    "loss_based_adaptation": {
+      "high_loss_threshold": 0.7,
+      "low_loss_threshold": 0.3,
+      "high_loss_factor": 1.2,
+      "low_loss_factor": 0.8
+    }
+  },
+  "artifact_preservation_settings": {
+    "spatial_artifact_types": {
+      "edge_blending": {
+        "preservation_priority": "high",
+        "affected_augmentations": ["rotation", "scaling", "blur"],
+        "reduction_factor": 0.7
+      },
+      "texture_inconsistency": {
+        "preservation_priority": "high",
+        "affected_augmentations": ["noise", "compression"],
+        "reduction_factor": 0.8
+      },
+      "frequency_artifacts": {
+        "preservation_priority": "medium",
+        "affected_augmentations": ["compression", "downscaling"],
+        "reduction_factor": 0.9
+      }
+    },
+    "generative_artifact_types": {
+      "gan_artifacts": {
+        "preservation_priority": "high",
+        "affected_augmentations": ["compression", "noise"],
+        "reduction_factor": 0.6
+      },
+      "diffusion_noise": {
+        "preservation_priority": "medium",
+        "affected_augmentations": ["gaussian_noise", "iso_noise"],
+        "reduction_factor": 0.8
+      },
+      "upsampling_artifacts": {
+        "preservation_priority": "high",
+        "affected_augmentations": ["scaling", "interpolation"],
+        "reduction_factor": 0.7
+      }
+    }
+  },
+  "validation_augmentation": {
+    "enabled": false,
+    "simple_transforms_only": true,
+    "allowed_transforms": ["horizontal_flip", "normalize"],
+    "horizontal_flip_prob": 0.0,
+    "note": "Validation uses minimal augmentation for consistent evaluation"
+  },
+  "test_time_augmentation": {
+    "enabled": false,
+    "tta_transforms": [
+      "original",
+      "horizontal_flip",
+      "rotation_5",
+      "rotation_minus_5"
+    ],
+    "ensemble_method": "average",
+    "note": "Optional TTA for final evaluation"
+  },
+  "quality_control": {
+    "artifact_preservation_check": true,
+    "visual_inspection_sampling": 0.01,
+    "automatic_quality_metrics": [
+      "ssim_preservation",
+      "edge_preservation",
+      "texture_consistency"
+    ],
+    "quality_thresholds": {
+      "min_ssim_preservation": 0.85,
+      "min_edge_preservation": 0.80,
+      "min_texture_consistency": 0.75
+    }
+  },
+  "performance_optimization": {
+    "use_gpu_transforms": true,
+    "batch_augmentation": true,
+    "caching_enabled": false,
+    "parallel_workers": 4,
+    "prefetch_factor": 2
+  },
+  "debugging_and_visualization": {
+    "save_augmented_samples": false,
+    "sample_save_path": "debug/augmented_samples",
+    "samples_per_epoch": 10,
+    "visualize_artifact_preservation": false,
+    "log_augmentation_statistics": true
+  }
+}

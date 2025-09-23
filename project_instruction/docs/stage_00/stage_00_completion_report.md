@@ -14,7 +14,7 @@
   - timm 1.0.19 (最新發布版本)
   - 支持RTX 5060Ti/3070Ti/5090 GPU
 - ✅ **Docker容器化**: 多階段構建，支持開發、生產、推理環境
-- ✅ **環境驗證腳本**: `setup_env.py` 全面檢測系統兼容性
+- ✅ **環境驗證腳本**: `scripts/setup_environment.py` 全面檢測系統兼容性
 
 ### **2. 智能數據管理系統**
 - ✅ **DatasetConfig類**: 配置驅動的數據集管理
@@ -128,7 +128,7 @@ AWARE-NET/
 ├── environment.yml                    # Conda環境配置
 ├── Dockerfile                        # 容器化配置
 ├── requirements.txt                   # pip備選依賴
-├── setup_env.py                      # 環境驗證腳本
+├── scripts/setup_environment.py      # 環境驗證腳本
 ├── configs/
 │   └── dataset_paths.json           # CelebDF-v2配置
 ├── src/
