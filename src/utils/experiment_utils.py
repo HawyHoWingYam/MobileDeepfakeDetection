@@ -9,7 +9,7 @@ import pickle
 import hashlib
 import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Tuple
 from dataclasses import dataclass, field, asdict
 import numpy as np
 import pandas as pd

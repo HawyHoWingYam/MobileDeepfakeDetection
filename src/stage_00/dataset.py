@@ -20,38 +20,46 @@ from albumentations.pytorch import ToTensorV2
 class CelebDFDataset(Dataset):
     """
     CelebDF-v2 Dataset for deepfake detection
-    
+
     Features:
     - Loads images from manifest CSV files
     - Supports train/val/test splits
     - Configurable data augmentation
     - Proper image preprocessing
+    - Path leakage protection (anonymized paths)
     """
-    
-    def __init__(self, 
+
+    def __init__(self,
                  manifest_path: str,
                  root_path: str = ".",
                  image_size: int = 256,
                  augmentation: bool = True,
-                 normalize: bool = True):
+                 normalize: bool = True,
+                 path_leakage_check: bool = True):
         """
         Initialize dataset
-        
+
         Args:
             manifest_path: Path to CSV manifest file
             root_path: Root directory for relative paths
             image_size: Target image size (will be resized to image_size x image_size)
             augmentation: Whether to apply data augmentation
             normalize: Whether to normalize images
+            path_leakage_check: Whether to check for potential path leakage
         """
         self.manifest_path = Path(manifest_path)
         self.root_path = Path(root_path)
         self.image_size = image_size
         self.augmentation = augmentation
+        self.path_leakage_check = path_leakage_check
         self.normalize = normalize
         
         # Load manifest
         self.df = pd.read_csv(self.manifest_path)
+
+        # Check for potential path leakage
+        if self.path_leakage_check:
+            self._check_path_leakage()
         
         # Filter valid samples
         self.df = self.df[self.df.get('valid', True) == True]
@@ -62,7 +70,33 @@ class CelebDFDataset(Dataset):
         
         # Setup transforms
         self._setup_transforms()
-    
+
+    def _check_path_leakage(self):
+        """
+        Check for potential path leakage in the dataset
+
+        Warns if paths contain obvious label indicators
+        """
+        leakage_indicators = ['real', 'fake', 'authentic', 'forged', 'true', 'false']
+        potential_leakage = []
+
+        for idx, row in self.df.iterrows():
+            path_lower = str(row['image_path']).lower()
+            for indicator in leakage_indicators:
+                if indicator in path_lower:
+                    potential_leakage.append((row['image_path'], indicator, row['label']))
+                    break
+
+        if potential_leakage:
+            print(f"⚠️  WARNING: Potential path leakage detected in {len(potential_leakage)} samples!")
+            print("Examples:")
+            for path, indicator, label in potential_leakage[:5]:
+                print(f"  Path: {path} (contains '{indicator}', label: {label})")
+            print(f"This may lead to artificially high performance (AUC > 0.95)")
+            print(f"Consider using anonymized manifests to prevent leakage")
+        else:
+            print(f"✅ Path leakage check passed - no obvious indicators found")
+
     def _setup_transforms(self):
         """Setup image transforms using albumentations"""
         

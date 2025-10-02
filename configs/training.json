@@ -1,0 +1,70 @@
+{
+  "metadata": {
+    "name": "AWARE-NET Stage 00 Training Configuration",
+    "description": "Simplified training config for baseline model",
+    "version": "1.0.0"
+  },
+
+  "experiment": {
+    "name": "baseline_efficientnetv2_b3",
+    "description": "EfficientNetV2-B3 baseline for CelebDF-v2",
+    "tags": ["baseline", "efficientnet", "stage0"]
+  },
+
+  "model": {
+    "name": "tf_efficientnetv2_b3",
+    "pretrained": true,
+    "dropout_rate": 0.2,
+    "freeze_backbone": false
+  },
+
+  "training": {
+    "batch_size": 32,
+    "epochs": 50,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "num_workers": 4,
+    "mixed_precision": true,
+    "early_stopping_patience": 10,
+    "gradient_clipping": 1.0,
+    "warmup_epochs": 5,
+    "use_class_weights": false,
+    "comment": "use_class_weights: enable/disable Real vs Fake class balancing (set false for balanced datasets)"
+  },
+
+  "data": {
+    "dataset_config": "configs/datasets.json",
+    "dataset_name": "celebdf_v2",
+    "dataset_mode": "balanced",
+    "multi_dataset": true,
+    "use_dataset_weights": true,
+    "image_size": 256,
+    "augmentation": true,
+    "subset_ratio": 1.0,
+    "comment": "dataset_mode: 'original' (raw paths, imbalanced) or 'balanced' (original paths, 50/50 balanced). use_dataset_weights: balance dataset contributions in multi-dataset training"
+  },
+
+  "monitoring": {
+    "log_interval": 100,
+    "save_interval": 5,
+    "eval_interval": 1,
+    "save_best_only": true,
+    "monitor_metric": "val_auc"
+  },
+
+  "paths": {
+    "models_dir": "models/stage_00",
+    "results_dir": "results/stage_00",
+    "logs_dir": "logs/stage_00",
+    "experiments_dir": "experiments"
+  },
+
+  "targets": {
+    "min_auc": 0.88,
+    "min_f1": 0.85,
+    "max_inference_time_ms": 100,
+    "max_memory_usage_gb": 4
+  }
+}

@@ -32,8 +32,8 @@
       "type": "deepfake_detection",
       "enabled": true,
       "paths": {
-        "real": "dataset/real/CelebDF-v2",
-        "fake": "dataset/fake/CelebDF-v2"
+        "real": "/workspace/MobileDeepfakeDetection/dataset/real/CelebDF-v2/CelebDF-v2",
+        "fake": "/workspace/MobileDeepfakeDetection/dataset/fake/CelebDF-v2/CelebDF-v2"
       },
       "manifests": {
         "train": "manifests/celebdf_v2_train.csv",
@@ -80,6 +80,10 @@
       "type": "deepfake_detection",
       "enabled": true,
       "weight": 0.35,
+      "paths": {
+        "real": "/workspace/MobileDeepfakeDetection/dataset/real/FF++",
+        "fake": "/workspace/MobileDeepfakeDetection/dataset/fake/FF++"
+      },
       "manifests": {
         "train": "manifests/faceforensics_train.csv",
         "val": "manifests/faceforensics_val.csv",
@@ -105,6 +109,10 @@
       "type": "deepfake_detection",
       "enabled": true,
       "weight": 0.5,
+      "paths": {
+        "real": "/workspace/MobileDeepfakeDetection/dataset/real/DeeperForensics-1.0",
+        "fake": "/workspace/MobileDeepfakeDetection/dataset/fake/DeeperForensics-1.0"
+      },
       "manifests": {
         "train": "manifests/deeperforensics_train.csv",
         "val": "manifests/deeperforensics_val.csv",
@@ -149,11 +157,13 @@
         "method": "weighted_stratified",
         "balance_datasets": true,
         "balance_classes": true,
+        "auto_calculated": true,
         "dataset_weights": {
           "celebdf_v2": 0.15,
           "faceforensics_plus_plus": 0.35,
           "deeperforensics_1_0": 0.5
-        }
+        },
+        "note": "When auto_calculated=true, weights are computed from actual sample counts. Set to false for manual weights."
       },
       "combined_statistics": {
         "total_samples": 2701382,

@@ -101,12 +101,202 @@ MobileDeepfakeDetection/
 - **Generative Expert**: GenConViT for structure analysis
 - Advanced complementarity analysis and fusion
 
+## ⚖️ Data Sampling & Weight Configuration
+
+### Understanding Data Balancing
+
+AWARE-NET implements **three-level data balancing** to ensure fair and effective training:
+
+#### 1. **Dataset-Level Weights** (数据集权重)
+Controls the contribution of each dataset in multi-dataset training.
+
+**Problem**:
+- CelebDF-v2: 83K samples (7.3%)
+- FaceForensics++: 225K samples (19.8%)
+- DeeperForensics-1.0: 828K samples (72.9%)
+- **Without balancing**: DeeperForensics dominates training
+
+**Solution**: `WeightedRandomSampler` ensures equal dataset contributions
+- Each dataset sampled with equal probability: 33.3% each
+- Prevents any single dataset from dominating the learned features
+
+**Configuration** (`configs/training.json`):
+```json
+{
+  "data": {
+    "use_dataset_weights": true,  // Enable dataset-level balancing
+    "multi_dataset": true          // Required for multi-dataset training
+  }
+}
+```
+
+#### 2. **Class-Level Weights** (类别权重)
+Balances Real vs Fake samples within the training data.
+
+**Problem**:
+- Imbalanced datasets may have more real or fake samples
+- Model bias towards majority class
+
+**Solution**: `BCEWithLogitsLoss(pos_weight=real_count/fake_count)`
+- Adjusts loss function to weight minority class more heavily
+
+**Configuration** (`configs/training.json`):
+```json
+{
+  "training": {
+    "use_class_weights": false  // Set false for balanced datasets
+                                 // Set true for imbalanced datasets
+  }
+}
+```
+
+**Note**: For `anonymized_balanced` datasets, this should be `false` as data is already 50/50 balanced.
+
+#### 3. **Dataset Modes** (数据集模式)
+Two modes available for different training scenarios:
+
+| Mode | Description | Real:Fake Ratio | Path Leakage | Use Case |
+|------|-------------|-----------------|--------------|----------|
+| `original` | Raw dataset | Varies | ⚠️ Possible | Baseline comparison |
+| `balanced` | Original paths + balanced | 50:50 | ✅ Code-level prevention | **Recommended for training** |
+
+**Configuration**:
+```json
+{
+  "data": {
+    "dataset_mode": "balanced"  // Recommended
+  }
+}
+```
+
+**Path Leakage Prevention**:
+- The `balanced` mode uses original image paths (no image copying needed)
+- Path leakage is prevented at code level: dataset only returns `(image_tensor, label)`, paths are never exposed to the model
+- Saves 150-200GB storage and 30-60 minutes setup time compared to physical anonymization
+
+### Configuration Examples
+
+#### Single Dataset Training (CelebDF-v2)
+```bash
+python src/stage_00/train_baseline.py \
+  --config configs/training.json \
+  --experiment-name celebdf_baseline \
+  --model tf_efficientnetv2_b0 \
+  --dataset celebdf_v2 \
+  --dataset-mode balanced \
+  --epochs 20 \
+  --batch-size 32
+```
+
+**Config file** (`configs/training.json`):
+```json
+{
+  "training": {
+    "use_class_weights": false  // Data already balanced
+  },
+  "data": {
+    "dataset_name": "celebdf_v2",
+    "dataset_mode": "balanced",
+    "multi_dataset": false,
+    "use_dataset_weights": false  // N/A for single dataset
+  }
+}
+```
+
+#### Multi-Dataset Training (All 3 datasets) - **Recommended**
+```bash
+python src/stage_00/train_baseline.py \
+  --config configs/training.json \
+  --experiment-name multi_baseline \
+  --model tf_efficientnetv2_b0 \
+  --multi-dataset \
+  --dataset-mode balanced \
+  --epochs 30 \
+  --batch-size 32
+```
+
+**Config file** (`configs/training.json`):
+```json
+{
+  "training": {
+    "use_class_weights": false  // Data already balanced
+  },
+  "data": {
+    "dataset_mode": "balanced",
+    "multi_dataset": true,
+    "use_dataset_weights": true  // ✅ Balance dataset contributions
+  }
+}
+```
+
+**Expected output**:
+```
+⚖️  Calculating dataset-level weights for balanced sampling...
+  Dataset contributions (with balanced sampling):
+    celebdf_v2_train: 83,378 samples (7.3% → 33.3%)
+    faceforensics_plus_plus_train: 225,418 samples (19.8% → 33.3%)
+    deeperforensics_1_0_train: 828,200 samples (72.9% → 33.3%)
+  ✓ Weighted sampler created (balances dataset contributions)
+```
+
+### Best Practices
+
+1. **For Production Training** (推荐设置):
+   - Use `balanced` mode to prevent path leakage with 50/50 class balance
+   - Enable `use_dataset_weights: true` for multi-dataset training
+   - Disable `use_class_weights: false` (data already balanced)
+
+2. **For Imbalanced Research**:
+   - Use `original` mode
+   - Enable `use_class_weights: true`
+   - Consider manual pos_weight tuning
+
+3. **For Quick Testing**:
+   - Use `subset_ratio: 0.1` to train on 10% of data
+   - Single dataset mode for faster iteration
+
+### Advanced Configuration
+
+**Manual Class Weight Specification**:
+```json
+{
+  "training": {
+    "use_class_weights": true,
+    "pos_weight": 2.33  // Manual override: real_count/fake_count
+  }
+}
+```
+
+**Subset Training** (for debugging):
+```bash
+python src/stage_00/train_baseline.py \
+  --subset-ratio 0.1 \  # Use only 10% of data
+  --epochs 5
+```
+
 ## 🧪 Running Experiments
 
 ### Basic Training
 ```bash
-# Stage 0 baseline training
-python src/stage_00/train_baseline.py --dataset balanced_clean --training balanced_clean
+# Stage 0 baseline training (single dataset)
+python src/stage_00/train_baseline.py \
+  --config configs/training.json \
+  --experiment-name celebdf_b0 \
+  --model tf_efficientnetv2_b0 \
+  --dataset celebdf_v2 \
+  --dataset-mode balanced \
+  --epochs 20 \
+  --batch-size 32
+
+# Stage 0 multi-dataset training (recommended)
+python src/stage_00/train_baseline.py \
+  --config configs/training.json \
+  --experiment-name multi_b0 \
+  --model tf_efficientnetv2_b0 \
+  --multi-dataset \
+  --dataset-mode balanced \
+  --epochs 30 \
+  --batch-size 32
 
 # Stage 1 SupCon training (when available)
 python src/stage_01/train_stage1_supcon.py
