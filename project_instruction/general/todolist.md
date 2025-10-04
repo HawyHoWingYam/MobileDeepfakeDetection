@@ -1,6 +1,6 @@
 # AWARE-NET Project Todo List
 
-Last Updated: 2025-10-04
+Last Updated: 2025-10-04 (Loss函数策略分析完成)
 
 ---
 
@@ -137,6 +137,72 @@ Last Updated: 2025-10-04
 - Supervised Contrastive Learning学习可迁移表示，而非decision boundaries
 - 这正是论文创新点的理论基础
 
+**→ 进入Stage 01 SupCon验证阶段**
+
+---
+
+## 🔬 Loss函数策略分析与调整 (2025-10-04)
+
+### 核心发现：不是"放弃CE Loss"，而是"正确使用CE Loss"
+
+基于Stage 00诊断结果，重新审视了整个项目的loss函数策略：
+
+#### 各Stage Loss策略表
+
+| Stage | 当前设计 | 调整建议 | 原因 |
+|-------|---------|---------|------|
+| **Stage 00** | BCE | ✅ 保持不变 | 作为学术对比组，证明传统范式失败 |
+| **Stage 01** | SupCon | 🚨 **立即验证** | 生死关键：必须证明OOD AUC > 0.68 (超过BCE 3%) |
+| **Stage 02 空间专家** | SupCon | ✅ 保持 | 复用Stage 01成功范式 |
+| **Stage 02 GenConViT** | BCE+MSE+Perceptual+KL | 🔄 **调整**：Encoder用SupCon预训练 → BCE仅用于分类头 | 避免从头用BCE学特征 |
+| **Stage 05 SAT** | BCE(分类)+CE(攻击类型)+MSE(强度) | 🔄 **澄清**：BCE必须基于SupCon鲁棒特征 | 不能期望BCE学习对抗特征 |
+
+#### 两层Loss架构原则
+
+**第一层：特征学习层**（决定泛化能力）
+- ✅ SupCon（如果Stage 01验证成功）：学习manipulation-agnostic可迁移表示
+- ❌ 避免BCE：从头用BCE学特征 → 只学dataset-specific shortcuts（Stage 00失败教训）
+
+**第二层：任务适配层**（在好特征上做决策）
+- ✅ BCE可用：在SupCon预训练特征基础上的分类头
+- ✅ 任务特定loss：MSE（重建）、KL散度（VAE）、CE（多分类）等
+
+#### 🚨 Stage 01 SupCon快速验证计划（URGENT）
+
+**目标**：验证SupCon是否能解决BCE的OOD泛化问题
+
+**实验设计**：
+1. **快速对比实验**（5-10 epochs）：
+   - 对照组：MobileNetV4 + BCE
+   - 实验组：MobileNetV4 + SupCon
+   - 数据集：CelebDF + FF++ 训练，DeeperForensics OOD测试
+
+2. **成功标准**：
+   - SupCon OOD AUC > 0.68（超过BCE的0.65，提升≥3%）
+   - 特征可视化显示更好的类别分离
+   - 跨数据集方差降低
+
+3. **强制停止条件**：
+   - 如果SupCon OOD AUC ≤ 0.65（与BCE相同）
+   - 说明问题不在loss，需要启动Plan B
+
+#### Plan B：如果SupCon失败的替代方案
+
+**方案优先级**：
+1. **Focal Loss**：处理难样本，解决类别不平衡
+2. **ArcFace Loss**：构建判别性特征空间
+3. **Triplet Loss**：度量学习，学习相似度
+4. **重新审视问题**：也许OOD泛化本身就是unrealistic expectation
+   - 改变策略：in-dist + 持续学习
+   - 或承认数据集diversity不足
+
+#### 关键风险
+
+**整个项目的成败取决于Stage 01**：
+- 如果SupCon成功 → 按两层loss架构推进
+- 如果SupCon失败 → 整个项目需要重新设计
+- 可能根本原因：manipulation method分布偏移本质上无法跨越
+
 ---
 
 ### ⚠️ Albumentations增强已实施
@@ -155,238 +221,24 @@ Last Updated: 2025-10-04
 
 ---
 
-## Phase 0: Multi-Dataset Generalization Evaluation Framework
+## 🎯 当前行动计划 (优先级排序)
 
-### 📚 Background: Current Evaluation Limitations
+### 🚨 URGENT: Stage 01 SupCon快速验证 (1-2天)
+**目标**: 验证SupCon是否能解决BCE的OOD泛化问题
+- [ ] 实现SupConLoss类（参考Stage 01文档）
+- [ ] 5-10 epochs快速对比实验（SupCon vs BCE）
+- [ ] OOD测试：DeeperForensics
+- [ ] 成功标准：OOD AUC > 0.68（超过BCE 3%）
+- [ ] **如果失败**：启动Plan B（Focal/ArcFace/Triplet Loss）
 
-**Current Training Setup**:
-```
-Training:   CelebDF train + FF++ train + DF train (mixed)
-Validation: CelebDF val + FF++ val + DF val (mixed)
-Test:       CelebDF test + FF++ test + DF test (mixed)
-```
+### ✅ 完成Stage 00 LODO评估 (1天)
+- [ ] Config 3评估：FF++DF → CelebDF OOD测试
+- [ ] 生成完整3×3 LODO性能矩阵报告
+- [ ] 文档化BCE baseline的学术价值
 
-**Problem**: This tests "multi-dataset learning" but NOT "cross-dataset generalization"
-- Model sees all three datasets during training
-- Can learn dataset-specific shortcuts (compression artifacts, lighting patterns, etc.)
-- Validation AUC 0.99+ doesn't guarantee generalization to unseen datasets
-
-**Example**: A model could memorize:
-- "CelebDF has specific compression → 70% fake"
-- "FF++ has specific landmarks → 80% fake"
-- "DF has studio lighting → 65% fake"
-
-This would achieve high validation AUC but fail on new datasets!
-
-### 🎯 Three-Tier Evaluation Strategy
-
-#### ✅ **Level 1: Per-Dataset Metrics Breakdown** (Stage 0 - IMPLEMENTED ✅)
-
-**Purpose**: Reveal if model performs equally well on all training datasets
-
-**Status**: ✅ **COMPLETED** (2025-10-03)
-
-**Implementation Summary**:
-- ✅ Modified `MultiDatasetWrapper.__getitem__()` to return `(image, label, dataset_id)`
-- ✅ Added `_build_dataset_mapping()` to track which dataset each sample belongs to
-- ✅ Updated `train_epoch()` to handle 3-tuple (backward compatible)
-- ✅ Enhanced `validate_epoch()` to group predictions by dataset_id
-- ✅ Calculate separate AUC/F1/Accuracy for each dataset
-- ✅ Updated output format to display per-dataset breakdown
-
-**Files Modified**:
-- `src/stage_00/train_baseline.py` (lines 69-108, 779-786, 824-959, 1155-1172, 1197-1209)
-
-**New Output Format**:
-```
-Epoch 03 Summary:
-  Train - Loss: 0.0205, Acc: 0.9898
-  Val   - Loss: 0.1078, Acc: 0.9768, AUC: 0.9975, F1: 0.9768
-
-  Per-Dataset Validation Breakdown:
-    celebdf_v2_val:
-      AUC: ????, F1: ????, Acc: ???? (18,034 samples)
-    faceforensics_plus_plus_val:
-      AUC: ????, F1: ????, Acc: ???? (47,350 samples)
-    deeperforensics_1_0_val:
-      AUC: ????, F1: ????, Acc: ???? (177,078 samples)
-
-  Time: 838.69s, LR: 1.00e-06
-  Best AUC: 0.9976, Patience: 1/10
-```
-
-**Timeline**: Implemented 2025-10-03
-**Work Time**: ~2 hours
-**Priority**: ✅ **COMPLETED**
-
-**Next Step**: Run training to verify implementation and see actual per-dataset breakdown!
-
----
-
-#### ⚠️ **Level 2: Cross-Dataset Evaluation Framework** (Stage 0-1 Transition - OPTIONAL)
-
-**Purpose**: Provide tool to test model on held-out datasets
-
-**Tasks**:
-- [ ] **2.1 Create tools/evaluation/ directory**
-  ```bash
-  mkdir -p tools/evaluation
-  touch tools/evaluation/__init__.py
-  ```
-
-- [ ] **2.2 Implement cross_dataset_eval.py**
-  - Location: `tools/evaluation/cross_dataset_eval.py`
-  - Design: ~100-150 lines (keep simple!)
-  - Functionality:
-    - Load trained model checkpoint
-    - Evaluate on specified dataset
-    - Calculate cross-dataset generalization gap
-    - Generate comparison report
-
-- [ ] **2.3 Add command-line interface**
-  ```bash
-  python tools/evaluation/cross_dataset_eval.py \
-    --checkpoint experiments/model_celebdf_ff/best_model.pth \
-    --test-dataset deeperforensics_1_0 \
-    --split test \
-    --batch-size 32
-  ```
-
-**Timeline**: Between Stage 0 and Stage 1 (or when needed)
-**Work Estimate**: 3-4 hours (framework only, no full experiments)
-**Priority**: **MEDIUM** - Useful tool, not blocking
-
-**Design Principles** (保持简洁):
-- ✅ Reuse code from train_baseline.py via imports
-- ✅ Single responsibility: evaluation only, no training
-- ✅ New directory for clear separation
-- ❌ Don't modify existing stable code (train_baseline.py)
-
-**File Structure**:
-```
-tools/
-├── evaluation/          # NEW - Evaluation tools
-│   ├── __init__.py
-│   └── cross_dataset_eval.py
-├── validation/          # Existing - Gate validation
-│   ├── verify_stage_0_completion.py
-│   └── stage_gate_validator.py
-└── data/               # Existing - Data processing
-    ├── generate_manifests.py
-    └── dataset_utils.py
-```
-
----
-
-#### ❌ **Level 3: Full LODO Cross-Validation** (Stage 9 ONLY - DO NOT IMPLEMENT NOW)
-
-**Purpose**: Academic-grade cross-dataset generalization evaluation
-
-**Why NOT in Stage 0**:
-- Requires training 3 separate models (3x time investment)
-- Should be done after all innovations (Stage 1-8) are complete
-- Used for final paper results, not development iteration
-
-**Details**: See updated Phase 4 below
-
----
-
-## Phase 4: Cross-Dataset Generalization - LODO Framework (Stage 9)
-
-**Status**: Deferred until Stage 9 (comprehensive evaluation phase)
-
-**Important**: This is Level 3 (Full LODO) from Phase 0 - requires training 3 separate models
-
-### LODO (Leave-One-Dataset-Out) Experiments
-
-- [ ] **4.1 Experiment 1: Train on CelebDF + FF++, Test on DeeperForensics**
-  - Training configuration:
-    ```bash
-    python src/stage_00/train_baseline.py \
-      --multi-dataset \
-      --dataset-mode balanced \
-      --experiment-name lodo_holdout_df \
-      --epochs 50
-    # Manually configure to exclude DF from training datasets
-    ```
-  - Evaluation:
-    ```bash
-    python tools/evaluation/cross_dataset_eval.py \
-      --checkpoint experiments/lodo_holdout_df/best_model.pth \
-      --test-dataset deeperforensics_1_0 \
-      --split test
-    ```
-  - Record: In-distribution AUC vs Out-of-distribution AUC
-  - Calculate generalization gap
-
-- [ ] **4.2 Experiment 2: Train on CelebDF + DF, Test on FF++**
-  - Training configuration: Exclude FF++ from training
-  - Test on FF++ using cross_dataset_eval.py
-  - Record generalization metrics
-
-- [ ] **4.3 Experiment 3: Train on FF++ + DF, Test on CelebDF**
-  - Training configuration: Exclude CelebDF from training
-  - Test on CelebDF using cross_dataset_eval.py
-  - Record generalization metrics
-
-- [ ] **4.4 Generate comprehensive LODO report**
-  - Create 3×3 performance matrix:
-    ```
-    Train\Test | CelebDF | FF++  | DF
-    -----------|---------|-------|-------
-    CelebDF+FF | 0.95    | 0.94  | 0.78
-    CelebDF+DF | 0.94    | 0.81  | 0.96
-    FF++DF     | 0.85    | 0.95  | 0.95
-    ```
-  - Calculate average generalization gap: (In-dist AUC) - (Out-of-dist AUC)
-  - Generate academic paper-ready visualizations (ROC curves, confusion matrices)
-  - Analyze which dataset transfers best to others
-
-### Expected LODO Results
-
-```
-LODO Cross-Dataset Evaluation Report:
-
-Experiment 1: Train CelebDF+FF++, Test DF
-  In-distribution val AUC: 0.9950
-  Out-of-distribution test AUC: 0.7823
-  Generalization gap: -21.27% ⚠️
-
-Experiment 2: Train CelebDF+DF, Test FF++
-  In-distribution val AUC: 0.9912
-  Out-of-distribution test AUC: 0.8156
-  Generalization gap: -17.56% ⚠️
-
-Experiment 3: Train FF++DF, Test CelebDF
-  In-distribution val AUC: 0.9934
-  Out-of-distribution test AUC: 0.8547
-  Generalization gap: -13.87% ⚠️
-
-Average generalization gap: -17.57%
-Conclusion: Model has moderate cross-dataset generalization
-```
-
-### Why This Matters for Publication
-
-- CVPR/ICCV/ECCV reviewers expect cross-dataset evaluation
-- Single-dataset or mixed-dataset results are insufficient
-- LODO protocol is the gold standard for generalization claims
-- Our current AUC 0.9965 (mixed validation) doesn't predict LODO performance
-
----
-
-## Phase 5: Future Considerations (Long-term)
-
-- [ ] **Add DFDC Dataset**
-  - Prerequisite: All data leakage fixed and validated
-  - Download and preprocess DFDC
-  - Generate video-level split manifests
-  - Integrate into multi-dataset pipeline
-
-- [ ] **Additional evaluation metrics**
-  - EER (Equal Error Rate)
-  - Detection at different FPR levels
-  - Per-manipulation-method breakdown
+### 🔄 根据SupCon结果决定后续策略
+- 如果SupCon成功：按两层loss架构推进Stage 02-09
+- 如果SupCon失败：重新设计loss策略或调整项目方向
 
 ---
 
@@ -404,120 +256,40 @@ Conclusion: Model has moderate cross-dataset generalization
 
 ---
 
-## 📋 Quick Reference Commands
+## 📋 快速命令参考
 
-### 🆕 0. Quick Test with Per-Dataset Metrics (NEW - Verify Level 1 Implementation)
+### LODO评估命令
 ```bash
-cd /workspace/MobileDeepfakeDetection
-
-# Quick 1-epoch test to verify per-dataset metrics work
-PYTHONPATH=. python src/stage_00/train_baseline.py \
-  --multi-dataset \
+# Config 3: FF++DF → CelebDF OOD
+python src/stage_00/train_baseline.py \
+  --eval-only \
+  --checkpoint experiments/lodo_exclude_celebdf_*/checkpoints/best_model.pth \
+  --test-dataset celebdf_v2 \
   --dataset-mode balanced \
-  --experiment-name test_per_dataset_metrics \
-  --epochs 1 \
-  --batch-size 32 \
+  --batch-size 64 \
   --model tf_efficientnetv2_b0
-
-# Expected new output at end of epoch:
-#   Per-Dataset Validation Breakdown:
-#     celebdf_v2_val:
-#       AUC: ????, F1: ????, Acc: ???? (18,034 samples)
-#     faceforensics_plus_plus_val:
-#       AUC: ????, F1: ????, Acc: ???? (47,350 samples)
-#     deeperforensics_1_0_val:
-#       AUC: ????, F1: ????, Acc: ???? (177,078 samples)
 ```
 
-### 1. Create Missing Balanced Manifests (COMPLETED ✅)
+### Stage 01 SupCon快速验证（待实施）
 ```bash
-cd /workspace/MobileDeepfakeDetection
-
-# Create balanced manifests for ALL datasets
-python tools/data/dataset_utils.py --action balance --dataset all
-
-# Verify all 9 files created
-ls -lh manifests/*_balanced.csv
-# Expected: celebdf_v2, faceforensics, deeperforensics (train/val/test each)
-```
-
-### 2. Single-Dataset Quick Test (3 epochs, CelebDF-v2)
-```bash
-PYTHONPATH=. python src/stage_00/train_baseline.py \
-  --dataset celebdf_v2 \
-  --dataset-mode balanced \
-  --experiment-name quick_test_celebdf_v2_only \
-  --epochs 3 \
-  --batch-size 32 \
-  --model tf_efficientnetv2_b0
-
-# Monitor: Validation AUC at end of epoch 1
-# Expected: 0.85-0.95 (not 0.9991)
-```
-
-### 3. Multi-Dataset Training (3 epochs, All 3 Datasets)
-```bash
-PYTHONPATH=. python src/stage_00/train_baseline.py \
-  --multi-dataset \
-  --dataset-mode balanced \
-  --experiment-name multi_dataset_all3_quick_test \
-  --epochs 3 \
-  --batch-size 32 \
-  --model tf_efficientnetv2_b0
-
-# Monitor: Validation AUC at end of epoch 1
-# Expected: 0.80-0.90 (lower than single-dataset)
-```
-
-### 4. Full Multi-Dataset Training (50 epochs)
-```bash
-PYTHONPATH=. python src/stage_00/train_baseline.py \
-  --multi-dataset \
-  --dataset-mode balanced \
-  --experiment-name multi_dataset_all3_full \
-  --epochs 50 \
-  --batch-size 32 \
-  --model tf_efficientnetv2_b3 \
-  --learning-rate 1e-3
-
-# Only run after validating 3-epoch tests succeed
-```
-
-### 5. Verification Commands
-```bash
-# Check video overlap (should show 0 overlaps)
-python tools/data/dataset_utils.py --action check-overlap --dataset all
-
-# List all manifests
-ls -lh manifests/*.csv
-
-# Count balanced manifests (should be 9)
-ls manifests/*_balanced.csv | wc -l
+# 详见Stage 01文档和实施计划
 ```
 
 ---
 
-## 📝 Notes
+## 📝 项目状态总结
 
-**Last Updated**: 2025-10-03
+**已完成** (2025-10-04):
+- ✅ Stage 00 BCE baseline训练和诊断
+- ✅ LODO Config 1、2评估完成
+- ✅ 诊断发现BCE只学shortcuts，OOD失败
+- ✅ Loss函数策略分析完成
 
-**Current Status**:
-- ✅ Video-level split: 0 video overlap verified
-- ✅ Balanced manifests: All 3 datasets created
-- ✅ Multi-dataset training: 3-epoch baseline complete (Val AUC 0.9976)
-- ✅ Phase 0, Level 1: Per-dataset metrics完成并测试
-- ✅ LODO配置1训练完成 (CelebDF+FF++, 排除DF)
-- 🔄 **当前任务**: 扩展train_baseline.py添加--eval-only评估模式
-- ⏳ 完整3×3 LODO框架待完成（配置2、3待训练）
+**进行中**:
+- 🔄 Config 3 LODO评估
+- 🚨 准备Stage 01 SupCon验证（URGENT）
 
-**Next Actions**:
-1. 完成--eval-only模式实现
-2. 测试配置1在DeeperForensics上的泛化表现
-3. 分析泛化差距，决定是否需要改进
-4. 训练配置2和3（用户负责）
-5. 生成完整3×3 LODO性能矩阵
-
-**Key Insights**:
-- DeeperForensics test AUC 1.0000可疑（可能数据集捷径）
-- 需要LODO测试验证真实泛化能力
-- 数据增强缺失可能影响泛化
+**关键发现**:
+- BCE Loss无法学习可迁移表示（预训练AUC 0.654 ≈ 训练后0.652-0.658）
+- Stage 01 SupCon是整个项目的生死关键
+- 需要两层loss架构：SupCon学特征 + BCE/其他做任务
