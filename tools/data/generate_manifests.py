@@ -86,53 +86,126 @@ def scan_celebdf_directory(directory: Path, label: int) -> List[dict]:
     print(f"Found {len(entries)} images")
     return entries
 
-def split_data(entries: List[dict], train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42) -> dict:
-    """Split data into train/val/test sets with stratification"""
-    
-    # Set random seed
+# ============================================================================
+# DEPRECATED: Frame-level split (DO NOT USE - causes data leakage!)
+# ============================================================================
+# def split_data_frame_level(entries: List[dict], train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42) -> dict:
+#     """
+#     OLD IMPLEMENTATION - DEPRECATED
+#
+#     WARNING: This function splits frames randomly, causing severe data leakage!
+#     Frames from the same video can appear in both train and val sets.
+#     This leads to artificially inflated performance (AUC 0.99+).
+#
+#     Use split_data_video_level() instead!
+#     """
+#     random.seed(seed)
+#     real_entries = [e for e in entries if e['label'] == 0]
+#     fake_entries = [e for e in entries if e['label'] == 1]
+#     random.shuffle(real_entries)  # ❌ WRONG: shuffles frames, not videos
+#     random.shuffle(fake_entries)
+#     ...
+# ============================================================================
+
+def split_data_video_level(entries: List[dict], train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42) -> dict:
+    """
+    Split data into train/val/test sets at VIDEO LEVEL (fixes data leakage)
+
+    This ensures all frames from the same video only appear in one split,
+    preventing the model from learning video-specific features.
+
+    Args:
+        entries: List of image entries with paths and labels
+        train_ratio: Proportion of videos for training (default 0.7)
+        val_ratio: Proportion of videos for validation (default 0.15)
+        test_ratio: Proportion of videos for testing (default 0.15)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Dictionary with train/val/test splits
+    """
     random.seed(seed)
-    
-    # Separate by label
-    real_entries = [e for e in entries if e['label'] == 0]
-    fake_entries = [e for e in entries if e['label'] == 1]
-    
-    print(f"Real images: {len(real_entries)}")
-    print(f"Fake images: {len(fake_entries)}")
-    
-    # Shuffle independently
-    random.shuffle(real_entries)
-    random.shuffle(fake_entries)
-    
+
+    print("\n🎬 Grouping frames by video ID...")
+
+    # Step 1: Group all frames by video ID
+    video_groups = {}
+    for entry in entries:
+        # Extract video ID: use second-to-last path component
+        # Works for all datasets (CelebDF, FF++, DeeperForensics)
+        # Example: dataset/fake/CelebDF-v2/id39_id40_0000/xxx.jpg -> id39_id40_0000
+        path_parts = entry['image_path'].split('/')
+        video_id = path_parts[-2] if len(path_parts) >= 2 else None
+
+        if video_id:
+            if video_id not in video_groups:
+                video_groups[video_id] = []
+            video_groups[video_id].append(entry)
+
+    print(f"Found {len(video_groups)} unique videos")
+
+    # Step 2: Separate videos by label
+    real_videos = {}
+    fake_videos = {}
+
+    for video_id, frames in video_groups.items():
+        if not frames:
+            continue
+        label = frames[0]['label']  # All frames in a video have the same label
+        if label == 0:
+            real_videos[video_id] = frames
+        else:
+            fake_videos[video_id] = frames
+
+    print(f"Real videos: {len(real_videos)}")
+    print(f"Fake videos: {len(fake_videos)}")
+
+    # Step 3: Shuffle and split VIDEO IDs (not frames!)
+    print("\n📊 Splitting videos into train/val/test...")
     splits = {"train": [], "val": [], "test": []}
-    
-    for entries_list in [real_entries, fake_entries]:
-        n = len(entries_list)
+
+    for video_dict, label_name in [(real_videos, "real"), (fake_videos, "fake")]:
+        video_ids = list(video_dict.keys())
+        random.shuffle(video_ids)  # ✅ CORRECT: shuffle video IDs, not frames
+
+        n = len(video_ids)
         train_end = int(n * train_ratio)
         val_end = train_end + int(n * val_ratio)
-        
-        train_split = entries_list[:train_end]
-        val_split = entries_list[train_end:val_end]
-        test_split = entries_list[val_end:]
-        
-        # Assign split names
-        for entry in train_split:
-            entry['split'] = "train"
-        for entry in val_split:
-            entry['split'] = "val"
-        for entry in test_split:
-            entry['split'] = "test"
-        
-        splits["train"].extend(train_split)
-        splits["val"].extend(val_split)
-        splits["test"].extend(test_split)
-    
+
+        train_video_ids = video_ids[:train_end]
+        val_video_ids = video_ids[train_end:val_end]
+        test_video_ids = video_ids[val_end:]
+
+        print(f"  {label_name} - train: {len(train_video_ids)} videos, "
+              f"val: {len(val_video_ids)} videos, test: {len(test_video_ids)} videos")
+
+        # Step 4: Collect ALL frames from selected videos
+        for vid in train_video_ids:
+            for frame in video_dict[vid]:
+                frame['split'] = 'train'
+            splits["train"].extend(video_dict[vid])
+
+        for vid in val_video_ids:
+            for frame in video_dict[vid]:
+                frame['split'] = 'val'
+            splits["val"].extend(video_dict[vid])
+
+        for vid in test_video_ids:
+            for frame in video_dict[vid]:
+                frame['split'] = 'test'
+            splits["test"].extend(video_dict[vid])
+
     # Print split statistics
+    print("\n✅ Split statistics:")
     for split_name, split_entries in splits.items():
         real_count = sum(1 for e in split_entries if e['label'] == 0)
         fake_count = sum(1 for e in split_entries if e['label'] == 1)
-        print(f"{split_name}: {len(split_entries)} samples ({real_count} real, {fake_count} fake)")
-    
+        print(f"  {split_name}: {len(split_entries)} samples ({real_count} real, {fake_count} fake)")
+
     return splits
+
+# Alias for backward compatibility
+split_data = split_data_video_level
 
 def save_manifest(entries: List[dict], output_path: Path):
     """Save manifest to CSV file"""

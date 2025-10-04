@@ -21,6 +21,8 @@ import pandas as pd
 from tqdm import tqdm
 from torchvision import transforms
 from PIL import Image
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -69,16 +71,43 @@ def calculate_dataset_weights_from_manifests(dataset_config):
 class MultiDatasetWrapper(Dataset):
     """
     Wrapper for ConcatDataset that supports get_class_counts() method
+    and tracks dataset_id for per-dataset metrics
     """
     def __init__(self, datasets):
         self.datasets = datasets
         self.concat_dataset = ConcatDataset(datasets)
 
+        # Build mapping from sample index to dataset_id
+        self._build_dataset_mapping()
+
+    def _build_dataset_mapping(self):
+        """Build mapping from sample index to (dataset_id, dataset_name)"""
+        self.dataset_mapping = []
+        self.dataset_names = []
+
+        for dataset_id, dataset in enumerate(self.datasets):
+            dataset_name = getattr(dataset, 'dataset_name', f'Dataset_{dataset_id}')
+            # Store dataset name for reporting
+            if dataset_name not in self.dataset_names:
+                self.dataset_names.append(dataset_name)
+
+            # Map each sample index to its dataset_id
+            for _ in range(len(dataset)):
+                self.dataset_mapping.append(dataset_id)
+
     def __len__(self):
         return len(self.concat_dataset)
 
     def __getitem__(self, idx):
-        return self.concat_dataset[idx]
+        image, label = self.concat_dataset[idx]
+        dataset_id = self.dataset_mapping[idx]
+        return image, label, dataset_id
+
+    def get_dataset_name(self, dataset_id: int) -> str:
+        """Get dataset name from dataset_id"""
+        if dataset_id < len(self.datasets):
+            return getattr(self.datasets[dataset_id], 'dataset_name', f'Dataset_{dataset_id}')
+        return f'Unknown_{dataset_id}'
 
     def get_class_counts(self) -> torch.Tensor:
         """
@@ -124,12 +153,47 @@ class MultiDatasetWrapper(Dataset):
         return torch.tensor([total_real, total_fake], dtype=torch.float)
 
 class UnifiedDeepfakeDataset(Dataset):
-    """Dataset class for multi-dataset deepfake detection"""
+    """Dataset class for multi-dataset deepfake detection with albumentations support"""
 
-    def __init__(self, manifest_path, dataset_name, transform=None, subset_ratio=1.0):
+    def __init__(self, manifest_path, dataset_name, transform=None, subset_ratio=1.0, use_augmentation=False):
         self.manifest_path = Path(manifest_path)
         self.dataset_name = dataset_name
-        self.transform = transform
+        self.transform = transform  # torchvision transforms (kept for backward compatibility)
+        self.use_augmentation = use_augmentation
+
+        # Build albumentations pipeline if augmentation is enabled
+        if use_augmentation:
+            self.albu_transform = A.Compose([
+                # Spatial augmentations
+                A.HorizontalFlip(p=0.5),
+                A.Rotate(limit=10, p=0.3, border_mode=0),
+                A.RandomResizedCrop(size=(256, 256), scale=(0.8, 1.0), p=0.5),
+
+                # Color augmentations
+                A.ColorJitter(
+                    brightness=0.2,
+                    contrast=0.2,
+                    saturation=0.1,
+                    hue=0.05,
+                    p=0.5
+                ),
+
+                # Noise augmentations
+                A.GaussianBlur(blur_limit=(3, 7), p=0.2),
+                A.GaussNoise(var_limit=(10.0, 50.0), p=0.2),
+
+                # Normalization and conversion to tensor
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ToTensorV2()
+            ])
+            print(f"✓ Albumentations augmentation enabled for {dataset_name}")
+        else:
+            # No augmentation mode - just normalize
+            self.albu_transform = A.Compose([
+                A.Resize(height=256, width=256),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ToTensorV2()
+            ])
 
         # Load manifest
         self.data = pd.read_csv(manifest_path)
@@ -180,23 +244,24 @@ class UnifiedDeepfakeDataset(Dataset):
         sample = self.data.iloc[idx]
         image_path = sample['image_path']
         label = int(sample['label'])
-        
+
         # Load image
         try:
             image = Image.open(image_path).convert('RGB')
-            if self.transform:
-                image = self.transform(image)
-            
-            return image, torch.tensor(label, dtype=torch.float)
-            
+            image_np = np.array(image)  # Convert to numpy for albumentations
+
+            # Apply albumentations transforms
+            transformed = self.albu_transform(image=image_np)
+            image_tensor = transformed['image']
+
+            return image_tensor, torch.tensor(label, dtype=torch.float)
+
         except Exception as e:
             print(f"Error loading {image_path}: {e}")
             # Return a black image as fallback
-            if self.transform:
-                black_image = self.transform(Image.new('RGB', (256, 256), 'black'))
-            else:
-                black_image = torch.zeros(3, 256, 256)
-            return black_image, torch.tensor(0.0, dtype=torch.float)
+            black_image_np = np.zeros((256, 256, 3), dtype=np.uint8)
+            transformed = self.albu_transform(image=black_image_np)
+            return transformed['image'], torch.tensor(0.0, dtype=torch.float)
 
 def create_multi_dataset_loaders(config_path, batch_size=32, num_workers=0, subset_ratio=1.0):
     """Create data loaders for multi-dataset training
@@ -406,12 +471,29 @@ def setup_training(config: Dict[str, Any]) -> tuple:
         # Multi-dataset training mode
         print("🔄 Multi-dataset training mode enabled")
 
+        # Get list of datasets to exclude (for LODO evaluation)
+        exclude_datasets = config['data'].get('exclude_datasets', [])
+        if exclude_datasets:
+            print(f"📌 LODO Mode: Excluding dataset(s): {', '.join(exclude_datasets)}")
+
         # Build manifest paths for all datasets
         dataset_short_names = {
             'celebdf_v2': 'celebdf_v2',
             'faceforensics_plus_plus': 'faceforensics',
             'deeperforensics_1_0': 'deeperforensics'
         }
+
+        # Remove excluded datasets
+        for excluded in exclude_datasets:
+            if excluded in dataset_short_names:
+                del dataset_short_names[excluded]
+                print(f"  ✓ Removed {excluded} from training datasets")
+
+        # Validate at least one dataset remains
+        if len(dataset_short_names) == 0:
+            raise ValueError("Cannot exclude all datasets! At least one dataset must be included for training.")
+
+        print(f"📂 Training on {len(dataset_short_names)} dataset(s): {list(dataset_short_names.keys())}")
 
         # Create unified config for multi-dataset loader
         transform = transforms.Compose([
@@ -460,24 +542,30 @@ def setup_training(config: Dict[str, Any]) -> tuple:
 
             print(f"📂 Loading {full_name} ({dataset_mode} mode)...")
 
+            # Get augmentation setting (only for training split)
+            use_train_augmentation = config['data'].get('augmentation', False)
+
             # Create datasets
             train_ds = UnifiedDeepfakeDataset(
                 manifest_path=manifests['train'],
                 dataset_name=f"{full_name}_train",
-                transform=transform,
-                subset_ratio=config['data'].get('subset_ratio', 1.0)
+                transform=None,  # Not used anymore (albumentations handles everything)
+                subset_ratio=config['data'].get('subset_ratio', 1.0),
+                use_augmentation=use_train_augmentation  # Enable augmentation for training
             )
             val_ds = UnifiedDeepfakeDataset(
                 manifest_path=manifests['val'],
                 dataset_name=f"{full_name}_val",
-                transform=transform,
-                subset_ratio=config['data'].get('subset_ratio', 1.0)
+                transform=None,
+                subset_ratio=config['data'].get('subset_ratio', 1.0),
+                use_augmentation=False  # No augmentation for validation
             )
             test_ds = UnifiedDeepfakeDataset(
                 manifest_path=manifests['test'],
                 dataset_name=f"{full_name}_test",
-                transform=transform,
-                subset_ratio=config['data'].get('subset_ratio', 1.0)
+                transform=None,
+                subset_ratio=config['data'].get('subset_ratio', 1.0),
+                use_augmentation=False  # No augmentation for test
             )
 
             train_datasets.append(train_ds)
@@ -748,8 +836,14 @@ def train_epoch(model: nn.Module,
     
     # Progress bar
     pbar = tqdm(train_loader, desc=f'Epoch {epoch:02d} [Train]')
-    
-    for batch_idx, (data, targets) in enumerate(pbar):
+
+    for batch_idx, batch_data in enumerate(pbar):
+        # Handle both 2-tuple (image, label) and 3-tuple (image, label, dataset_id)
+        if len(batch_data) == 3:
+            data, targets, _ = batch_data  # Ignore dataset_id during training
+        else:
+            data, targets = batch_data
+
         data, targets = data.to(device), targets.to(device)
         
         # Convert targets to float for BCE and reshape to [batch_size, 1]
@@ -794,54 +888,67 @@ def validate_epoch(model: nn.Module,
                    device: torch.device,
                    epoch: int) -> Dict[str, float]:
     """
-    Validate for one epoch
-    
+    Validate for one epoch with per-dataset metrics breakdown
+
     Args:
         model: Model to validate
         val_loader: Validation data loader
         criterion: Loss function
         device: Training device
         epoch: Current epoch number
-        
+
     Returns:
-        Dictionary of validation metrics
+        Dictionary of validation metrics (overall + per-dataset)
     """
     model.eval()
-    
+
     total_loss = 0.0
     correct = 0
     total = 0
     all_predictions = []
     all_probabilities = []
     all_targets = []
-    
+    all_dataset_ids = []
+
     pbar = tqdm(val_loader, desc=f'Epoch {epoch:02d} [Val]')
-    
+
     with torch.no_grad():
-        for data, targets in pbar:
+        for batch_data in pbar:
+            # Handle both 2-tuple and 3-tuple
+            if len(batch_data) == 3:
+                data, targets, dataset_ids = batch_data
+                has_dataset_id = True
+            else:
+                data, targets = batch_data
+                dataset_ids = None
+                has_dataset_id = False
+
             data, targets = data.to(device), targets.to(device)
-            
+
             # Convert targets to float for BCE and reshape to [batch_size, 1]
             targets_bce = targets.float().unsqueeze(1)
-            
+
             # Forward pass
             logits = model(data)
             loss = criterion(logits, targets_bce)
-            
+
             # Get predictions and probabilities using sigmoid
             probabilities = torch.sigmoid(logits)
             predicted = (probabilities > 0.5).float()
-            
+
             # Statistics
             total_loss += loss.item()
             total += targets.size(0)
             correct += predicted.eq(targets_bce).sum().item()
-            
+
             # Store for metrics calculation (flatten for sklearn compatibility)
             all_predictions.extend(predicted.squeeze().cpu().numpy())
             all_probabilities.extend(probabilities.squeeze().cpu().numpy())
             all_targets.extend(targets.cpu().numpy())  # Keep original targets as integers
-            
+
+            if has_dataset_id:
+                all_dataset_ids.extend(dataset_ids.cpu().numpy())
+
             # Update progress bar
             accuracy = 100. * correct / total
             avg_loss = total_loss / (len(all_targets) // val_loader.batch_size + 1)
@@ -849,13 +956,13 @@ def validate_epoch(model: nn.Module,
                 'Loss': f'{avg_loss:.4f}',
                 'Acc': f'{accuracy:.2f}%'
             })
-    
-    # Calculate additional metrics
+
+    # Convert to numpy arrays
     all_predictions = np.array(all_predictions)
     all_probabilities = np.array(all_probabilities)
     all_targets = np.array(all_targets)
-    
-    # Calculate AUC using probabilities for binary classification
+
+    # Calculate overall metrics
     from sklearn.metrics import roc_auc_score, f1_score
     try:
         # For binary classification, use probabilities directly
@@ -864,8 +971,8 @@ def validate_epoch(model: nn.Module,
     except:
         auc_score = 0.0
         f1 = 0.0
-    
-    return {
+
+    result = {
         'loss': total_loss / len(val_loader),
         'accuracy': correct / total,
         'auc': auc_score,
@@ -874,6 +981,149 @@ def validate_epoch(model: nn.Module,
         'probabilities': all_probabilities,
         'targets': all_targets
     }
+
+    # Calculate per-dataset metrics if dataset_ids available
+    if len(all_dataset_ids) > 0:
+        all_dataset_ids = np.array(all_dataset_ids)
+        per_dataset_metrics = {}
+
+        # Get dataset wrapper to retrieve dataset names
+        dataset_wrapper = val_loader.dataset
+        if hasattr(dataset_wrapper, 'get_dataset_name'):
+            unique_dataset_ids = np.unique(all_dataset_ids)
+
+            for dataset_id in unique_dataset_ids:
+                # Get indices for this dataset
+                dataset_mask = all_dataset_ids == dataset_id
+                dataset_targets = all_targets[dataset_mask]
+                dataset_predictions = all_predictions[dataset_mask]
+                dataset_probabilities = all_probabilities[dataset_mask]
+
+                # Calculate metrics for this dataset
+                try:
+                    dataset_auc = roc_auc_score(dataset_targets, dataset_probabilities)
+                    dataset_f1 = f1_score(dataset_targets, dataset_predictions)
+                    dataset_acc = (dataset_predictions == dataset_targets).mean()
+                    dataset_name = dataset_wrapper.get_dataset_name(int(dataset_id))
+
+                    per_dataset_metrics[dataset_name] = {
+                        'auc': dataset_auc,
+                        'f1': dataset_f1,
+                        'accuracy': dataset_acc,
+                        'num_samples': len(dataset_targets)
+                    }
+                except Exception as e:
+                    print(f"Warning: Could not calculate metrics for dataset {dataset_id}: {e}")
+
+            result['per_dataset_metrics'] = per_dataset_metrics
+
+    return result
+
+def run_evaluation(args):
+    """
+    Evaluation-only mode: Load checkpoint and test on specified dataset
+    Used for LODO generalization testing
+    """
+    print(f"\n{'='*80}")
+    print("LODO Generalization Evaluation Mode")
+    print(f"{'='*80}\n")
+
+    # Validate required arguments
+    if not args.checkpoint:
+        raise ValueError("--checkpoint is required for --eval-only mode")
+    if not args.test_dataset:
+        raise ValueError("--test-dataset is required for --eval-only mode")
+
+    # Setup device
+    device, gpu_info = setup_device_with_fallback()
+    print(f"Using device: {device}")
+    if gpu_info:
+        print(f"GPU: {gpu_info.get('name', 'Unknown')}\n")
+
+    # Load checkpoint
+    print(f"Loading checkpoint: {args.checkpoint}")
+    checkpoint_path = Path(args.checkpoint)
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
+
+    model = EfficientNetV2B3Baseline(
+        num_classes=1,
+        pretrained=False,
+        dropout_rate=0.2,
+        model_name=args.model
+    ).to(device)
+
+    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.eval()
+    print("✓ Model loaded successfully\n")
+
+    # Create test dataset
+    dataset_short_names = {
+        'celebdf_v2': 'celebdf_v2',
+        'faceforensics_plus_plus': 'faceforensics',
+        'deeperforensics_1_0': 'deeperforensics'
+    }
+
+    short_name = dataset_short_names[args.test_dataset]
+    dataset_mode = args.dataset_mode
+
+    if dataset_mode == 'balanced':
+        manifest_path = f'manifests/{short_name}_test_balanced.csv'
+    else:
+        manifest_path = f'manifests/{short_name}_test.csv'
+
+    print(f"Loading test dataset: {args.test_dataset}")
+    print(f"Manifest: {manifest_path}")
+
+    # Create test dataset (no augmentation for evaluation)
+    test_dataset = UnifiedDeepfakeDataset(
+        manifest_path=manifest_path,
+        dataset_name=f'{args.test_dataset}_test',
+        transform=None,  # Not used (albumentations handles it)
+        use_augmentation=False  # No augmentation for test evaluation
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True if device.type == 'cuda' else False
+    )
+
+    print(f"✓ Dataset loaded: {len(test_dataset):,} samples\n")
+
+    # Run evaluation
+    print("Running evaluation...")
+    criterion = nn.BCEWithLogitsLoss()
+    results = validate_epoch(model, test_loader, criterion, device, epoch=-1)
+
+    # Print results
+    print(f"\n{'='*80}")
+    print("Out-of-Distribution Test Results")
+    print(f"{'='*80}")
+    print(f"\nDataset: {args.test_dataset}")
+    print(f"Samples: {len(test_dataset):,}")
+    print(f"\nPerformance Metrics:")
+    print(f"  AUC-ROC:  {results['auc']:.4f}")
+    print(f"  F1-Score: {results['f1']:.4f}")
+    print(f"  Accuracy: {results['accuracy']:.4f}")
+    print(f"  Loss:     {results['loss']:.4f}")
+
+    # Print per-dataset breakdown if available
+    if 'per_dataset_metrics' in results and results['per_dataset_metrics']:
+        print(f"\nPer-Dataset Breakdown:")
+        for dataset_name, metrics in results['per_dataset_metrics'].items():
+            print(f"  {dataset_name}:")
+            print(f"    AUC: {metrics['auc']:.4f}, F1: {metrics['f1']:.4f}, "
+                  f"Acc: {metrics['accuracy']:.4f} ({metrics['num_samples']:,} samples)")
+
+    print(f"\n{'='*80}")
+    print("Evaluation completed successfully!")
+    print(f"{'='*80}\n")
+
+    return results
 
 def main():
     parser = argparse.ArgumentParser(description='AWARE-NET Baseline Training')
@@ -890,7 +1140,7 @@ def main():
     parser.add_argument('--resume', type=str, default=None,
                        help='Path to checkpoint to resume from')
     parser.add_argument('--subset-ratio', type=float, default=1.0,
-                       help='Fraction of dataset to use (0.1 = 10%, 1.0 = 100%)')
+                       help='Fraction of dataset to use (0.1 = 10%%, 1.0 = 100%%)')
     parser.add_argument('--no-pretrained', action='store_true',
                        help='Disable pretrained weights (start from random initialization)')
     parser.add_argument('--model', type=str, default='tf_efficientnetv2_b0',
@@ -904,9 +1154,27 @@ def main():
                        help='Dataset mode: original, anonymized, anonymized_balanced, or balanced')
     parser.add_argument('--multi-dataset', action='store_true',
                        help='Enable multi-dataset training (uses all three datasets)')
+    parser.add_argument('--exclude-dataset', type=str, action='append', default=[],
+                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0'],
+                       help='Exclude specific dataset(s) from multi-dataset training (can be used multiple times for LODO evaluation)')
+
+    # Evaluation-only mode parameters
+    parser.add_argument('--eval-only', action='store_true',
+                       help='Evaluation mode: load checkpoint and test on dataset (no training)')
+    parser.add_argument('--checkpoint', type=str, default=None,
+                       help='Path to checkpoint for evaluation (required with --eval-only)')
+    parser.add_argument('--test-dataset', type=str, default=None,
+                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0'],
+                       help='Dataset to test on for evaluation (required with --eval-only)')
 
     args = parser.parse_args()
-    
+
+    # Check for evaluation-only mode
+    if args.eval_only:
+        print("\n==> Entering evaluation-only mode")
+        run_evaluation(args)
+        return  # Exit after evaluation
+
     # Create default configuration
     config = {
         'experiment': {
@@ -919,6 +1187,7 @@ def main():
             'dataset_name': args.dataset,
             'dataset_mode': args.dataset_mode,
             'multi_dataset': args.multi_dataset,
+            'exclude_datasets': args.exclude_dataset,
             'image_size': 256,
             'subset_ratio': args.subset_ratio
         },
@@ -974,6 +1243,7 @@ def main():
         config['data']['dataset_name'] = args.dataset
         config['data']['dataset_mode'] = args.dataset_mode
         config['data']['multi_dataset'] = args.multi_dataset
+        config['data']['exclude_datasets'] = args.exclude_dataset
         config['data']['subset_ratio'] = args.subset_ratio
     
     print("Training Configuration:")
@@ -1075,6 +1345,15 @@ def main():
             print(f"  Train - Loss: {train_metrics['loss']:.4f}, Acc: {train_metrics['accuracy']:.4f}")
             print(f"  Val   - Loss: {val_metrics['loss']:.4f}, Acc: {val_metrics['accuracy']:.4f}, "
                   f"AUC: {val_metrics['auc']:.4f}, F1: {val_metrics['f1']:.4f}")
+
+            # Print per-dataset breakdown if available
+            if 'per_dataset_metrics' in val_metrics:
+                print(f"\n  Per-Dataset Validation Breakdown:")
+                for dataset_name, metrics in val_metrics['per_dataset_metrics'].items():
+                    print(f"    {dataset_name}:")
+                    print(f"      AUC: {metrics['auc']:.4f}, F1: {metrics['f1']:.4f}, "
+                          f"Acc: {metrics['accuracy']:.4f} ({metrics['num_samples']:,} samples)")
+
             print(f"  Time: {epoch_time:.2f}s, LR: {optimizer.param_groups[0]['lr']:.2e}")
             print(f"  Best AUC: {best_val_auc:.4f}, Patience: {patience_counter}/{config['training']['early_stopping_patience']}")
             print("-" * 80)
@@ -1107,6 +1386,14 @@ def main():
         print(f"  Accuracy: {test_metrics['accuracy']:.4f}")
         print(f"  AUC: {test_metrics['auc']:.4f}")
         print(f"  F1: {test_metrics['f1']:.4f}")
+
+        # Print per-dataset test breakdown if available
+        if 'per_dataset_metrics' in test_metrics:
+            print(f"\n  Per-Dataset Test Breakdown:")
+            for dataset_name, metrics in test_metrics['per_dataset_metrics'].items():
+                print(f"    {dataset_name}:")
+                print(f"      AUC: {metrics['auc']:.4f}, F1: {metrics['f1']:.4f}, "
+                      f"Acc: {metrics['accuracy']:.4f} ({metrics['num_samples']:,} samples)")
         
         print(f"\\nExperiment {experiment_id} completed successfully!")
         return experiment_id

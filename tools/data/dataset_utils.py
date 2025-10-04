@@ -126,11 +126,80 @@ def check_path_leakage(manifest_path: str):
         print(f"✅ No path leakage detected")
         return True
 
+def check_video_overlap(dataset_name: str) -> bool:
+    """
+    Check for video ID overlap between train/val/test splits
+
+    This is critical to detect data leakage: if the same video's frames
+    appear in both train and val, the model can cheat by learning
+    video-specific features (scene, person, lighting).
+
+    Args:
+        dataset_name: Dataset to check (celebdf_v2, faceforensics, deeperforensics)
+
+    Returns:
+        True if no overlap (clean), False if overlap found (data leakage)
+    """
+    print(f"\n🔍 Checking video ID overlap for {dataset_name}...")
+
+    splits = ['train', 'val', 'test']
+    video_sets = {}
+
+    # Extract video IDs from each split
+    for split in splits:
+        manifest_path = f"manifests/{dataset_name}_{split}.csv"
+
+        if not Path(manifest_path).exists():
+            print(f"⚠️  Manifest not found: {manifest_path}")
+            continue
+
+        df = pd.read_csv(manifest_path)
+
+        # Extract video ID (second-to-last path component)
+        # Example: dataset/fake/CelebDF-v2/id39_id40_0000/xxx.jpg -> id39_id40_0000
+        video_ids = set(df['image_path'].apply(
+            lambda x: x.split('/')[-2] if len(x.split('/')) >= 2 else None
+        ).dropna())
+
+        video_sets[split] = video_ids
+        print(f"  {split}: {len(video_ids)} unique videos, {len(df)} frames")
+
+    # Check for overlaps between all pairs
+    overlap_found = False
+    total_overlaps = 0
+
+    for i, split1 in enumerate(splits):
+        if split1 not in video_sets:
+            continue
+        for split2 in splits[i+1:]:
+            if split2 not in video_sets:
+                continue
+
+            overlap = video_sets[split1] & video_sets[split2]
+            if overlap:
+                print(f"\n❌ OVERLAP DETECTED: {split1} ↔ {split2}: {len(overlap)} videos")
+                print(f"   Examples: {list(overlap)[:5]}")
+                overlap_found = True
+                total_overlaps += len(overlap)
+
+    if not overlap_found:
+        print(f"\n✅ No video ID overlap detected - splits are clean!")
+        print(f"   Train/val/test are completely separated at video level.")
+        return True
+    else:
+        print(f"\n❌ VIDEO ID OVERLAP DETECTED - DATA LEAKAGE PRESENT!")
+        print(f"   Total overlapping videos: {total_overlaps}")
+        print(f"   This will cause inflated performance (AUC 0.99+)")
+        print(f"   Please regenerate manifests with video-level split!")
+        return False
+
 def main():
     """Main execution with command line interface"""
     parser = argparse.ArgumentParser(description='AWARE-NET Dataset Utilities')
-    parser.add_argument('--action', choices=['generate', 'anonymize', 'balance', 'check', 'all'],
-                       default='all', help='Action to perform')
+    parser.add_argument('--action',
+                       choices=['generate', 'anonymize', 'balance', 'check', 'check-overlap', 'all'],
+                       default='all',
+                       help='Action to perform')
     parser.add_argument('--dataset', default='celebdf_v2',
                        help='Dataset name (celebdf_v2, faceforensics, deeperforensics)')
 
@@ -141,6 +210,22 @@ def main():
 
     if args.action in ['generate', 'all']:
         generate_manifests()
+
+        # Automatically check for video overlap after generation
+        print("\n" + "="*60)
+        print("AUTOMATIC VIDEO OVERLAP CHECK")
+        print("="*60)
+
+        all_clean = True
+        for dataset in ['celebdf_v2', 'faceforensics', 'deeperforensics']:
+            is_clean = check_video_overlap(dataset)
+            if not is_clean:
+                all_clean = False
+
+        if not all_clean:
+            print("\n⚠️  WARNING: Some datasets have video ID overlap!")
+            print("   This indicates frame-level split (data leakage).")
+            print("   Performance metrics will be artificially inflated.")
 
     if args.action in ['anonymize', 'all']:
         if args.dataset == 'celebdf_v2':
@@ -166,6 +251,14 @@ def main():
     if args.action == 'check':
         manifest_path = f"manifests/{args.dataset}_train.csv"
         check_path_leakage(manifest_path)
+
+    if args.action == 'check-overlap':
+        # Check video overlap for all datasets or specific one
+        if args.dataset == 'all':
+            for dataset in ['celebdf_v2', 'faceforensics', 'deeperforensics']:
+                check_video_overlap(dataset)
+        else:
+            check_video_overlap(args.dataset)
 
     print("\n✅ Dataset utilities complete!")
     print("📁 Available manifests:")
