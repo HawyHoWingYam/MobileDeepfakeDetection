@@ -1,79 +1,203 @@
- 多任务联合训练（SupCon + BCE）：失败风险 70-80%
-
-  ❌ 关键失败因素：
-
-  1. 梯度冲突严重
-    - SupCon：强制同类聚集（manipulation-agnostic）
-    - BCE：学习shortcuts（manipulation-specific）
-    - 在deepfake场景下根本对抗
-  2. 超参数地狱
-    - 需要调：λ_supcon, λ_bce, lr_backbone, lr_classifier, 动态权重...（6+参数）
-    - Loss scale不一致（SupCon: 0.5-3.0, BCE: 0.1-0.7）
-    - 收敛速度不同（BCE 5 epochs vs SupCon 100+ epochs）
-  3. 无明确成功标准
-    - 按哪个loss early stop？
-    - 如何平衡两个目标？
-    - 实现复杂度高（需要GradNorm/Uncertainty Weighting）
-
-  两阶段训练（SupCon → Classifier）：成功率 >90%
-
-  ✅ 成功保证：
-
-  1. 理论基础坚实
-    - Feature-Decision Decoupling（特征-决策解耦）
-    - 避免catastrophic forgetting（冻结backbone）
-    - 标准对比学习范式（SimCLR/MoCo/SupCon论文验证）
-  2. 超参数简单
-    - Phase 1：τ, lr, epochs（3个参数，容错性高）
-    - Phase 2：lr（1个参数，几乎不会失败）
-  3. 明确的成功标准
-    - Phase 1：SupCon loss < 1.5, separation margin > 0.3
-    - Phase 2：Val/OOD AUC（此时才有意义）
-
-  ⚠️ 注意事项（避免陷阱）：
-  - Phase 1必须充分训练（50-200 epochs，不能只10 epochs）
-  - Phase 2在backbone features上训练（丢弃projection head）
-  - 冻结时用model.eval() + requires_grad=False（防止BN更新）
-
-  ---
-  🎯 当前实验诊断与建议
-
-  当前状态（Epoch 3/10运行中）：
-
-  - ✅ SupCon Loss在下降（3.93→3.82→3.79）→ 有效！
-  - ❌ Val AUC波动（0.83→0.74）→ 无意义，忽略！（随机classifier）
-  - ⏱️ 10 epochs不够Phase 1充分训练
-
-  立即行动：
-
-  1. 继续当前实验（不要停止）
-  # 让10 epochs跑完，关注指标：
-  ✅ SupCon Loss是否降到 < 2.0（初步有效）或 < 1.5（较好）
-  ❌ 忽略Val AUC（此时无意义）
-
-  2. Epoch 10完成后手动添加Phase 2
-  # 需要写一个classifier训练脚本：
-  - 加载best_model.pth的backbone权重
-  - 冻结backbone（eval + requires_grad=False）
-  - 训练Linear分类器5-10 epochs（BCE loss）
-  - 评估OOD AUC（DeeperForensics）
-
-  3. 成功标准
-  🟢 GREEN: OOD AUC > 0.68 (超过BCE 0.65的3%)
-  🟡 YELLOW: OOD AUC 0.66-0.68 (边缘改善)
-  🔴 RED: OOD AUC ≤ 0.66 (SupCon失败)
-
-  ---
-  💡 核心结论
-
-  | 方法    | 成功率    | 复杂度 | 推荐场景      |
-  |-------|--------|-----|-----------|
-  | 多任务联合 | 20-30% | 极高  | ❌ 不推荐快速验证 |
-  | 两阶段训练 | >90%   | 低   | ✅ 强烈推荐    |
-
-  当前最优策略：
-  1. ✅ 继续当前Phase 1实验（验证SupCon可行性）
-  2. ✅ 手动添加Phase 2（获得真正的OOD评估）
-  3. ❌ 不考虑多任务训练（风险太高）
-
-  需要我帮你准备Phase 2的classifier训练脚本吗？（在当前10 epochs完成后使用）
+Stage 01 后续决策框架                                                                │
+     │                                                                                      │
+     │ 📊 当前进度                                                                          │
+     │                                                                                      │
+     │ - ✅ 两阶段SupCon训练架构实现                                                         │
+     │ - ✅ 数据增强优化（SupCon标准）                                                       │
+     │ - ✅ 类别权重 + 阈值调优                                                              │
+     │ - 🔄 5 epochs测试：AUC 0.66（DeeperForensics OOD）                                   │
+     │                                                                                      │
+     │ 🎯 完整LODO评估计划                                                                  │
+     │                                                                                      │
+     │ 步骤1：运行3个LODO配置（50 epochs各）                                                │
+     │                                                                                      │
+     │ # LODO-1: 排除DeeperForensics（最难）                                                │
+     │ python src/stage_01/train_supcon_quick.py --training-mode two_stage \                │
+     │   --stage1-epochs 50 --stage2-epochs 15 --batch-size 128 --num-workers 16 \          │
+     │   --exclude-dataset deeperforensics_1_0 --test-dataset deeperforensics_1_0 \         │
+     │   --experiment-name lodo_df_full                                                     │
+     │                                                                                      │
+     │ # LODO-2: 排除CelebDF-v2（中等）                                                     │
+     │ python src/stage_01/train_supcon_quick.py --training-mode two_stage \                │
+     │   --stage1-epochs 50 --stage2-epochs 15 --batch-size 128 --num-workers 16 \          │
+     │   --exclude-dataset celebdf_v2 --test-dataset celebdf_v2 \                           │
+     │   --experiment-name lodo_celebdf_full                                                │
+     │                                                                                      │
+     │ # LODO-3: 排除FaceForensics++（较易）                                                │
+     │ python src/stage_01/train_supcon_quick.py --training-mode two_stage \                │
+     │   --stage1-epochs 50 --stage2-epochs 15 --batch-size 128 --num-workers 16 \          │
+     │   --exclude-dataset faceforensics_plus_plus --test-dataset faceforensics_plus_plus \ │
+     │   --experiment-name lodo_ff_full                                                     │
+     │                                                                                      │
+     │ ---                                                                                  │
+     │ ✅ 情况1：全部LODO AUC > 0.85（成功）                                                 │
+     │                                                                                      │
+     │ 下一步行动（1-2周）                                                                  │
+     │                                                                                      │
+     │ Phase 1: 学术验证（3-5天）                                                           │
+     │                                                                                      │
+     │ 实验1：Baseline对比                                                                  │
+     │ # BCE baseline（无SupCon）                                                           │
+     │ python src/stage_00/train_baseline.py \                                              │
+     │   --model tf_efficientnetv2_b0 --epochs 50 --batch-size 128 \                        │
+     │   --exclude-dataset deeperforensics_1_0 --test-dataset deeperforensics_1_0 \         │
+     │   --experiment-name baseline_bce_only                                                │
+     │ - 对比表：SupCon vs Baseline（AUC, F1, 训练时间）                                    │
+     │ - 统计显著性检验（Bootstrap CI）                                                     │
+     │                                                                                      │
+     │ 实验2：关键消融研究                                                                  │
+     │ - 去除数据增强：证明增强贡献                                                         │
+     │ - 单阶段vs两阶段：证明两阶段必要性                                                   │
+     │ - 不同epochs对比：找最优训练长度                                                     │
+     │                                                                                      │
+     │ Phase 2: 推向SOTA（可选，1周）                                                       │
+     │                                                                                      │
+     │ 如果目标是发顶会论文：                                                               │
+     │ - 升级模型：EfficientNet-B5/B7                                                       │
+     │ - 更长训练：100 epochs                                                               │
+     │ - 模型集成：3-5个模型投票                                                            │
+     │ - 目标：AUC > 0.95                                                                   │
+     │                                                                                      │
+     │ Phase 3: Stage 01收尾（2-3天）                                                       │
+     │                                                                                      │
+     │ - 撰写技术报告                                                                       │
+     │ - Stage Gate评审（检查是否满足进入Stage 02的条件）                                   │
+     │ - 准备Stage 02设计文档                                                               │
+     │                                                                                      │
+     │ Phase 4: 进入Stage 02 ⭐                                                              │
+     │                                                                                      │
+     │ - 设计异构专家模型：                                                                 │
+     │   - 空间专家（ResNet系）                                                             │
+     │   - 频域专家（FFT-based）                                                            │
+     │   - 时序专家（LSTM/Transformer）                                                     │
+     │ - SupCon作为快速过滤器第一层                                                         │
+     │                                                                                      │
+     │ ---                                                                                  │
+     │ ❌ 情况2：全部LODO AUC < 0.85（需优化）                                               │
+     │                                                                                      │
+     │ 诊断流程（1-2天）                                                                    │
+     │                                                                                      │
+     │ Step 1: 训练曲线分析                                                                 │
+     │                                                                                      │
+     │ # 绘制loss/AUC曲线                                                                   │
+     │ import matplotlib.pyplot as plt                                                      │
+     │ import json                                                                          │
+     │                                                                                      │
+     │ # 读取训练日志                                                                       │
+     │ with open('experiments/lodo_df_full/results/training_results.json') as f:            │
+     │     results = json.load(f)                                                           │
+     │                                                                                      │
+     │ # 检查：                                                                             │
+     │ # 1. Loss是否收敛？                                                                  │
+     │ # 2. Train AUC vs Val AUC差距？                                                      │
+     │ # 3. 是否有震荡？                                                                    │
+     │                                                                                      │
+     │ 诊断类型：                                                                           │
+     │ - Loss还在下降 → 训练不足                                                            │
+     │ - Train AUC >> Val AUC → 过拟合                                                      │
+     │ - Train/Val AUC都低 → 欠拟合                                                         │
+     │ - Loss震荡 → 优化不稳定                                                              │
+     │                                                                                      │
+     │ Step 2: 混淆矩阵 + 错误分析                                                          │
+     │                                                                                      │
+     │ - 哪类错误多？（False Positive vs False Negative）                                   │
+     │ - 错误样本的共性？                                                                   │
+     │ - 人眼能分辨这些样本吗？                                                             │
+     │                                                                                      │
+     │ 针对性修复方案（3-7天）                                                              │
+     │                                                                                      │
+     │ 场景A：训练不足                                                                      │
+     │                                                                                      │
+     │ 症状：Loss还在下降，未收敛                                                           │
+     │ # 解决方案：100+ epochs                                                              │
+     │ python src/stage_01/train_supcon_quick.py --training-mode two_stage \                │
+     │   --stage1-epochs 100 --stage2-epochs 20 \                                           │
+     │   --batch-size 128 --num-workers 16 \                                                │
+     │   --exclude-dataset deeperforensics_1_0 --test-dataset deeperforensics_1_0 \         │
+     │   --experiment-name lodo_df_extended                                                 │
+     │                                                                                      │
+     │ 场景B：模型容量不足                                                                  │
+     │                                                                                      │
+     │ 症状：欠拟合，Train/Val AUC都低                                                      │
+     │ # 解决方案：更大模型                                                                 │
+     │ python src/stage_01/train_supcon_quick.py --training-mode two_stage \                │
+     │   --model tf_efficientnetv2_b3 \  # B0 → B3                                          │
+     │   --projection-dim 1024 \  # 512 → 1024                                              │
+     │   --stage1-epochs 50 --stage2-epochs 15 \                                            │
+     │   --batch-size 64 \  # 降低BS适应更大模型                                            │
+     │   --exclude-dataset deeperforensics_1_0 --test-dataset deeperforensics_1_0 \         │
+     │   --experiment-name lodo_df_larger_model                                             │
+     │                                                                                      │
+     │ 场景C：优化困难                                                                      │
+     │                                                                                      │
+     │ 症状：Loss平台期，不再下降                                                           │
+     │ - 调整学习率：添加cosine annealing with restarts                                     │
+     │ - 调整温度参数：temperature=0.05（更锐利）或0.1（更平滑）                            │
+     │ - 优化器切换：AdamW → SGD with momentum                                              │
+     │                                                                                      │
+     │ 场景D：数据质量问题                                                                  │
+     │                                                                                      │
+     │ 症状：样本质量差，人眼也难分辨                                                       │
+     │ - 数据清洗：过滤模糊/低质量样本                                                      │
+     │ - 更激进增强：提高augmentation概率                                                   │
+     │ - 半监督学习：利用未标注数据                                                         │
+     │                                                                                      │
+     │ 失败退出条件                                                                         │
+     │                                                                                      │
+     │ 如果2周内尝试多种方法仍无法达到0.85：                                                │
+     │ - Stage Gate评审：评估是否继续Stage 01                                               │
+     │ - 方法论调整：                                                                       │
+     │   - 放弃SupCon，回到BCE？                                                            │
+     │   - 直接跳到异构专家系统？                                                           │
+     │   - 重新审视数据集质量？                                                             │
+     │                                                                                      │
+     │ ---                                                                                  │
+     │ 🎯 性能阈值与决策                                                                    │
+     │                                                                                      │
+     │ | 平均AUC     | 评级  | 决策             | 时间投入            |                     │
+     │ |-----------|-----|----------------|-----------------|                               │
+     │ | > 0.90    | 优秀  | 立即进Stage 02    | 完成消融（3天）        |                   │
+     │ | 0.85-0.90 | 良好  | 快速验证后进Stage 02 | 消融+baseline（1周） |                  │
+     │ | 0.80-0.85 | 可接受 | 尝试优化1轮         | 额外1周优化          |                  │
+     │ | < 0.80    | 失败  | Stage Gate评审   | 重新评估方法          |                     │
+     │                                                                                      │
+     │ ---                                                                                  │
+     │ ⏰ 时间管理原则                                                                       │
+     │                                                                                      │
+     │ 黄金法则：                                                                           │
+     │ - Stage 01 总时间预算：3周上限                                                       │
+     │ - 当前已用：1.5周                                                                    │
+     │ - 剩余预算：1.5周                                                                    │
+     │                                                                                      │
+     │ 避免陷阱：                                                                           │
+     │ - ❌ 过度优化：追求完美（0.95+）                                                      │
+     │ - ❌ 沉没成本：方法不行也硬撑                                                         │
+     │ - ✅ 快速迭代：验证可行性后推进                                                       │
+     │                                                                                      │
+     │ 正确心态：                                                                           │
+     │ - Stage 01 = 快速过滤器（不是终极检测器）                                            │
+     │ - 目标：0.85-0.90 AUC（足够好）                                                      │
+     │ - Stage 02-04 会进一步提升性能                                                       │
+     │ - 整个项目有10个Stage，不要在单个Stage停滞                                           │
+     │                                                                                      │
+     │ ---                                                                                  │
+     │ 📋 具体执行计划                                                                      │
+     │                                                                                      │
+     │ 本周任务（优先级排序）                                                               │
+     │                                                                                      │
+     │ 任务1：完成主LODO训练（50 epochs） ⭐                                                 │
+     │ # 继续当前最难配置                                                                   │
+     │ python src/stage_01/train_supcon_quick.py --training-mode two_stage \                │
+     │   --stage1-epochs 50 --stage2-epochs 15 \                                            │
+     │   --batch-size 128 --num-workers 16 \                                                │
+     │   --exclude-dataset deeperforensics_1_0 --test-dataset deeperforensics_1_0 \         │
+     │   --experiment-name lodo_df_final_50ep                                               │
+     │                                                                                      │
+     │ 任务2：根据结果分支                                                                  │
+     │ - 如果AUC > 0.85 → 执行"成功分支"                                                    │
+     │ - 如果AUC < 0.85 → 执行"优化分支"                                                    │
+     │                                                                                      │
+     │ 任务3：决策点检查（周末）                                                            │
+     │ - 评估进度                                                                           │
+     │ - 决定是否补充其他LODO配置                                                           │
+     │ - 规划下周任务                

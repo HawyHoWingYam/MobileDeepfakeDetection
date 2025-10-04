@@ -163,30 +163,43 @@ class UnifiedDeepfakeDataset(Dataset):
 
         # Build albumentations pipeline if augmentation is enabled
         if use_augmentation:
+            # SupCon standard augmentation pipeline (enhanced for better generalization)
             self.albu_transform = A.Compose([
-                # Spatial augmentations
+                # Spatial augmentations (invariance)
                 A.HorizontalFlip(p=0.5),
                 A.Rotate(limit=10, p=0.3, border_mode=0),
-                A.RandomResizedCrop(size=(256, 256), scale=(0.8, 1.0), p=0.5),
-
-                # Color augmentations
-                A.ColorJitter(
-                    brightness=0.2,
-                    contrast=0.2,
-                    saturation=0.1,
-                    hue=0.05,
-                    p=0.5
+                A.RandomResizedCrop(
+                    size=(256, 256),
+                    scale=(0.7, 1.0),  # More aggressive: 0.8→0.7
+                    p=0.8  # Increased from 0.5
                 ),
 
-                # Noise augmentations
-                A.GaussianBlur(blur_limit=(3, 7), p=0.2),
-                A.GaussNoise(var_limit=(10.0, 50.0), p=0.2),
+                # Color augmentations (SupCon standard: stronger)
+                A.ColorJitter(
+                    brightness=0.4,  # Doubled: 0.2→0.4
+                    contrast=0.4,    # Doubled: 0.2→0.4
+                    saturation=0.2,  # Doubled: 0.1→0.2
+                    hue=0.1,         # Doubled: 0.05→0.1
+                    p=0.8  # Increased from 0.5
+                ),
+                A.ToGray(p=0.2),  # SupCon standard (SimCLR)
+
+                # Noise/blur augmentations
+                A.GaussianBlur(blur_limit=(3, 7), p=0.3),  # Increased from 0.2
+                A.GaussNoise(std_range=(0.02, 0.10), p=0.3),  # Normalized range: 0-1 (was 10-50/255)
+
+                # Deepfake-specific: JPEG compression simulation
+                A.ImageCompression(
+                    quality_lower=70,
+                    quality_upper=100,
+                    p=0.3  # Simulate video compression artifacts
+                ),
 
                 # Normalization and conversion to tensor
                 A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 ToTensorV2()
             ])
-            print(f"✓ Albumentations augmentation enabled for {dataset_name}")
+            print(f"✓ SupCon augmentation enabled for {dataset_name}")
         else:
             # No augmentation mode - just normalize
             self.albu_transform = A.Compose([
