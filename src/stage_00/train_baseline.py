@@ -36,6 +36,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("stage_00.train_baseline")
 
+
+def str2bool(value: Any) -> bool:
+    """Return a boolean from common string representations."""
+    if isinstance(value, bool):
+        return value
+    value = str(value).strip().lower()
+    if value in {"true", "t", "1", "yes", "y"}:
+        return True
+    if value in {"false", "f", "0", "no", "n"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Boolean value expected, got '{value}'.")
+
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -443,8 +455,7 @@ class UnifiedDeepfakeDataset(Dataset):
 
                 # Deepfake-specific: JPEG compression simulation
                 A.ImageCompression(
-                    quality_lower=70,
-                    quality_upper=100,
+                    quality_range=(70, 100),
                     p=0.3  # Simulate video compression artifacts
                 ),
 
@@ -567,6 +578,15 @@ def create_multi_dataset_loaders(
     test_datasets = []
     dataset_sizes = []
 
+    # Enhanced logging for debugging data loading instability
+    logger.info("="*60)
+    logger.info("MULTI-DATASET LOADING ANALYSIS")
+    logger.info("="*60)
+
+    total_real_samples = 0
+    total_fake_samples = 0
+    dataset_details = []
+
     for dataset_name in dataset_names:
         manifests, _ = resolve_dataset_manifests(config_path, dataset_name, dataset_mode)
         if not manifests:
@@ -602,6 +622,56 @@ def create_multi_dataset_loaders(
             subset_ratio=subset_ratio,
             use_augmentation=use_augmentation,
         )
+
+        # Get dataset statistics without loading individual samples
+        try:
+            # Use the dataset's internal statistics if available
+            if hasattr(train_ds, 'get_class_counts'):
+                class_counts = train_ds.get_class_counts()
+                # Handle both dict and tensor formats
+                if isinstance(class_counts, dict):
+                    real_count = class_counts.get(0, 0)
+                    fake_count = class_counts.get(1, 0)
+                else:
+                    # Handle tensor format - convert to list if needed
+                    if hasattr(class_counts, 'cpu'):
+                        class_counts = class_counts.cpu().numpy()
+                    if len(class_counts) >= 2:
+                        real_count = int(class_counts[0])
+                        fake_count = int(class_counts[1])
+                    else:
+                        real_count = fake_count = 0
+            else:
+                # Fast estimation: read from manifest directly
+                import pandas as pd
+                df = pd.read_csv(manifests['train'], usecols=['label'])
+                real_count = (df['label'] == 0).sum()
+                fake_count = (df['label'] == 1).sum()
+
+            total_real_samples += real_count
+            total_fake_samples += fake_count
+
+            dataset_details.append({
+                'name': dataset_name,
+                'total_samples': len(train_ds),
+                'real_samples': real_count,
+                'fake_samples': fake_count,
+                'manifest_path': str(manifests['train'])
+            })
+
+            logger.info(f"  {dataset_name}: {len(train_ds)} samples (Real: {real_count}, Fake: {fake_count})")
+        except Exception as e:
+            # Fallback: just show total samples without class breakdown
+            logger.warning(f"Could not get detailed statistics for {dataset_name}: {e}")
+            dataset_details.append({
+                'name': dataset_name,
+                'total_samples': len(train_ds),
+                'real_samples': -1,
+                'fake_samples': -1,
+                'manifest_path': str(manifests['train'])
+            })
+            logger.info(f"  {dataset_name}: {len(train_ds)} samples (class stats unavailable)")
+
         val_ds = UnifiedDeepfakeDataset(
             manifest_path=manifests['val'],
             dataset_name=f"{dataset_name}_val",
@@ -621,6 +691,17 @@ def create_multi_dataset_loaders(
         val_datasets.append(val_ds)
         test_datasets.append(test_ds)
         dataset_sizes.append(len(train_ds))
+
+    # Log comprehensive analysis
+    logger.info("="*60)
+    logger.info("DATASET LOADING SUMMARY")
+    logger.info("="*60)
+    for detail in dataset_details:
+        logger.info(f"{detail['name']:20} | Total: {detail['total_samples']:6,} | Real: {detail['real_samples']:6,} | Fake: {detail['fake_samples']:6,}")
+
+    logger.info("-"*60)
+    logger.info(f"{'TOTAL':20} | Total: {total_real_samples + total_fake_samples:6,} | Real: {total_real_samples:6,} | Fake: {total_fake_samples:6,}")
+    logger.info("="*60)
 
     if not train_datasets:
         raise RuntimeError(
@@ -676,12 +757,21 @@ def create_multi_dataset_loaders(
         sampler = WeightedRandomSampler(
             sample_weights_tensor,
             num_samples=len(sample_weights_tensor),
-            replacement=True,
+            replacement=False,
         )
-        logger.info("WeightedRandomSampler configured for balanced dataset sampling")
+        logger.info("WeightedRandomSampler configured for balanced dataset sampling (replacement=False)")
+        logger.info("Sampler will use %d samples total (same as combined dataset)", len(sample_weights_tensor))
 
     pin_memory = torch.cuda.is_available()
     shuffle_train = sampler is None and batch_sampler is None
+
+    # Enhanced logging for DataLoader configuration
+    if batch_sampler is not None:
+        logger.info("Using StrictBalancedBatchSampler for deterministic batch construction")
+    elif sampler is not None:
+        logger.info("Using WeightedRandomSampler for balanced dataset sampling (no shuffle)")
+    else:
+        logger.info("Using standard DataLoader with shuffle=True")
 
     if batch_sampler is not None:
         train_loader = DataLoader(
@@ -1264,7 +1354,7 @@ def setup_training(config: Dict[str, Any]) -> tuple:
 
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
-        T_max=config["training"]["num_epochs"],
+        T_max=config["training"]["epochs"],
         eta_min=1e-6,
     )
 
@@ -1643,27 +1733,30 @@ def main():
                        help='Override dataset configuration manifest path (defaults to config file)')
     parser.add_argument('--experiment-name', type=str, default='baseline_efficientnet',
                        help='Name of the experiment')
-    parser.add_argument('--batch-size', type=int, default=32,
-                       help='Training batch size')
-    parser.add_argument('--epochs', type=int, default=50,
-                       help='Number of training epochs')
-    parser.add_argument('--learning-rate', type=float, default=1e-3,
-                       help='Learning rate')
+    parser.add_argument('--batch-size', type=int, default=None,
+                       help='Training batch size (overrides config if specified)')
+    parser.add_argument('--epochs', type=int, default=None,
+                       help='Number of training epochs (overrides config if specified)')
+    parser.add_argument('--learning-rate', type=float, default=None,
+                       help='Learning rate (overrides config if specified)')
     parser.add_argument('--resume', type=str, default=None,
                        help='Path to checkpoint to resume from')
-    parser.add_argument('--subset-ratio', type=float, default=1.0,
-                       help='Fraction of dataset to use (0.1 = 10%, 1.0 = 100%)')
+    parser.add_argument('--subset-ratio', type=float, default=None,
+                       help='Fraction of dataset to use (0.1 = 10%%, 1.0 = 100%%, overrides config if specified)')
     parser.add_argument('--no-pretrained', action='store_true',
                        help='Disable pretrained weights (start from random initialization)')
-    parser.add_argument('--model', type=str, default='tf_efficientnetv2_b0',
+    parser.add_argument('--model', type=str, default=None,
                        choices=['tf_efficientnetv2_b0', 'tf_efficientnetv2_b3', 'efficientnetv2_rw_t'],
-                       help='EfficientNetV2 model variant to use')
+                       help='EfficientNetV2 model variant to use (overrides config if specified)')
     parser.add_argument('--dataset', type=str, default='celebdf_v2',
                        choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0', 'dfdc'],
                        help='Dataset to use for training')
     parser.add_argument('--dataset-mode', type=str, default='original',
                        choices=['original', 'anonymized', 'anonymized_balanced', 'balanced'],
                        help='Dataset mode: original, anonymized, anonymized_balanced, or balanced')
+    parser.add_argument('--use-dataset-weights', type=str2bool, nargs='?', const=True, default=None,
+                       metavar='{true,false}',
+                       help='Override dataset-level balancing weights (true/false)')
     parser.add_argument('--multi-dataset', action='store_true',
                        help='Enable multi-dataset training (uses all configured datasets)')
     parser.add_argument('--exclude-dataset', type=str, action='append', default=[],
@@ -1671,6 +1764,9 @@ def main():
                        help='Exclude specific dataset(s) from multi-dataset training (can be used multiple times)')
     parser.add_argument('--strict-batch-balance', action='store_true',
                        help='Enforce equal per-dataset and per-class samples within each batch')
+    parser.add_argument('--use-class-weights', type=str2bool, nargs='?', const=True, default=None,
+                       metavar='{true,false}',
+                       help='Override class weighting when computing BCE loss (true/false)')
     parser.add_argument('--log-level', type=str, default='INFO',
                        choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'],
                        help='Logging level for console output')
@@ -1726,10 +1822,6 @@ def main():
             'dropout_rate': 0.2
         },
         'training': {
-            'batch_size': args.batch_size,
-            'num_epochs': args.epochs,
-            'epochs': args.epochs,
-            'learning_rate': args.learning_rate,
             'weight_decay': 1e-4,
             'num_workers': 4,
             'use_class_weights': True,
@@ -1738,36 +1830,71 @@ def main():
         }
     }
 
+    # Load configuration file first
     logger.info("Loading configuration overrides from %s", config_path)
     with open(config_path, 'r', encoding='utf-8') as f:
         file_config = json.load(f)
     config.update(file_config)
 
-    # Ensure required sections exist and override with CLI arguments
+    # Override with CLI arguments only if explicitly provided (not default values)
     training_cfg = config.setdefault('training', {})
-    training_cfg.update({
-        'batch_size': args.batch_size,
-        'num_epochs': args.epochs,
-        'epochs': args.epochs,
-        'learning_rate': args.learning_rate,
-    })
+
+    # Only override config file if command line args are explicitly provided
+    if args.batch_size is not None:  # User specified this parameter
+        training_cfg['batch_size'] = args.batch_size
+        logger.info(f"Override config batch_size with command line argument: {args.batch_size}")
+
+    if args.epochs is not None:  # User specified this parameter
+        training_cfg['epochs'] = args.epochs
+        logger.info(f"Override config epochs with command line argument: {args.epochs}")
+
+    if args.learning_rate is not None:  # User specified this parameter
+        training_cfg['learning_rate'] = args.learning_rate
+        logger.info(f"Override config learning_rate with command line argument: {args.learning_rate}")
+    if args.use_class_weights is not None:
+        training_cfg['use_class_weights'] = args.use_class_weights
 
     experiment_cfg = config.setdefault('experiment', {})
     experiment_cfg['name'] = args.experiment_name
 
     model_cfg = config.setdefault('model', {})
-    model_cfg.update({
-        'name': args.model,
-        'architecture': args.model,
-        'pretrained': not args.no_pretrained,
-    })
+
+    # Only override model config if user specified
+    if args.model is not None:
+        model_cfg.update({
+            'name': args.model,
+            'architecture': args.model,
+        })
+        logger.info(f"Override config model with command line argument: {args.model}")
+
+    # Always set pretrained flag based on command line
+    model_cfg['pretrained'] = not args.no_pretrained
 
     data_cfg = config.setdefault('data', {})
-    data_cfg['dataset_name'] = args.dataset
-    data_cfg['dataset_mode'] = args.dataset_mode
-    data_cfg['multi_dataset'] = args.multi_dataset
+
+    # Only override config file if command line args are explicitly provided
+    if args.dataset is not None:
+        data_cfg['dataset_name'] = args.dataset
+        logger.info(f"Override config dataset_name with command line argument: {args.dataset}")
+
+    if args.dataset_mode is not None:
+        data_cfg['dataset_mode'] = args.dataset_mode
+        logger.info(f"Override config dataset_mode with command line argument: {args.dataset_mode}")
+
+    if args.multi_dataset:  # Flag, only set if True
+        data_cfg['multi_dataset'] = args.multi_dataset
+
     data_cfg['exclude_datasets'] = args.exclude_dataset
-    data_cfg['subset_ratio'] = args.subset_ratio
+
+    if args.subset_ratio is not None:
+        data_cfg['subset_ratio'] = args.subset_ratio
+        logger.info(f"Override config subset_ratio with command line argument: {args.subset_ratio}")
+
+    if args.use_dataset_weights is not None:
+        data_cfg['use_dataset_weights'] = args.use_dataset_weights
+    else:
+        data_cfg.setdefault('use_dataset_weights', False)
+
     if args.dataset_config:
         data_cfg['dataset_config'] = args.dataset_config
     else:
@@ -1783,7 +1910,7 @@ def main():
         tags=experiment_cfg.get('tags', []),
         batch_size=training_cfg['batch_size'],
         learning_rate=training_cfg['learning_rate'],
-        num_epochs=training_cfg.get('epochs', training_cfg.get('num_epochs', args.epochs)),
+        num_epochs=training_cfg.get('epochs', 30),
         weight_decay=training_cfg.get('weight_decay', 1e-4)
     )
 
@@ -1805,13 +1932,19 @@ def main():
             'val_f1': []
         }
 
-        visualizer = AcademicVisualizer()
+        # Fix matplotlib font warnings for academic plots
+    import matplotlib.pyplot as plt
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend
+    plt.rcParams['font.family'] = ['DejaVu Sans', 'Liberation Sans', 'Arial', 'sans-serif']
+
+    visualizer = AcademicVisualizer()
         training_logger = TrainingLogger(exp_manager, visualizer)
         logger.info("Training logger initialized")
-        logger.info("Starting training for %d epochs", training_cfg['num_epochs'])
+        logger.info("Starting training for %d epochs", training_cfg['epochs'])
         logger.info("%s", "=" * 80)
 
-        for epoch in range(1, training_cfg['num_epochs'] + 1):
+        for epoch in range(1, training_cfg['epochs'] + 1):
             epoch_start_time = time.time()
 
             train_metrics = train_epoch(model, train_loader, optimizer, criterion, device, epoch)

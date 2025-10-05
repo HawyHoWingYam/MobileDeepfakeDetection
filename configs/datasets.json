@@ -8,10 +8,11 @@
       "dataset_paths.json",
       "unified_dataset_config.json"
     ],
-    "total_samples": 3270062,
-    "real_samples": 515688,
-    "fake_samples": 2754374,
-    "updated_at": "2025-10-05T11:04:44.580525"
+    "total_samples": 119114,
+    "real_samples": 59557,
+    "fake_samples": 59557,
+    "updated_at": "2025-10-05T13:53:17.668767",
+    "balancing_method": "simple_all_real_equal_fake"
   },
   "default_settings": {
     "image_format": "jpg",
@@ -54,9 +55,9 @@
         "fake": "dataset/fake/DFDC"
       },
       "manifests": {
-        "train": "manifests/dfdc_train.csv",
-        "val": "manifests/dfdc_val.csv",
-        "test": "manifests/dfdc_test.csv"
+        "train": "manifests/dfdc_train_balanced.csv",
+        "val": "manifests/dfdc_val_balanced.csv",
+        "test": "manifests/dfdc_test_balanced.csv"
       }
     },
     "celebdf_v2": {
@@ -69,9 +70,9 @@
         "fake": "/workspace/MobileDeepfakeDetection/dataset/fake/CelebDF-v2/CelebDF-v2"
       },
       "manifests": {
-        "train": "manifests/celebdf_v2_train.csv",
-        "val": "manifests/celebdf_v2_val.csv",
-        "test": "manifests/celebdf_v2_test.csv"
+        "train": "manifests/celebdf_v2_train_balanced.csv",
+        "val": "manifests/celebdf_v2_val_balanced.csv",
+        "test": "manifests/celebdf_v2_test_balanced.csv"
       },
       "statistics": {
         "total_samples": 407712,
@@ -130,9 +131,9 @@
         "fake": "/workspace/MobileDeepfakeDetection/dataset/fake/FF++"
       },
       "manifests": {
-        "train": "manifests/faceforensics_train.csv",
-        "val": "manifests/faceforensics_val.csv",
-        "test": "manifests/faceforensics_test.csv"
+        "train": "manifests/faceforensics_train_balanced.csv",
+        "val": "manifests/faceforensics_val_balanced.csv",
+        "test": "manifests/faceforensics_test_balanced.csv"
       },
       "statistics": {
         "total_samples": 745609,
@@ -159,9 +160,9 @@
         "fake": "/workspace/MobileDeepfakeDetection/dataset/fake/DeeperForensics-1.0"
       },
       "manifests": {
-        "train": "manifests/deeperforensics_train.csv",
-        "val": "manifests/deeperforensics_val.csv",
-        "test": "manifests/deeperforensics_test.csv"
+        "train": "manifests/deeperforensics_train_balanced.csv",
+        "val": "manifests/deeperforensics_val_balanced.csv",
+        "test": "manifests/deeperforensics_test_balanced.csv"
       },
       "statistics": {
         "total_samples": 1548061,
@@ -203,13 +204,14 @@
         "method": "weighted_stratified",
         "balance_datasets": true,
         "balance_classes": true,
-        "auto_calculated": true,
+        "auto_calculated": false,
         "dataset_weights": {
-          "celebdf_v2": 0.15,
-          "faceforensics_plus_plus": 0.35,
-          "deeperforensics_1_0": 0.5
+          "celebdf_v2": 0.25,
+          "faceforensics_plus_plus": 0.25,
+          "deeperforensics_1_0": 0.25,
+          "dfdc": 0.25
         },
-        "note": "When auto_calculated=true, weights are computed from actual sample counts. Set to false for manual weights."
+        "note": "Manual equal weights for 4 datasets: 25% each for balanced contribution."
       },
       "combined_statistics": {
         "total_samples": 2701382,

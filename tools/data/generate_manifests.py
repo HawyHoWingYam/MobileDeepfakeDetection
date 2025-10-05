@@ -234,33 +234,41 @@ def split_data_video_level(
 split_data = split_data_video_level
 
 
-def balance_entries_by_class(splits: dict, seed: int = 42) -> dict:
-    """Down-sample classes per split to achieve 50:50 frame balance."""
-    rng = random.Random(seed)
-    balanced = {}
+def simple_balance_datasets(real_entries: List[dict], fake_entries: List[dict], seed: int = 42) -> List[dict]:
+    """
+    Simple balancing: Use ALL Real samples + equal number of Fake samples.
 
-    for split_name, split_entries in splits.items():
-        buckets: Dict[int, List[dict]] = {}
-        for entry in split_entries:
-            label = int(entry['label'])
-            buckets.setdefault(label, []).append(dict(entry))
+    Args:
+        real_entries: List of real image entries
+        fake_entries: List of fake image entries
+        seed: Random seed for reproducibility
 
-        if 0 not in buckets or 1 not in buckets:
-            balanced[split_name] = [dict(entry) for entry in split_entries]
-            continue
+    Returns:
+        Balanced list with 50:50 Real:Fake ratio
+    """
+    random.seed(seed)
 
-        target = min(len(buckets[0]), len(buckets[1]))
-        if target == 0:
-            balanced[split_name] = [dict(entry) for entry in split_entries]
-            continue
+    # Use all Real samples
+    selected_real = real_entries.copy()
 
-        rng.shuffle(buckets[0])
-        rng.shuffle(buckets[1])
-        selected = buckets[0][:target] + buckets[1][:target]
-        rng.shuffle(selected)
-        balanced[split_name] = selected
+    # Randomly sample equal number of Fake samples
+    if len(fake_entries) >= len(real_entries):
+        random.shuffle(fake_entries)
+        selected_fake = fake_entries[:len(real_entries)]
+    else:
+        # Not enough Fake samples, use all available
+        selected_fake = fake_entries.copy()
+        print(f"Warning: Not enough Fake samples ({len(fake_entries)}) to match Real samples ({len(real_entries)})")
 
-    return balanced
+    # Combine and shuffle
+    balanced_entries = selected_real + selected_fake
+    random.shuffle(balanced_entries)
+
+    print(f"Simple balancing: {len(selected_real)} Real + {len(selected_fake)} Fake = {len(balanced_entries)} total")
+
+    return balanced_entries
+
+
 
 def save_manifest(entries: List[dict], output_path: Path):
     """Save manifest to CSV file"""
@@ -272,36 +280,33 @@ def save_manifest(entries: List[dict], output_path: Path):
     print(f"Saved {len(entries)} entries to {output_path}")
 
 def main():
-    """Generate manifests for all datasets"""
+    """Generate manifests for all datasets with simple balancing"""
     import sys
-    
+
     if len(sys.argv) > 1:
         dataset_name = sys.argv[1].lower()
     else:
         dataset_name = "celebdf"  # Default
-    
-    print(f"=== {dataset_name.upper()} Manifest Generation ===")
-    
+
+    print(f"=== {dataset_name.upper()} Simple Manifest Generation ===")
+
+    # Dataset paths configuration
     if dataset_name == "celebdf":
-        # CelebDF-v2 paths
         real_dir = Path("dataset/real/CelebDF-v2")
         fake_dir = Path("dataset/fake/CelebDF-v2")
         config_path = Path("configs/datasets.json")
         manifest_prefix = "celebdf_v2"
     elif dataset_name == "faceforensics" or dataset_name == "ff++":
-        # FF++ paths
         real_dir = Path("dataset/real/FF++")
         fake_dir = Path("dataset/fake/FF++")
         config_path = Path("configs/faceforensics_config.json")
         manifest_prefix = "faceforensics"
     elif dataset_name == "deeperforensics":
-        # DeeperForensics paths
         real_dir = Path("dataset/real/DeeperForensics-1.0")
         fake_dir = Path("dataset/fake/DeeperForensics-1.0")
         config_path = Path("configs/deeperforensics_config.json")
         manifest_prefix = "deeperforensics"
     elif dataset_name == "dfdc":
-        # DFDC paths (frame-level CSVs)
         real_dir = Path("dataset/real/DFDC")
         fake_dir = Path("dataset/fake/DFDC")
         config_path = Path("configs/datasets.json")
@@ -310,66 +315,65 @@ def main():
         print(f"Unknown dataset: {dataset_name}")
         print("Available: celebdf, faceforensics, deeperforensics, dfdc")
         return
-    
+
     manifests_dir = Path("manifests")
-    
+
     # Scan directories
     print("\\nScanning real images...")
     real_entries = scan_celebdf_directory(real_dir, label=0)
-    
+
     print("\\nScanning fake images...")
     fake_entries = scan_celebdf_directory(fake_dir, label=1)
-    
-    # Combine all entries
-    all_entries = real_entries + fake_entries
-    print(f"\\nTotal images: {len(all_entries)}")
-    
-    if not all_entries:
+
+    if not real_entries and not fake_entries:
         print("No images found! Check directory paths.")
         return
-    
-    # Split data
-    print("\\nSplitting data...")
-    splits = split_data_video_level(all_entries, seed=42, balanced=False)
-    balanced_splits = split_data_video_level(all_entries, seed=42, balanced=True)
-    balanced_splits = balance_entries_by_class(balanced_splits, seed=42)
+
+    print(f"\\nFound {len(real_entries)} Real images, {len(fake_entries)} Fake images")
+
+    # Apply simple balancing: ALL Real samples + equal Fake samples
+    print("\\nApplying simple balancing (All Real + Equal Fake)...")
+    balanced_entries = simple_balance_datasets(real_entries, fake_entries, seed=42)
+
+    # Split balanced data at video level to prevent leakage
+    print("\\nSplitting balanced data at video level...")
+    splits = split_data_video_level(balanced_entries, seed=42, balanced=False)
 
     # Save manifests
-    print("\\nSaving manifest files...")
-    for split_name, split_entries in splits.items():
-        manifest_path = manifests_dir / f"{manifest_prefix}_{split_name}.csv"
-        save_manifest(split_entries, manifest_path)
-
     print("\\nSaving balanced manifest files...")
-    for split_name, split_entries in balanced_splits.items():
+    for split_name, split_entries in splits.items():
         manifest_path = manifests_dir / f"{manifest_prefix}_{split_name}_balanced.csv"
         save_manifest(split_entries, manifest_path)
-    
+
+    # Print final statistics
+    print("\\n=== Final Statistics ===")
+    for split_name, split_entries in splits.items():
+        real_count = sum(1 for e in split_entries if e['label'] == 0)
+        fake_count = sum(1 for e in split_entries if e['label'] == 1)
+        total_count = len(split_entries)
+        real_pct = real_count / total_count * 100 if total_count > 0 else 0
+        fake_pct = fake_count / total_count * 100 if total_count > 0 else 0
+        print(f"{split_name}: {total_count} samples ({real_count} Real, {fake_count} Fake) - {real_pct:.1f}% Real, {fake_pct:.1f}% Fake")
+
     # Update config with statistics
     if config_path.exists():
         with open(config_path, 'r') as f:
             config = json.load(f)
-        
-        total_samples = len(all_entries)
-        total_real = len(real_entries)
-        total_fake = len(fake_entries)
-        
+
         config['metadata'].update({
-            'total_samples': total_samples,
-            'real_samples': total_real,
-            'fake_samples': total_fake,
+            'total_samples': len(balanced_entries),
+            'real_samples': len(real_entries),
+            'fake_samples': min(len(fake_entries), len(real_entries)),
+            'balancing_method': 'simple_all_real_equal_fake',
             'updated_at': pd.Timestamp.now().isoformat()
         })
-        
+
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
-        
-        print(f"\\nUpdated config with statistics:")
-        print(f"  Total samples: {total_samples}")
-        print(f"  Real samples: {total_real}")
-        print(f"  Fake samples: {total_fake}")
-    
-    print("\\n=== Manifest Generation Complete ===")
+
+        print(f"\\nUpdated config with simple balancing statistics")
+
+    print("\\n=== Simple Manifest Generation Complete ===")
 
 if __name__ == "__main__":
     main()
