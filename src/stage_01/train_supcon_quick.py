@@ -37,6 +37,8 @@ from stage_00.train_baseline import (
 # Direct import to avoid __init__.py issues
 sys.path.insert(0, str(Path(__file__).parent))
 from supcon_loss import SupConLoss
+from train_stage1_supcon import Stage1ManifestDataset, resolve_manifest_paths
+from balanced_sampler import BalancedBatchSampler
 
 
 def create_experiment_directory(experiment_name: str) -> Path:
@@ -605,11 +607,18 @@ def main():
                        choices=['original', 'balanced'],
                        help='Dataset mode')
     parser.add_argument('--exclude-dataset', type=str, default=None,
-                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0'],
+                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0', 'dfdc'],
                        help='Dataset to exclude (for LODO)')
     parser.add_argument('--test-dataset', type=str, default=None,
-                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0'],
+                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0', 'dfdc'],
                        help='OOD test dataset')
+    parser.add_argument('--train-manifest', type=str, help='Path to training manifest CSV')
+    parser.add_argument('--val-manifest', type=str, help='Path to validation manifest CSV')
+    parser.add_argument('--test-manifest', type=str, help='Path to test manifest CSV (used when manifest mode active)')
+    parser.add_argument('--dataset-root', type=str, default='.', help='Root directory for manifest image paths')
+    parser.add_argument('--image-size', type=int, default=256, help='Input image size for manifest loader')
+    parser.add_argument('--dataset-config', type=str, default=None,
+                       help='Dataset configuration JSON for manifest autoloading when explicit paths are not provided')
 
     # Experiment parameters
     parser.add_argument('--experiment-name', type=str, default='supcon_quick_validation',
@@ -648,71 +657,168 @@ def main():
     exp_dir = create_experiment_directory(args.experiment_name)
     print(f"Experiment directory: {exp_dir}\n")
 
-    # Determine datasets to use
-    all_datasets = ['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0']
-    if args.exclude_dataset:
-        train_datasets = [d for d in all_datasets if d != args.exclude_dataset]
-        print(f"LODO Training: Using {train_datasets}, excluding {args.exclude_dataset}\n")
-    else:
-        train_datasets = all_datasets
-        print(f"Multi-dataset training: {train_datasets}\n")
-
-    # Create datasets
-    print("Loading datasets...")
-    train_dataset_list = []
-    val_dataset_list = []
-
-    # Map dataset names to manifest file names
     dataset_name_mapping = {
         'celebdf_v2': 'celebdf_v2',
         'faceforensics_plus_plus': 'faceforensics',
-        'deeperforensics_1_0': 'deeperforensics'
+        'deeperforensics_1_0': 'deeperforensics',
+        'dfdc': 'dfdc'
     }
 
-    for dataset_name in train_datasets:
-        manifest_name = dataset_name_mapping[dataset_name]
+    test_manifest = None
 
-        # Train dataset
-        train_ds = UnifiedDeepfakeDataset(
-            manifest_path=f'manifests/{manifest_name}_train_{args.dataset_mode}.csv',
-            dataset_name=f'{dataset_name}_train',
-            transform=None,
-            use_augmentation=True
+    dataset_config_path = Path(args.dataset_config) if args.dataset_config else Path('configs/datasets.json')
+
+    using_manifest = all([
+        args.train_manifest,
+        args.val_manifest,
+        args.test_manifest,
+    ])
+
+    if using_manifest:
+        train_manifest = Path(args.train_manifest)
+        val_manifest = Path(args.val_manifest)
+        test_manifest = Path(args.test_manifest)
+        for manifest in (train_manifest, val_manifest, test_manifest):
+            if not manifest.exists():
+                raise FileNotFoundError(f"Manifest file not found: {manifest}")
+
+        print("Using manifest-driven datasets:\n"
+              f"  Train: {train_manifest}\n"
+              f"  Val:   {val_manifest}\n"
+              f"  Test:  {test_manifest}\n")
+
+        dataset_root = Path(args.dataset_root)
+        train_dataset = Stage1ManifestDataset(
+            manifest_path=train_manifest,
+            root_dir=dataset_root,
+            image_size=args.image_size,
+            augmentation=True,
+            contrastive_views=True
         )
-        train_dataset_list.append(train_ds)
-
-        # Val dataset
-        val_ds = UnifiedDeepfakeDataset(
-            manifest_path=f'manifests/{manifest_name}_val_{args.dataset_mode}.csv',
-            dataset_name=f'{dataset_name}_val',
-            transform=None,
-            use_augmentation=False
+        val_dataset = Stage1ManifestDataset(
+            manifest_path=val_manifest,
+            root_dir=dataset_root,
+            image_size=args.image_size,
+            augmentation=False,
+            contrastive_views=False
         )
-        val_dataset_list.append(val_ds)
 
-    # Wrap datasets
-    train_dataset = MultiDatasetWrapper(train_dataset_list)
-    val_dataset = MultiDatasetWrapper(val_dataset_list)
+        train_sampler = BalancedBatchSampler(
+            labels=train_dataset.get_labels(),
+            batch_size=args.batch_size,
+            min_samples_per_class=4,
+            strategy='balanced',
+            seed=args.seed
+        )
 
-    print(f"✓ Training samples: {len(train_dataset):,}")
-    print(f"✓ Validation samples: {len(val_dataset):,}\n")
+        train_loader = DataLoader(
+            train_dataset,
+            batch_sampler=train_sampler,
+            num_workers=args.num_workers,
+            pin_memory=True if device.type == 'cuda' else False
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            pin_memory=True if device.type == 'cuda' else False
+        )
 
-    # Create data loaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=True if device.type == 'cuda' else False
-    )
+        print(f"✓ Training samples: {len(train_dataset):,}")
+        print(f"✓ Validation samples: {len(val_dataset):,}\n")
 
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=True if device.type == 'cuda' else False
-    )
+        train_dataset_list = None  # unused in manifest mode
+        val_dataset_list = None
+    else:
+        # Determine datasets to use (legacy multi-dataset mode)
+        all_datasets = ['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0', 'dfdc']
+        if args.exclude_dataset:
+            train_datasets = [d for d in all_datasets if d != args.exclude_dataset]
+            print(f"LODO Training: Using {train_datasets}, excluding {args.exclude_dataset}\n")
+        else:
+            train_datasets = all_datasets
+            print(f"Multi-dataset training: {train_datasets}\n")
+
+        print("Loading datasets (legacy ImageFolder pipeline)...")
+        train_dataset_list = []
+        val_dataset_list = []
+
+        dataset_config_available = dataset_config_path.exists()
+
+        for dataset_name in train_datasets:
+            manifests = {}
+            if dataset_config_available:
+                try:
+                    manifest_paths, _ = resolve_manifest_paths(
+                        dataset_config_path,
+                        dataset_name,
+                        args.dataset_mode,
+                    )
+                    manifests = {
+                        'train': manifest_paths['train'],
+                        'val': manifest_paths['val'],
+                    }
+                    print(f"  ✓ Using {dataset_config_path} manifests for {dataset_name}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  ⚠️ Could not resolve manifests from {dataset_config_path} for {dataset_name}: {exc}")
+
+            if not manifests:
+                manifest_key = dataset_name_mapping.get(dataset_name)
+                if manifest_key is None:
+                    print(f"  ⚠️ Unknown dataset mapping for {dataset_name}, skipping")
+                    continue
+
+                train_manifest_path = Path(f"manifests/{manifest_key}_train_{args.dataset_mode}.csv")
+                val_manifest_path = Path(f"manifests/{manifest_key}_val_{args.dataset_mode}.csv")
+                if not train_manifest_path.exists() or not val_manifest_path.exists():
+                    print(f"  ⚠️ Missing manifest for {dataset_name} ({args.dataset_mode}), skipping")
+                    continue
+
+                manifests = {
+                    'train': train_manifest_path,
+                    'val': val_manifest_path,
+                }
+
+            train_ds = UnifiedDeepfakeDataset(
+                manifest_path=manifests['train'],
+                dataset_name=f'{dataset_name}_train',
+                transform=None,
+                use_augmentation=True
+            )
+            train_dataset_list.append(train_ds)
+
+            val_ds = UnifiedDeepfakeDataset(
+                manifest_path=manifests['val'],
+                dataset_name=f'{dataset_name}_val',
+                transform=None,
+                use_augmentation=False
+            )
+            val_dataset_list.append(val_ds)
+
+        if not train_dataset_list:
+            raise RuntimeError("No datasets available for training. Provide manifest paths or ensure manifests exist for the selected mode.")
+
+        train_dataset = MultiDatasetWrapper(train_dataset_list)
+        val_dataset = MultiDatasetWrapper(val_dataset_list)
+
+        print(f"✓ Training samples: {len(train_dataset):,}")
+        print(f"✓ Validation samples: {len(val_dataset):,}\n")
+
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.num_workers,
+            pin_memory=True if device.type == 'cuda' else False
+        )
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            pin_memory=True if device.type == 'cuda' else False
+        )
 
     # Create model
     print("Creating SupCon model...")
@@ -861,13 +967,47 @@ def main():
         print()
 
     # OOD evaluation if specified
-    if args.test_dataset:
+    if using_manifest and args.test_manifest:
+        print("\nEvaluating using provided test manifest")
+        print("-" * 80)
+
+        test_ds = Stage1ManifestDataset(
+            manifest_path=test_manifest,
+            root_dir=Path(args.dataset_root),
+            image_size=args.image_size,
+            augmentation=False,
+            contrastive_views=False
+        )
+        test_loader = DataLoader(
+            test_ds,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            pin_memory=True if device.type == 'cuda' else False
+        )
+        test_dataset_name = test_manifest.name
+
+    elif args.test_dataset:
         print(f"\nEvaluating on OOD test set: {args.test_dataset}")
         print("-"*80)
 
-        test_manifest_name = dataset_name_mapping[args.test_dataset]
+        try:
+            manifest_paths, _ = resolve_manifest_paths(
+                dataset_config_path,
+                args.test_dataset,
+                args.dataset_mode,
+            )
+            manifest_path = manifest_paths['test']
+        except Exception:
+            manifest_key = dataset_name_mapping.get(args.test_dataset)
+            if manifest_key is None:
+                raise ValueError(f"Unknown dataset mapping for test dataset {args.test_dataset}")
+            manifest_path = Path(f'manifests/{manifest_key}_test_{args.dataset_mode}.csv')
+            if not manifest_path.exists():
+                raise FileNotFoundError(f"Test manifest not found: {manifest_path}")
+
         test_ds = UnifiedDeepfakeDataset(
-            manifest_path=f'manifests/{test_manifest_name}_test_{args.dataset_mode}.csv',
+            manifest_path=manifest_path,
             dataset_name=f'{args.test_dataset}_test',
             transform=None,
             use_augmentation=False
@@ -880,20 +1020,24 @@ def main():
             num_workers=args.num_workers,
             pin_memory=True if device.type == 'cuda' else False
         )
+        test_dataset_name = args.test_dataset
 
-        # Load best model
+    else:
+        test_loader = None
+        test_dataset_name = None
+
+    if test_loader is not None:
         checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint['model_state_dict'])
 
-        # Evaluate
         test_metrics = validate_epoch(
             model, test_loader, bce_criterion, device, -1
         )
 
         print("\n" + "="*80)
-        print("OOD Test Results")
+        print("OOD/Test Results")
         print("="*80)
-        print(f"\nDataset: {args.test_dataset}")
+        print(f"\nDataset: {test_dataset_name}")
         print(f"Samples: {len(test_ds):,}\n")
         print(f"Performance Metrics:")
         print(f"  AUC-ROC:  {test_metrics['auc']:.4f}")

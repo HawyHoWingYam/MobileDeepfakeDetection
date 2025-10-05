@@ -46,7 +46,7 @@ def scan_celebdf_directory(directory: Path, label: int) -> List[dict]:
     video_dirs = []
     
     # Check if it's DeeperForensics structure (has subdirectories like end_to_end)
-    if "DeeperForensics" in str(directory):
+    if "DeeperForensics" in str(directory) or "DFDC" in str(directory):
         # For DeeperForensics, scan recursively for any directory containing JPG files
         for root in directory.rglob("*"):
             if root.is_dir() and any(f.suffix.lower() == '.jpg' for f in root.iterdir() if f.is_file()):
@@ -107,7 +107,14 @@ def scan_celebdf_directory(directory: Path, label: int) -> List[dict]:
 #     ...
 # ============================================================================
 
-def split_data_video_level(entries: List[dict], train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, seed=42) -> dict:
+def split_data_video_level(
+    entries: List[dict],
+    train_ratio=0.7,
+    val_ratio=0.15,
+    test_ratio=0.15,
+    seed=42,
+    balanced=False,
+) -> dict:
     """
     Split data into train/val/test sets at VIDEO LEVEL (fixes data leakage)
 
@@ -163,10 +170,15 @@ def split_data_video_level(entries: List[dict], train_ratio=0.7, val_ratio=0.15,
     # Step 3: Shuffle and split VIDEO IDs (not frames!)
     print("\n📊 Splitting videos into train/val/test...")
     splits = {"train": [], "val": [], "test": []}
+    split_video_ids = {
+        "train": {0: [], 1: []},
+        "val": {0: [], 1: []},
+        "test": {0: [], 1: []},
+    }
 
-    for video_dict, label_name in [(real_videos, "real"), (fake_videos, "fake")]:
+    for video_dict, label_value in [(real_videos, 0), (fake_videos, 1)]:
         video_ids = list(video_dict.keys())
-        random.shuffle(video_ids)  # ✅ CORRECT: shuffle video IDs, not frames
+        random.shuffle(video_ids)
 
         n = len(video_ids)
         train_end = int(n * train_ratio)
@@ -176,24 +188,38 @@ def split_data_video_level(entries: List[dict], train_ratio=0.7, val_ratio=0.15,
         val_video_ids = video_ids[train_end:val_end]
         test_video_ids = video_ids[val_end:]
 
+        label_name = "real" if label_value == 0 else "fake"
         print(f"  {label_name} - train: {len(train_video_ids)} videos, "
               f"val: {len(val_video_ids)} videos, test: {len(test_video_ids)} videos")
 
-        # Step 4: Collect ALL frames from selected videos
-        for vid in train_video_ids:
-            for frame in video_dict[vid]:
-                frame['split'] = 'train'
-            splits["train"].extend(video_dict[vid])
+        split_video_ids["train"][label_value] = train_video_ids
+        split_video_ids["val"][label_value] = val_video_ids
+        split_video_ids["test"][label_value] = test_video_ids
 
-        for vid in val_video_ids:
-            for frame in video_dict[vid]:
-                frame['split'] = 'val'
-            splits["val"].extend(video_dict[vid])
+    if balanced:
+        print("\n⚖️  Applying class-balanced video sampling (per split)...")
+        for split_name, class_dict in split_video_ids.items():
+            real_ids = class_dict.get(0, [])
+            fake_ids = class_dict.get(1, [])
+            if not real_ids or not fake_ids:
+                continue
+            target = min(len(real_ids), len(fake_ids))
+            if target == 0:
+                continue
+            class_dict[0] = real_ids[:target]
+            class_dict[1] = fake_ids[:target]
+            print(f"  {split_name}: retaining {target} videos per class")
 
-        for vid in test_video_ids:
-            for frame in video_dict[vid]:
-                frame['split'] = 'test'
-            splits["test"].extend(video_dict[vid])
+    # Step 4: Collect ALL frames from selected videos
+    for split_name, class_dict in split_video_ids.items():
+        for label_value, video_ids in class_dict.items():
+            source_dict = real_videos if label_value == 0 else fake_videos
+            for vid in video_ids:
+                if vid not in source_dict:
+                    continue
+                for frame in source_dict[vid]:
+                    frame['split'] = split_name
+                splits[split_name].extend(source_dict[vid])
 
     # Print split statistics
     print("\n✅ Split statistics:")
@@ -206,6 +232,35 @@ def split_data_video_level(entries: List[dict], train_ratio=0.7, val_ratio=0.15,
 
 # Alias for backward compatibility
 split_data = split_data_video_level
+
+
+def balance_entries_by_class(splits: dict, seed: int = 42) -> dict:
+    """Down-sample classes per split to achieve 50:50 frame balance."""
+    rng = random.Random(seed)
+    balanced = {}
+
+    for split_name, split_entries in splits.items():
+        buckets: Dict[int, List[dict]] = {}
+        for entry in split_entries:
+            label = int(entry['label'])
+            buckets.setdefault(label, []).append(dict(entry))
+
+        if 0 not in buckets or 1 not in buckets:
+            balanced[split_name] = [dict(entry) for entry in split_entries]
+            continue
+
+        target = min(len(buckets[0]), len(buckets[1]))
+        if target == 0:
+            balanced[split_name] = [dict(entry) for entry in split_entries]
+            continue
+
+        rng.shuffle(buckets[0])
+        rng.shuffle(buckets[1])
+        selected = buckets[0][:target] + buckets[1][:target]
+        rng.shuffle(selected)
+        balanced[split_name] = selected
+
+    return balanced
 
 def save_manifest(entries: List[dict], output_path: Path):
     """Save manifest to CSV file"""
@@ -231,7 +286,7 @@ def main():
         # CelebDF-v2 paths
         real_dir = Path("dataset/real/CelebDF-v2")
         fake_dir = Path("dataset/fake/CelebDF-v2")
-        config_path = Path("configs/dataset_paths.json")
+        config_path = Path("configs/datasets.json")
         manifest_prefix = "celebdf_v2"
     elif dataset_name == "faceforensics" or dataset_name == "ff++":
         # FF++ paths
@@ -245,9 +300,15 @@ def main():
         fake_dir = Path("dataset/fake/DeeperForensics-1.0")
         config_path = Path("configs/deeperforensics_config.json")
         manifest_prefix = "deeperforensics"
+    elif dataset_name == "dfdc":
+        # DFDC paths (frame-level CSVs)
+        real_dir = Path("dataset/real/DFDC")
+        fake_dir = Path("dataset/fake/DFDC")
+        config_path = Path("configs/datasets.json")
+        manifest_prefix = "dfdc"
     else:
         print(f"Unknown dataset: {dataset_name}")
-        print("Available: celebdf, faceforensics, deeperforensics")
+        print("Available: celebdf, faceforensics, deeperforensics, dfdc")
         return
     
     manifests_dir = Path("manifests")
@@ -269,12 +330,19 @@ def main():
     
     # Split data
     print("\\nSplitting data...")
-    splits = split_data(all_entries)
-    
+    splits = split_data_video_level(all_entries, seed=42, balanced=False)
+    balanced_splits = split_data_video_level(all_entries, seed=42, balanced=True)
+    balanced_splits = balance_entries_by_class(balanced_splits, seed=42)
+
     # Save manifests
     print("\\nSaving manifest files...")
     for split_name, split_entries in splits.items():
         manifest_path = manifests_dir / f"{manifest_prefix}_{split_name}.csv"
+        save_manifest(split_entries, manifest_path)
+
+    print("\\nSaving balanced manifest files...")
+    for split_name, split_entries in balanced_splits.items():
+        manifest_path = manifests_dir / f"{manifest_prefix}_{split_name}_balanced.csv"
         save_manifest(split_entries, manifest_path)
     
     # Update config with statistics

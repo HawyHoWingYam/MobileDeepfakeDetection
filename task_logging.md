@@ -69,11 +69,7 @@
      │                                                                                                              │
      │ 步骤1.1: 准备DFDC数据                                                                                        │
      │                                                                                                              │
-     │ # 假设DFDC数据已下载到dataset/dfdc/                                                                          │
-     │ python tools/data/generate_manifests.py dfdc \                                                               │
-     │   --config configs/datasets.json \                                                                           │
-     │   --data-dir dataset/dfdc/ \                                                                                 │
-     │   --output-dir manifests/                                                                                    │
+     │ （完整的 DFDC 数据准备流程现已集中在 `docs/OPERATIONS.md`）                                                   │
      │                                                                                                              │
      │ 步骤1.2: 快速OOD评估                                                                                         │
      │                                                                                                              │
@@ -224,4 +220,38 @@
      │ Phase 1（今天）: 准备DFDC数据 + 快速OOD评估                                                                  │
      │ 明天: 根据结果启动Phase 2A或2B                                                                               │
      │ 后天: 等待训练完成，分析结果                                                                                 │
-     │ 第4天: Stage Gate决策，进入Stage 02准备 
+     │ 第4天: Stage Gate决策，进入Stage 02准备
+# Operations Guide
+
+Centralised checklist for recurring setup and dataset tasks shared across stage documents.
+
+## Dataset Manifests
+
+- The canonical dataset registry lives in `configs/datasets.json`. Update this file (instead of legacy `dataset_paths.json`) when adding new datasets or variants.
+- Each entry exposes `manifests.train/val/test`. Variant-specific CSVs follow the suffix convention:
+  - `balanced` → `_balanced`
+  - `anonymized` → `_anonymized`
+  - `anonymized_balanced` → `_anonymized_balanced`
+- Most training scripts now accept `--dataset-config` (defaulting to `configs/datasets.json`) and will auto-populate `train/val/test` manifests plus `dataset_root`. Provide `--manifest-dataset` / `--manifest-mode` (Stage 01/02) if you need a dataset other than the defaults.
+- If manifests are missing, run `python tools/data/generate_manifests.py --config configs/datasets.json --dataset <name>` or the stage-specific utilities before launching training.
+
+## DFDC Onboarding
+
+1. Place the raw DFDC frames under `dataset/real/DFDC` and `dataset/fake/DFDC` (matching the structure expected by `configs/datasets.json`).
+2. Generate manifests:
+   ```bash
+   python tools/data/generate_manifests.py --config configs/datasets.json --dataset dfdc
+   ```
+3. Validate the CSVs with the quick checker:
+   ```bash
+   python -m src.utils.data_validator --config configs/datasets.json --dataset dfdc --quick
+   ```
+4. Update `configs/datasets.json` weights or modes if DFDC should participate in multi-dataset training.
+
+## Stage Script Highlights
+
+- **Stage 00** `train_baseline.py` now exposes `--dataset-config` and uses logging instead of prints. Manifests are resolved automatically; pass `--manifest-dataset` / `--manifest-mode` if needed.
+- **Stage 01** scripts auto-fill manifests via `--dataset_config` / `--manifest_dataset` (both in `train_stage1_supcon.py` and `train_supcon_quick.py`). `BalancedBatchSampler` logs the expected resampling ratios for transparency.
+- **Stage 02** spatial & GenConViT experts accept the same manifest options and emit clear guidance when neither manifests nor fallback folders exist. Smoke tests live in `tools/tests/test_datasets.py`.
+
+Keep this document updated when operational procedures change so that project logs and stage notes can simply reference it instead of duplicating instructions.

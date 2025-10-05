@@ -206,7 +206,7 @@ class EnvironmentValidator:
             'src/stage_00/train_baseline.py',
             'src/utils/dataset_config.py',
             'src/utils/metrics.py',
-            'configs/dataset_paths.json'
+            'configs/datasets.json'
         ]
 
         result = {
@@ -268,7 +268,7 @@ class EnvironmentValidator:
         }
 
         # 檢查配置文件
-        config_path = self.project_root / "configs" / "dataset_paths.json"
+        config_path = self.project_root / "configs" / "datasets.json"
         if config_path.exists():
             result['config_file_exists'] = True
             logger.info("✅ 數據集配置文件存在")
@@ -399,7 +399,7 @@ class EnvironmentValidator:
 
         # 數據集建議
         if not validations['dataset']['config_file_exists']:
-            recommendations.append("配置數據集路徑: 編輯 configs/dataset_paths.json")
+            recommendations.append("配置數據集路徑: 編輯 configs/datasets.json")
         elif not validations['dataset']['manifests_exist']:
             recommendations.append("運行 python setup.py 準備數據集")
 

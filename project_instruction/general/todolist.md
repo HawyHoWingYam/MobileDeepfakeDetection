@@ -129,36 +129,59 @@ Last Updated: 2025-10-05 (Stage 01 LODO全面失败确认 + 诊断工具完成)
 
 ---
 
-## 📋 当前行动计划 (2025-10-05)
+## 📋 当前行动计划 (2025-10-05 更新)
 
-### 🚀 Phase 1: 全数据集训练 (1-1.5天) - **立即执行**
+> ⚠️ `experiments/` 已清空，Stage 00 baseline 需全部重建后再推进 Stage 01/02。
 
-**目标**: 训练高性能in-distribution过滤器
+### 🚀 Phase 1: 恢复 Stage 00 基线 + 全数据集训练 (1-1.5天)
 
-#### 选项A: 3数据集全训练（推荐）⭐
+**目标**: 重建 LODO Config 3、补齐 DFDC baseline，并恢复多数据集 in-distribution 过滤器**
+
+#### Step 0: 重新生成 manifest / 校验配置
+- 重新运行 CelebDF、FF++、DeeperForensics 的 manifest 与 `data_validator`
+- DFDC 数据准备与 manifest 生成流程已集中整理在 `docs/OPERATIONS.md`
+- 更新 `configs/datasets.json`（加入 dfdc、调整权重）及 `configs/training.json`
+
+#### Step 1: 重跑 LODO Config 3（FF++ + DF → CelebDF）
 ```bash
 python src/stage_00/train_baseline.py \
+  --config configs/training.json \
+  --model tf_efficientnetv2_b0 \
+  --epochs 50 \
+  --batch-size 128 \
+  --multi-dataset \
+  --exclude-dataset celebdf_v2 \
+  --experiment-name baseline_lodo_config3_restart
+```
+- 生成新的 checkpoint / metrics，补齐 3×3 矩阵
+
+#### Step 2: 3数据集全训练（基础回归）⭐
+```bash
+python src/stage_00/train_baseline.py \
+  --config configs/training.json \
   --model tf_efficientnetv2_b0 \
   --epochs 50 \
   --batch-size 128 \
   --multi-dataset \
   --experiment-name baseline_full_3datasets_final
 ```
+- 目标：In-dist AUC > 0.95
 
-**预期**: In-distribution AUC > 0.95
-
-#### 选项B: 4数据集全训练（如果DFDC准备好）
+#### Step 3: 4数据集全训练（DFDC 加入后）
 ```bash
-# 需要先在configs/datasets.json中添加DFDC配置
 python src/stage_00/train_baseline.py \
+  --config configs/training.json \
   --model tf_efficientnetv2_b0 \
   --epochs 50 \
   --batch-size 128 \
   --multi-dataset \
   --experiment-name baseline_full_4datasets_with_dfdc
 ```
+- 目标：更广泛覆盖，记录 DFDC 的 in-dist 性能
 
-**预期**: 更广泛覆盖，In-distribution AUC > 0.95
+#### Step 4: 更新文档与报告
+- 将结果写入 `project_instruction/stage_00/stage_00_status_report.md`
+- 在 `docs/stage_00/` 保存新版 3×3 LODO 矩阵（含 DFDC）
 
 ---
 

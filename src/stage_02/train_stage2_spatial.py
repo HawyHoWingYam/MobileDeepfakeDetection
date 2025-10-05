@@ -37,6 +37,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+from PIL import Image
 from torch.cuda.amp import GradScaler, autocast
 
 # AWARE-NET imports
@@ -47,23 +50,42 @@ from utils.calibration_tools import CalibrationAnalyzer, TemperatureScalingResul
 from utils.dataset_config import DatasetConfig
 
 # Stage 2 specific imports
-from enhanced_spatial_expert import (
-    FocalLoss, FocalLossConfig,
-    GraduatedLRConfig, GraduatedLRScheduler
-)
-from spatial_expert import EfficientNetV2SpatialExpert, SpatialExpertConfig, SpatialArtifactType
-from multi_resolution_dataloader import (
-    MultiResolutionDataLoader, DataLoaderConfig,
-    ResolutionSampler, ValidationMetrics
-)
-from data_augmentation import (
-    AugmentationFactory, AugmentationConfig,
-    EdgePreservingAugmentation, CompressionSimulation
-)
-from training_monitor import (
-    TrainingMonitor, MonitoringConfig, SystemMetrics, TrainingMetrics
-)
-from spatial_analysis_tools import GradCAMAnalyzer, SpatialArtifactAnalyzer
+try:
+    from .enhanced_spatial_expert import (
+        FocalLoss, FocalLossConfig,
+        GraduatedLRConfig, GraduatedLRScheduler
+    )
+    from .spatial_expert import EfficientNetV2SpatialExpert, SpatialExpertConfig, SpatialArtifactType
+    from .multi_resolution_dataloader import DataLoaderConfig
+    from .data_augmentation import (
+        AugmentationFactory, AugmentationConfig,
+        EdgePreservingAugmentation, CompressionSimulation
+    )
+    from .training_monitor import (
+        TrainingMonitor, MonitoringConfig, SystemMetrics, TrainingMetrics
+    )
+    try:
+        from .spatial_analysis_tools import GradCAMAnalyzer, SpatialArtifactAnalyzer
+    except ImportError:
+        GradCAMAnalyzer = SpatialArtifactAnalyzer = None
+except ImportError:  # pragma: no cover - script fallback
+    from enhanced_spatial_expert import (
+        FocalLoss, FocalLossConfig,
+        GraduatedLRConfig, GraduatedLRScheduler
+    )
+    from spatial_expert import EfficientNetV2SpatialExpert, SpatialExpertConfig, SpatialArtifactType
+    from multi_resolution_dataloader import DataLoaderConfig
+    from data_augmentation import (
+        AugmentationFactory, AugmentationConfig,
+        EdgePreservingAugmentation, CompressionSimulation
+    )
+    from training_monitor import (
+        TrainingMonitor, MonitoringConfig, SystemMetrics, TrainingMetrics
+    )
+    try:
+        from spatial_analysis_tools import GradCAMAnalyzer, SpatialArtifactAnalyzer
+    except ImportError:
+        GradCAMAnalyzer = SpatialArtifactAnalyzer = None
 
 # Configure logging
 logging.basicConfig(
@@ -75,6 +97,45 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+MODE_SUFFIXES = {
+    'balanced': '_balanced',
+    'anonymized': '_anonymized',
+    'anonymized_balanced': '_anonymized_balanced'
+}
+
+
+def _apply_dataset_mode(manifest_path: Path, dataset_mode: str) -> Path:
+    """Return manifest path adjusted for the requested dataset mode."""
+    suffix = MODE_SUFFIXES.get(dataset_mode)
+    if not suffix:
+        return manifest_path
+    return manifest_path.with_name(f"{manifest_path.stem}{suffix}{manifest_path.suffix}")
+
+
+def resolve_manifest_paths(
+    config_path: Union[str, Path],
+    dataset_name: str,
+    dataset_mode: str,
+) -> Tuple[Dict[str, Path], Path]:
+    """Resolve manifest paths for spatial expert datasets."""
+
+    ds_config = DatasetConfig(config_path, dataset_name=dataset_name)
+    manifests: Dict[str, Path] = {}
+
+    for split in ('train', 'val', 'test'):
+        base_manifest = ds_config.get_manifest_path(split)
+        variant_manifest = _apply_dataset_mode(base_manifest, dataset_mode)
+        selected_manifest = variant_manifest if variant_manifest.exists() else base_manifest
+
+        if not selected_manifest.exists():
+            raise FileNotFoundError(
+                f"Manifest not found for {dataset_name}/{split} ({dataset_mode}): {selected_manifest}"
+            )
+
+        manifests[split] = selected_manifest
+
+    return manifests, ds_config.root_path
 
 @dataclass
 class SpatialTrainingConfig:
@@ -106,6 +167,9 @@ class SpatialTrainingConfig:
     # Data configuration
     data_loader_config: DataLoaderConfig = None
     augmentation_config: AugmentationConfig = None
+    dataset_config: str = 'configs/datasets.json'
+    manifest_dataset: str = 'celebdf_v2'
+    manifest_mode: str = 'balanced'
 
     # Monitoring configuration
     monitoring_config: MonitoringConfig = None
@@ -120,6 +184,10 @@ class SpatialTrainingConfig:
     weights_dir: str = "models/stage_02/spatial"
     logs_dir: str = "logs/stage_02/spatial"
     config_path: str = "configs/spatial_expert_config.json"
+    train_manifest: Optional[str] = None
+    val_manifest: Optional[str] = None
+    test_manifest: Optional[str] = None
+    dataset_root: str = "."
 
     # Performance targets
     target_auc: float = 0.92
@@ -186,105 +254,157 @@ class SpatialTrainingConfig:
 
 
 class SpatialExpertDataset(torch.utils.data.Dataset):
-    """
-    Specialized dataset for spatial expert training with multi-resolution support
-    and spatial artifact preservation.
-    """
+    """Dataset supporting manifest-driven loading with optional ImageFolder fallback."""
 
     def __init__(
         self,
-        data_path: str,
-        split: str = 'train',
-        resolution: int = 256,
-        augmentation_config: AugmentationConfig = None,
-        spatial_expert_mode: bool = True
+        split: str,
+        resolution: int,
+        augmentation_config: AugmentationConfig,
+        manifest_path: Optional[str] = None,
+        dataset_root: str = ".",
+        fallback_path: Optional[str] = None
     ):
-        """
-        Initialize spatial expert dataset.
-
-        Args:
-            data_path: Path to dataset
-            split: Data split ('train', 'val', 'test')
-            resolution: Target image resolution
-            augmentation_config: Augmentation configuration
-            spatial_expert_mode: Enable spatial expert optimizations
-        """
-        self.data_path = Path(data_path)
         self.split = split
         self.resolution = resolution
-        self.spatial_expert_mode = spatial_expert_mode
+        self.manifest_path = Path(manifest_path) if manifest_path else None
+        self.dataset_root = Path(dataset_root)
+        self.augmentation_config = augmentation_config or AugmentationConfig(spatial_expert_mode=True)
 
-        # Initialize augmentation factory
-        if augmentation_config is None:
-            augmentation_config = AugmentationConfig(spatial_expert_mode=True)
+        if self.manifest_path and self.manifest_path.exists():
+            if not self.dataset_root.exists():
+                raise FileNotFoundError(f"Dataset root not found: {self.dataset_root}")
+            self.use_manifest = True
+            self.data = pd.read_csv(self.manifest_path)
+            if 'valid' in self.data.columns:
+                self.data = self.data[self.data['valid'] == True]
+            self.data = self.data.reset_index(drop=True)
+            if self.data.empty:
+                raise ValueError(f"Manifest {self.manifest_path} contains no valid samples")
 
-        self.augmentation_factory = AugmentationFactory(augmentation_config)
+            if self.split == 'train':
+                self.augmentation = AugmentationFactory.create_augmentation(
+                    "spatial",
+                    **self.augmentation_config.__dict__
+                )
+            else:
+                self.augmentation = A.Compose([
+                    A.Resize(self.resolution, self.resolution),
+                    A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                    ToTensorV2(),
+                ])
 
-        # Load dataset - simplified for demo, should use DatasetConfig
-        from torchvision.datasets import ImageFolder
-        self.dataset = ImageFolder(root=str(self.data_path / split))
+            logger.info(
+                "Loaded manifest dataset (%s): samples=%d", self.manifest_path, len(self.data)
+            )
 
-        logger.info(f"Loaded {split} dataset: {len(self.dataset)} samples at {resolution}x{resolution}")
+        else:
+            if not fallback_path:
+                raise FileNotFoundError(
+                    f"Manifest not provided for split={split}; specify fallback_path or manifest."
+                )
+            self.use_manifest = False
+            from torchvision.datasets import ImageFolder
+            fallback_root = Path(fallback_path)
+            if not fallback_root.exists():
+                raise FileNotFoundError(f"Fallback path not found: {fallback_root}")
+            root = fallback_root / split
+            if not root.exists():
+                raise FileNotFoundError(f"Fallback split path not found: {root}")
+            self.dataset = ImageFolder(root=str(root))
+            if self.split == 'train':
+                self.transform = transforms.Compose([
+                    transforms.Resize((self.resolution + 32, self.resolution + 32)),
+                    transforms.RandomCrop((self.resolution, self.resolution)),
+                    transforms.RandomHorizontalFlip(0.5),
+                    transforms.RandomRotation(5),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ])
+            else:
+                self.transform = transforms.Compose([
+                    transforms.Resize((self.resolution, self.resolution)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ])
+            logger.warning(
+                "Using fallback ImageFolder dataset for split=%s at %s (samples=%d)",
+                split,
+                root,
+                len(self.dataset)
+            )
 
     def __len__(self):
+        if self.use_manifest:
+            return len(self.data)
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        if self.use_manifest:
+            row = self.data.iloc[idx]
+            label = float(row['label'])
+            image_path = self.dataset_root / Path(row['image_path'])
+            if not image_path.exists():
+                raise FileNotFoundError(f"Image not found: {image_path}")
+            image = Image.open(image_path).convert('RGB')
+            image_np = np.array(image)
+            if self.split == 'train':
+                tensor = self.augmentation(image_np)
+            else:
+                tensor = self.augmentation(image=image_np)['image']
+            return tensor, torch.tensor(label, dtype=torch.float32)
+
         image, label = self.dataset[idx]
-
-        # Apply spatial-preserving transformations
-        if self.split == 'train':
-            transforms_list = self.augmentation_factory.create_spatial_expert_transforms(
-                resolution=self.resolution,
-                mode='train'
-            )
-        else:
-            transforms_list = self.augmentation_factory.create_spatial_expert_transforms(
-                resolution=self.resolution,
-                mode='val'
-            )
-
-        transform = transforms.Compose(transforms_list)
-        image = transform(image)
-
-        return image, torch.tensor(label, dtype=torch.float32)
+        tensor = self.transform(image)
+        return tensor, torch.tensor(float(label), dtype=torch.float32)
 
     def get_labels(self) -> List[int]:
-        """Get all labels for analysis."""
+        if self.use_manifest:
+            return self.data['label'].astype(int).tolist()
         return [self.dataset[i][1] for i in range(len(self.dataset))]
 
 
 def setup_data_loaders(config: SpatialTrainingConfig) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    """Setup data loaders with multi-resolution support."""
+    """Setup data loaders with manifest support."""
 
     resolution = config.concept_validation['resolution'] if config.mode == 'concept_validation' else 256
+    use_manifest = all([
+        config.train_manifest,
+        config.val_manifest,
+        config.test_manifest,
+    ])
 
-    # Create datasets
+    dataset_root = Path(config.dataset_root)
+    if use_manifest and not dataset_root.exists():
+        raise FileNotFoundError(f"Dataset root not found: {dataset_root}")
+
     train_dataset = SpatialExpertDataset(
-        data_path=config.data_path,
         split='train',
         resolution=resolution,
         augmentation_config=config.augmentation_config,
-        spatial_expert_mode=True
+        manifest_path=config.train_manifest if use_manifest else None,
+        dataset_root=dataset_root if use_manifest else Path(config.data_path),
+        fallback_path=config.data_path
     )
 
     val_dataset = SpatialExpertDataset(
-        data_path=config.data_path,
         split='val',
         resolution=resolution,
         augmentation_config=config.augmentation_config,
-        spatial_expert_mode=True
+        manifest_path=config.val_manifest if use_manifest else None,
+        dataset_root=dataset_root if use_manifest else Path(config.data_path),
+        fallback_path=config.data_path
     )
 
     test_dataset = SpatialExpertDataset(
-        data_path=config.data_path,
         split='test',
         resolution=resolution,
         augmentation_config=config.augmentation_config,
-        spatial_expert_mode=True
+        manifest_path=config.test_manifest if use_manifest else None,
+        dataset_root=dataset_root if use_manifest else Path(config.data_path),
+        fallback_path=config.data_path
     )
 
-    # Create data loaders
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.batch_size,
@@ -424,7 +544,7 @@ def train_epoch(
             criterion.total_epochs = config.epochs
 
     for batch_idx, (images, targets) in enumerate(train_loader):
-        images, targets = images.to(device), targets.to(device)
+        images, targets = images.to(device), targets.to(device).float()
 
         optimizer.zero_grad()
 
@@ -488,7 +608,7 @@ def validate_model(
 
     with torch.no_grad():
         for batch_idx, (images, targets) in enumerate(val_loader):
-            images, targets = images.to(device), targets.to(device)
+            images, targets = images.to(device), targets.to(device).float()
 
             outputs = model(images)
             probabilities = torch.sigmoid(outputs.squeeze())
@@ -639,9 +759,11 @@ def train_spatial_expert(config: SpatialTrainingConfig) -> ExperimentResult:
 
     # Setup metrics calculator and Grad-CAM analyzer
     metrics_calculator = AcademicMetrics(confidence_level=0.95, n_bootstrap=1000)
-    grad_cam_analyzer = GradCAMAnalyzer(
-        save_dir=os.path.join(config.output_dir, "grad_cam_analysis")
-    ) if config.model_config.enable_grad_cam else None
+    grad_cam_analyzer = None
+    if config.model_config.enable_grad_cam and GradCAMAnalyzer is not None:
+        grad_cam_analyzer = GradCAMAnalyzer(
+            save_dir=os.path.join(config.output_dir, "grad_cam_analysis")
+        )
 
     # Training loop
     best_val_auc = 0.0
@@ -766,7 +888,18 @@ def main():
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate')
-    parser.add_argument('--data_path', type=str, default='data', help='Path to dataset')
+    parser.add_argument('--data_path', type=str, default='data', help='Path to legacy ImageFolder dataset (fallback)')
+    parser.add_argument('--dataset_config', type=str, default=None,
+                       help='Dataset configuration JSON for manifest autoloading')
+    parser.add_argument('--manifest_dataset', type=str, default=None,
+                       help='Dataset key inside dataset configuration for manifest autoloading')
+    parser.add_argument('--manifest_mode', type=str, default=None,
+                       choices=['original', 'balanced', 'anonymized', 'anonymized_balanced'],
+                       help='Manifest variant to use when autoloading')
+    parser.add_argument('--train_manifest', type=str, help='Path to training manifest CSV')
+    parser.add_argument('--val_manifest', type=str, help='Path to validation manifest CSV')
+    parser.add_argument('--test_manifest', type=str, help='Path to test manifest CSV')
+    parser.add_argument('--dataset_root', type=str, default='.', help='Root directory for manifest image paths')
     parser.add_argument('--output_dir', type=str, default='experiments/stage_02/spatial',
                        help='Output directory')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
@@ -777,9 +910,26 @@ def main():
     if args.config:
         with open(args.config, 'r') as f:
             config_dict = json.load(f)
-        # Convert config_dict to SpatialTrainingConfig
-        config = SpatialTrainingConfig(**{k: v for k, v in config_dict.items()
-                                         if k in SpatialTrainingConfig.__dataclass_fields__})
+
+        flattened_config = {
+            k: v for k, v in config_dict.items()
+            if k in SpatialTrainingConfig.__dataclass_fields__
+        }
+
+        data_section = config_dict.get('data', {})
+        for key in (
+            'train_manifest',
+            'val_manifest',
+            'test_manifest',
+            'dataset_root',
+            'dataset_config',
+            'manifest_dataset',
+            'manifest_mode',
+        ):
+            if key in data_section:
+                flattened_config[key] = data_section[key]
+
+        config = SpatialTrainingConfig(**flattened_config)
     else:
         config = SpatialTrainingConfig()
 
@@ -789,8 +939,48 @@ def main():
     config.batch_size = args.batch_size
     config.learning_rate = args.learning_rate
     config.data_path = args.data_path
+    config.dataset_config = args.dataset_config or config.dataset_config
+    if args.manifest_dataset:
+        config.manifest_dataset = args.manifest_dataset
+    if args.manifest_mode:
+        config.manifest_mode = args.manifest_mode
+    config.train_manifest = args.train_manifest or config.train_manifest
+    config.val_manifest = args.val_manifest or config.val_manifest
+    config.test_manifest = args.test_manifest or config.test_manifest
+    config.dataset_root = args.dataset_root or config.dataset_root
     config.output_dir = args.output_dir
     config.seed = args.seed
+
+    if not all([config.train_manifest, config.val_manifest, config.test_manifest]):
+        dataset_config_path = Path(config.dataset_config)
+        try:
+            manifests, dataset_root = resolve_manifest_paths(
+                dataset_config_path,
+                config.manifest_dataset,
+                config.manifest_mode,
+            )
+        except FileNotFoundError as exc:
+            logger.warning("Unable to auto-resolve manifests: %s", exc)
+        else:
+            config.train_manifest = config.train_manifest or str(manifests['train'])
+            config.val_manifest = config.val_manifest or str(manifests['val'])
+            config.test_manifest = config.test_manifest or str(manifests['test'])
+            if not config.dataset_root or config.dataset_root == '.':
+                config.dataset_root = str(dataset_root)
+            logger.info(
+                "Resolved manifests from %s for %s (%s mode)",
+                dataset_config_path,
+                config.manifest_dataset,
+                config.manifest_mode,
+            )
+
+    if not all([config.train_manifest, config.val_manifest, config.test_manifest]):
+        data_path = Path(config.data_path)
+        if not data_path.exists():
+            raise FileNotFoundError(
+                "No manifests provided and fallback data path does not exist: "
+                f"{data_path}. Generate manifests via dataset tools or specify --train_manifest/--val_manifest/--test_manifest."
+            )
 
     logger.info(f"Starting Stage 2 spatial expert training with mode: {config.mode}")
 

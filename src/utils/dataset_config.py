@@ -64,7 +64,9 @@ class DatasetConfig:
     - Support for multiple dataset formats
     """
     
-    def __init__(self, config_path: Union[str, Path]):
+    def __init__(self,
+                 config_path: Union[str, Path],
+                 dataset_name: Optional[str] = None):
         """
         Initialize dataset configuration
         
@@ -73,7 +75,19 @@ class DatasetConfig:
         """
         self.config_path = Path(config_path)
         self.config = self._load_config()
-        self.root_path = Path(self.config.get("root_path", "."))
+        self.raw_config = self.config.copy() if isinstance(self.config, dict) else {}
+        self.dataset_name = dataset_name
+        self.dataset_entry = None
+
+        if dataset_name and isinstance(self.config, dict) and 'datasets' in self.config:
+            datasets = self.config.get('datasets', {})
+            if dataset_name not in datasets:
+                raise ValueError(
+                    f"Dataset '{dataset_name}' not found in configuration {self.config_path}"
+                )
+            self.dataset_entry = datasets[dataset_name]
+
+        self.root_path = Path(self.config.get("root_path", self.raw_config.get("root_path", ".")))
         self.metadata = self._parse_metadata()
         self.splits = self._parse_splits()
         
@@ -90,6 +104,25 @@ class DatasetConfig:
     
     def _parse_metadata(self) -> DatasetMeta:
         """Parse dataset metadata from configuration"""
+        if self.dataset_entry:
+            statistics = self.dataset_entry.get("statistics", {})
+            default_settings = self.raw_config.get("default_settings", {})
+            default_size = default_settings.get("image_size", [256, 256])
+            default_format = default_settings.get("image_format", "png")
+
+            return DatasetMeta(
+                name=self.dataset_entry.get("name", self.dataset_name or "unknown"),
+                version=self.raw_config.get("metadata", {}).get("version", "1.0"),
+                description=self.dataset_entry.get("description", ""),
+                total_samples=statistics.get("total_samples", 0),
+                real_samples=statistics.get("real_samples", 0),
+                fake_samples=statistics.get("fake_samples", 0),
+                image_format=self.dataset_entry.get("image_format", default_format),
+                image_size=tuple(self.dataset_entry.get("image_size", default_size)),
+                created_at=self.dataset_entry.get("created_at", ""),
+                updated_at=self.dataset_entry.get("updated_at", "")
+            )
+
         meta_config = self.config.get("metadata", {})
         return DatasetMeta(
             name=meta_config.get("name", "unknown"),
@@ -106,6 +139,27 @@ class DatasetConfig:
     
     def _parse_splits(self) -> Dict[str, DatasetSplit]:
         """Parse data splits from configuration"""
+        if self.dataset_entry:
+            manifests = self.dataset_entry.get("manifests", {})
+            statistics = self.dataset_entry.get("statistics", {})
+            default_split_config = self.raw_config.get("default_settings", {}).get("splits", {})
+            ratio_map = {
+                key.replace('_ratio', ''): value
+                for key, value in default_split_config.items()
+                if key.endswith('_ratio')
+            }
+
+            splits = {}
+            for split_name, manifest_path in manifests.items():
+                splits[split_name] = DatasetSplit(
+                    name=split_name,
+                    ratio=ratio_map.get(split_name, 0.0),
+                    manifest_path=manifest_path,
+                    min_samples=statistics.get(f"{split_name}_samples", 100),
+                    max_samples=None
+                )
+            return splits
+
         splits_config = self.config.get("splits", {})
         splits = {}
         
@@ -130,7 +184,16 @@ class DatasetConfig:
         Returns:
             Absolute path to dataset location
         """
-        base_path = self.root_path / self.config.get("dataset_path", "")
+        if self.dataset_entry:
+            dataset_path = self.dataset_entry.get("dataset_path")
+            if dataset_path:
+                base_path = Path(dataset_path)
+                if not base_path.is_absolute():
+                    base_path = self.root_path / base_path
+            else:
+                base_path = self.root_path
+        else:
+            base_path = self.root_path / self.config.get("dataset_path", "")
         if relative_path:
             return base_path / relative_path
         return base_path
@@ -156,6 +219,18 @@ class DatasetConfig:
             manifest_dir = self.root_path / "manifests"
             manifest_dir.mkdir(exist_ok=True)
             return manifest_dir / f"{self.metadata.name}_{split}.csv"
+
+    def available_splits(self) -> List[str]:
+        """Return list of configured split names."""
+        return list(self.splits.keys())
+
+    def has_manifest(self, split: str) -> bool:
+        """Check whether manifest exists on disk for given split."""
+        try:
+            manifest_path = self.get_manifest_path(split)
+        except ValueError:
+            return False
+        return manifest_path.exists()
     
     def validate_paths(self) -> Tuple[bool, List[str]]:
         """

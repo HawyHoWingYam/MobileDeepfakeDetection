@@ -38,6 +38,9 @@ from torch.utils.data import DataLoader, Dataset
 import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
 import timm
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+from PIL import Image
 
 # AWARE-NET imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -63,6 +66,46 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+MODE_SUFFIXES = {
+    'balanced': '_balanced',
+    'anonymized': '_anonymized',
+    'anonymized_balanced': '_anonymized_balanced'
+}
+
+
+def _apply_dataset_mode(manifest_path: Path, dataset_mode: str) -> Path:
+    """Return manifest path adjusted for the requested dataset mode."""
+    suffix = MODE_SUFFIXES.get(dataset_mode)
+    if not suffix:
+        return manifest_path
+    return manifest_path.with_name(f"{manifest_path.stem}{suffix}{manifest_path.suffix}")
+
+
+def resolve_manifest_paths(
+    config_path: Union[str, Path],
+    dataset_name: str,
+    dataset_mode: str,
+) -> Tuple[Dict[str, Path], Path]:
+    """Resolve manifest paths for the given dataset using DatasetConfig."""
+
+    ds_config = DatasetConfig(config_path, dataset_name=dataset_name)
+    manifests: Dict[str, Path] = {}
+
+    for split in ('train', 'val', 'test'):
+        base_manifest = ds_config.get_manifest_path(split)
+        variant_manifest = _apply_dataset_mode(base_manifest, dataset_mode)
+        selected_manifest = variant_manifest if variant_manifest.exists() else base_manifest
+
+        if not selected_manifest.exists():
+            raise FileNotFoundError(
+                f"Manifest not found for {dataset_name}/{split} ({dataset_mode}): {selected_manifest}"
+            )
+
+        manifests[split] = selected_manifest
+
+    return manifests, ds_config.root_path
 
 @dataclass
 class TrainingConfig:
@@ -92,7 +135,13 @@ class TrainingConfig:
     # Data parameters
     image_size: int = 256
     data_path: str = "data"
-    dataset_config: str = "configs/dataset_paths.json"
+    dataset_config: str = 'configs/datasets.json'
+    manifest_dataset: str = 'celebdf_v2'
+    manifest_mode: str = 'balanced'
+    train_manifest: Optional[str] = None
+    val_manifest: Optional[str] = None
+    test_manifest: Optional[str] = None
+    dataset_root: str = "."
     augmentation: bool = True
 
     # Optimization
@@ -122,10 +171,88 @@ class TrainingConfig:
     logs_dir: str = "logs/stage_01"
 
 
-class Stage1Dataset(Dataset):
-    """
-    Custom dataset for Stage 1 training with contrastive learning support.
-    """
+class Stage1ManifestDataset(Dataset):
+    """Manifest-driven dataset supporting optional dual views for SupCon."""
+
+    def __init__(
+        self,
+        manifest_path: Union[str, Path],
+        root_dir: Union[str, Path],
+        image_size: int = 256,
+        augmentation: bool = True,
+        contrastive_views: bool = False
+    ):
+        self.manifest_path = Path(manifest_path)
+        self.root_dir = Path(root_dir)
+        self.image_size = image_size
+        self.augmentation = augmentation
+        self.contrastive_views = contrastive_views
+
+        if not self.manifest_path.exists():
+            raise FileNotFoundError(f"Manifest not found: {self.manifest_path}")
+
+        self.data = pd.read_csv(self.manifest_path)
+        if 'valid' in self.data.columns:
+            self.data = self.data[self.data['valid'] == True]
+        self.data = self.data.reset_index(drop=True)
+
+        self.transform = self._create_transform(augmentation)
+
+        logger.info(
+            "Manifest dataset loaded: %s | samples=%d | contrastive_views=%s",
+            self.manifest_path,
+            len(self.data),
+            contrastive_views,
+        )
+
+    def _create_transform(self, augmentation: bool) -> A.Compose:
+        if augmentation:
+            return A.Compose([
+                A.RandomResizedCrop(self.image_size, self.image_size, scale=(0.7, 1.0)),
+                A.HorizontalFlip(p=0.5),
+                A.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1, p=0.8),
+                A.ToGray(p=0.2),
+                A.GaussianBlur(blur_limit=(3, 7), p=0.3),
+                A.GaussNoise(var_limit=(5.0, 30.0), p=0.3),
+                A.ImageCompression(quality_lower=70, quality_upper=100, p=0.2),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ToTensorV2(),
+            ])
+        else:
+            return A.Compose([
+                A.Resize(self.image_size, self.image_size),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ToTensorV2(),
+            ])
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __getitem__(self, idx: int):
+        row = self.data.iloc[idx]
+        label = int(row['label'])
+        image_rel_path = Path(row['image_path'])
+        image_path = self.root_dir / image_rel_path
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image not found: {image_path}")
+
+        image = Image.open(image_path).convert('RGB')
+        image_np = np.array(image)
+
+        if self.contrastive_views:
+            view1 = self.transform(image=image_np)['image']
+            view2 = self.transform(image=image_np)['image']
+            return (view1, view2), torch.tensor(label, dtype=torch.long)
+
+        transformed = self.transform(image=image_np)['image']
+        return transformed, torch.tensor(label, dtype=torch.long)
+
+    def get_labels(self) -> List[int]:
+        return self.data['label'].astype(int).tolist()
+
+
+class Stage1ImageFolderDataset(Dataset):
+    """Legacy ImageFolder-based dataset (kept for backward compatibility)."""
 
     def __init__(
         self,
@@ -134,47 +261,32 @@ class Stage1Dataset(Dataset):
         transform: Optional[transforms.Compose] = None,
         contrastive_views: bool = False
     ):
-        """
-        Initialize dataset.
-
-        Args:
-            data_path: Path to dataset
-            split: Data split ('train', 'val', 'test')
-            transform: Image transformations
-            contrastive_views: Whether to return multiple views for contrastive learning
-        """
         self.data_path = Path(data_path)
         self.split = split
         self.transform = transform
         self.contrastive_views = contrastive_views
-
-        # Load dataset
         self.dataset = ImageFolder(root=str(self.data_path / split))
         self.classes = self.dataset.classes
-        self.class_to_idx = self.dataset.class_to_idx
-
-        logger.info(f"Loaded {split} dataset: {len(self.dataset)} samples, "
-                   f"classes: {self.classes}")
+        logger.warning(
+            "Using legacy ImageFolder pipeline for Stage 1 (split=%s, samples=%d).",
+            split,
+            len(self.dataset)
+        )
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx):
         image, label = self.dataset[idx]
-
         if self.transform:
             if self.contrastive_views:
-                # Return two augmented views for contrastive learning
                 view1 = self.transform(image)
                 view2 = self.transform(image)
-                return (view1, view2), label
-            else:
-                image = self.transform(image)
-
-        return image, label
+                return (view1, view2), torch.tensor(label, dtype=torch.long)
+            image = self.transform(image)
+        return image, torch.tensor(label, dtype=torch.long)
 
     def get_labels(self) -> List[int]:
-        """Get all labels for sampler initialization."""
         return [self.dataset[i][1] for i in range(len(self.dataset))]
 
 
@@ -208,31 +320,65 @@ def create_transforms(image_size: int, mode: str = 'train') -> transforms.Compos
 def setup_data_loaders(config: TrainingConfig) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """Setup train, validation, and test data loaders."""
 
-    # Create transforms
-    train_transform = create_transforms(config.image_size, mode='train')
-    val_transform = create_transforms(config.image_size, mode='val')
+    use_manifest = all([
+        config.train_manifest,
+        config.val_manifest,
+        config.test_manifest,
+    ])
 
-    # Create datasets
-    train_dataset = Stage1Dataset(
-        data_path=config.data_path,
-        split='train',
-        transform=train_transform,
-        contrastive_views=(config.mode == 'supcon')
-    )
+    if use_manifest:
+        logger.info("Using manifest-driven pipeline for Stage 1 datasets")
+        train_dataset = Stage1ManifestDataset(
+            manifest_path=config.train_manifest,
+            root_dir=config.dataset_root,
+            image_size=config.image_size,
+            augmentation=True,
+            contrastive_views=(config.mode == 'supcon')
+        )
 
-    val_dataset = Stage1Dataset(
-        data_path=config.data_path,
-        split='val',
-        transform=val_transform,
-        contrastive_views=False
-    )
+        val_dataset = Stage1ManifestDataset(
+            manifest_path=config.val_manifest,
+            root_dir=config.dataset_root,
+            image_size=config.image_size,
+            augmentation=False,
+            contrastive_views=False
+        )
 
-    test_dataset = Stage1Dataset(
-        data_path=config.data_path,
-        split='test',
-        transform=val_transform,
-        contrastive_views=False
-    )
+        test_dataset = Stage1ManifestDataset(
+            manifest_path=config.test_manifest,
+            root_dir=config.dataset_root,
+            image_size=config.image_size,
+            augmentation=False,
+            contrastive_views=False
+        )
+    else:
+        logger.warning(
+            "Manifest paths not provided; falling back to legacy ImageFolder pipeline (data_path=%s)",
+            config.data_path
+        )
+        train_transform = create_transforms(config.image_size, mode='train')
+        val_transform = create_transforms(config.image_size, mode='val')
+
+        train_dataset = Stage1ImageFolderDataset(
+            data_path=config.data_path,
+            split='train',
+            transform=train_transform,
+            contrastive_views=(config.mode == 'supcon')
+        )
+
+        val_dataset = Stage1ImageFolderDataset(
+            data_path=config.data_path,
+            split='val',
+            transform=val_transform,
+            contrastive_views=False
+        )
+
+        test_dataset = Stage1ImageFolderDataset(
+            data_path=config.data_path,
+            split='test',
+            transform=val_transform,
+            contrastive_views=False
+        )
 
     # Create balanced sampler for training
     train_labels = train_dataset.get_labels()
@@ -859,6 +1005,18 @@ def main():
     parser.add_argument('--quick_validation', action='store_true',
                        help='Quick 10-epoch validation mode')
     parser.add_argument('--data_path', type=str, default='data', help='Path to dataset')
+    parser.add_argument('--dataset_config', type=str, default=None,
+                       help='Dataset configuration JSON for manifest autoloading')
+    parser.add_argument('--manifest_dataset', type=str, default=None,
+                       help='Dataset key inside dataset configuration for manifest autoloading')
+    parser.add_argument('--manifest_mode', type=str, default=None,
+                       choices=['original', 'balanced', 'anonymized', 'anonymized_balanced'],
+                       help='Manifest variant to use when autoloading')
+    parser.add_argument('--train_manifest', type=str, help='Path to training manifest CSV')
+    parser.add_argument('--val_manifest', type=str, help='Path to validation manifest CSV')
+    parser.add_argument('--test_manifest', type=str, help='Path to test manifest CSV')
+    parser.add_argument('--dataset_root', type=str, default='.',
+                       help='Root directory for manifest-based datasets')
     parser.add_argument('--output_dir', type=str, default='experiments/stage_01',
                        help='Output directory')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
@@ -880,8 +1038,40 @@ def main():
     config.learning_rate = args.learning_rate
     config.quick_validation = args.quick_validation
     config.data_path = args.data_path
+    config.train_manifest = args.train_manifest or config.train_manifest
+    config.val_manifest = args.val_manifest or config.val_manifest
+    config.test_manifest = args.test_manifest or config.test_manifest
+    config.dataset_config = args.dataset_config or config.dataset_config
+    if args.manifest_dataset:
+        config.manifest_dataset = args.manifest_dataset
+    if args.manifest_mode:
+        config.manifest_mode = args.manifest_mode
+    config.dataset_root = args.dataset_root or config.dataset_root
     config.output_dir = args.output_dir
     config.seed = args.seed
+
+    if not all([config.train_manifest, config.val_manifest, config.test_manifest]):
+        dataset_config_path = Path(config.dataset_config)
+        try:
+            manifests, dataset_root = resolve_manifest_paths(
+                dataset_config_path,
+                config.manifest_dataset,
+                config.manifest_mode,
+            )
+        except FileNotFoundError as exc:
+            logger.warning("Unable to auto-resolve manifests: %s", exc)
+        else:
+            config.train_manifest = config.train_manifest or str(manifests['train'])
+            config.val_manifest = config.val_manifest or str(manifests['val'])
+            config.test_manifest = config.test_manifest or str(manifests['test'])
+            if not config.dataset_root or config.dataset_root == '.':
+                config.dataset_root = str(dataset_root)
+            logger.info(
+                "Resolved manifests from %s for %s (%s mode)",
+                dataset_config_path,
+                config.manifest_dataset,
+                config.manifest_mode,
+            )
 
     logger.info(f"Starting Stage 1 training with config: {config}")
 

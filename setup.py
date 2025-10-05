@@ -246,9 +246,9 @@ class AwareNetMasterSetup:
         print("=" * 50)
         
         # Check configuration
-        config_path = self.project_root / "configs" / "dataset_paths.json"
+        config_path = self.project_root / "configs" / "datasets.json"
         if not config_path.exists():
-            print("❌ Configuration file not found: configs/dataset_paths.json")
+            print("❌ Configuration file not found: configs/datasets.json")
             return False
         
         # Load configuration
@@ -524,8 +524,8 @@ class AwareNetMasterSetup:
             'src/stage_00/train_baseline.py',
             'src/stage_00/dataset.py',
             'src/stage_00/baseline_model.py',
-            'configs/dataset_paths.json',
-            'configs/training_config.json',
+            'configs/datasets.json',
+            'configs/training.json',
             'train.py'
         ]
         

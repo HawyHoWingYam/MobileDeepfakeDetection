@@ -4,6 +4,7 @@ PyTorch dataset class for CelebDF-v2 with preprocessing
 """
 
 import os
+import logging
 import cv2
 import pandas as pd
 import numpy as np
@@ -16,6 +17,9 @@ import torchvision.transforms as transforms
 from PIL import Image
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+
+
+logger = logging.getLogger(__name__)
 
 class CelebDFDataset(Dataset):
     """
@@ -54,6 +58,9 @@ class CelebDFDataset(Dataset):
         self.path_leakage_check = path_leakage_check
         self.normalize = normalize
         
+        if not self.manifest_path.exists():
+            raise FileNotFoundError(f"Manifest file not found: {self.manifest_path}")
+
         # Load manifest
         self.df = pd.read_csv(self.manifest_path)
 
@@ -64,9 +71,13 @@ class CelebDFDataset(Dataset):
         # Filter valid samples
         self.df = self.df[self.df.get('valid', True) == True]
         
-        print(f"Loaded {len(self.df)} samples from {self.manifest_path}")
-        print(f"Real samples: {(self.df['label'] == 0).sum()}")
-        print(f"Fake samples: {(self.df['label'] == 1).sum()}")
+        logger.info(
+            "Loaded manifest %s: total=%d real=%d fake=%d",
+            self.manifest_path,
+            len(self.df),
+            (self.df['label'] == 0).sum(),
+            (self.df['label'] == 1).sum()
+        )
         
         # Setup transforms
         self._setup_transforms()
@@ -88,14 +99,15 @@ class CelebDFDataset(Dataset):
                     break
 
         if potential_leakage:
-            print(f"⚠️  WARNING: Potential path leakage detected in {len(potential_leakage)} samples!")
-            print("Examples:")
+            logger.warning(
+                "Potential path leakage detected in %d samples. This may inflate metrics.",
+                len(potential_leakage)
+            )
             for path, indicator, label in potential_leakage[:5]:
-                print(f"  Path: {path} (contains '{indicator}', label: {label})")
-            print(f"This may lead to artificially high performance (AUC > 0.95)")
-            print(f"Consider using anonymized manifests to prevent leakage")
+                logger.warning("Example leakage: %s (contains '%s', label=%s)", path, indicator, label)
+            logger.warning("Consider using anonymized manifests to prevent leakage")
         else:
-            print(f"✅ Path leakage check passed - no obvious indicators found")
+            logger.info("Path leakage check passed for %s", self.manifest_path)
 
     def _setup_transforms(self):
         """Setup image transforms using albumentations"""
@@ -182,7 +194,7 @@ class CelebDFDataset(Dataset):
             return image_tensor, label_tensor
             
         except Exception as e:
-            print(f"Error loading image {image_path}: {str(e)}")
+            logger.error("Error loading image %s: %s", image_path, e)
             # Return a blank image and label
             blank_image = torch.zeros(3, self.image_size, self.image_size)
             return blank_image, torch.tensor(0, dtype=torch.float)
@@ -232,6 +244,7 @@ class CelebDFDataset(Dataset):
         }
 
 def create_data_loaders(config_path: str,
+                       dataset_name: str = 'celebdf_v2',
                        batch_size: int = 32,
                        num_workers: int = 4,
                        pin_memory: bool = True) -> Tuple[DataLoader, DataLoader, DataLoader]:
@@ -254,17 +267,21 @@ def create_data_loaders(config_path: str,
     from utils.dataset_config import DatasetConfig
     
     # Load configuration
-    config = DatasetConfig(config_path)
+    config = DatasetConfig(config_path, dataset_name=dataset_name)
     
-    # Get manifest paths
+    # Get manifest paths and validate
     train_manifest = config.get_manifest_path('train')
     val_manifest = config.get_manifest_path('val')
     test_manifest = config.get_manifest_path('test')
-    
-    print(f"Loading datasets from:")
-    print(f"  Train: {train_manifest}")
-    print(f"  Val: {val_manifest}")
-    print(f"  Test: {test_manifest}")
+
+    for manifest in (train_manifest, val_manifest, test_manifest):
+        if not manifest.exists():
+            raise FileNotFoundError(f"Manifest file missing: {manifest}")
+
+    logger.info("Loading dataset %s from %s", dataset_name, config_path)
+    logger.info("  Train manifest: %s", train_manifest)
+    logger.info("  Val manifest: %s", val_manifest)
+    logger.info("  Test manifest: %s", test_manifest)
     
     # Create datasets
     train_dataset = CelebDFDataset(
@@ -319,45 +336,52 @@ def create_data_loaders(config_path: str,
         drop_last=False
     )
     
-    # Print dataset information
-    print("\\nDataset Information:")
+    logger.info("Dataset information:")
     for name, dataset in [('Train', train_dataset), ('Val', val_dataset), ('Test', test_dataset)]:
         info = dataset.get_dataset_info()
-        print(f"{name}: {info['total_samples']} samples ({info['real_samples']} real, {info['fake_samples']} fake)")
-        print(f"  Balance ratio: {info['balance_ratio']:.3f}")
+        logger.info(
+            "%s → total=%d real=%d fake=%d balance=%.3f",
+            name,
+            info['total_samples'],
+            info['real_samples'],
+            info['fake_samples'],
+            info['balance_ratio']
+        )
     
     return train_loader, val_loader, test_loader
 
 def test_dataset_loading():
-    """Test dataset loading functionality"""
-    print("Testing CelebDF Dataset Loading...")
-    
-    # Test with a small sample
-    config_path = "configs/dataset_paths.json"
-    
+    """Test dataset loading functionality."""
+    logger.info("Testing CelebDF dataset loading with manifest configuration")
+
+    config_path = "configs/datasets.json"
+
     try:
         train_loader, val_loader, test_loader = create_data_loaders(
             config_path=config_path,
+            dataset_name='celebdf_v2',
             batch_size=4,
             num_workers=0  # Use 0 for testing to avoid multiprocessing issues
         )
-        
-        print("\\nTesting data loading...")
-        
-        # Test one batch from each loader
+
+        logger.info("Testing data loader batches")
         for name, loader in [('Train', train_loader), ('Val', val_loader), ('Test', test_loader)]:
             batch_images, batch_labels = next(iter(loader))
-            print(f"{name} batch:")
-            print(f"  Images shape: {batch_images.shape}")
-            print(f"  Labels shape: {batch_labels.shape}")
-            print(f"  Image range: [{batch_images.min():.3f}, {batch_images.max():.3f}]")
-            print(f"  Labels: {batch_labels.tolist()}")
-        
-        print("\\nDataset loading test completed successfully!")
+            logger.info(
+                "%s batch → shape=%s labels_shape=%s range=[%.3f, %.3f] labels=%s",
+                name,
+                tuple(batch_images.shape),
+                tuple(batch_labels.shape),
+                batch_images.min().item(),
+                batch_images.max().item(),
+                batch_labels.tolist(),
+            )
+
+        logger.info("Dataset loading smoke test completed successfully")
         return True
-        
-    except Exception as e:
-        print(f"Dataset loading test failed: {str(e)}")
+
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Dataset loading test failed: %s", exc)
         import traceback
         traceback.print_exc()
         return False

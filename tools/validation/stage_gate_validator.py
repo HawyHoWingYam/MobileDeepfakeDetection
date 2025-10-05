@@ -570,9 +570,8 @@ class StageGateValidator:
         config_count = 0
 
         config_files = [
-            "configs/dataset_paths.json",
-            "configs/training_config.json",
-            "configs/unified_dataset_config.json"
+            "configs/datasets.json",
+            "configs/training.json",
         ]
 
         for config_file in config_files:

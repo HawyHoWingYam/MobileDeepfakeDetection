@@ -37,6 +37,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+from PIL import Image
 from torch.cuda.amp import GradScaler, autocast
 
 # AWARE-NET imports
@@ -47,28 +50,46 @@ from utils.calibration_tools import CalibrationAnalyzer, TemperatureScalingResul
 from utils.dataset_config import DatasetConfig
 
 # Stage 2 specific imports
-from genconvit_expert import (
-    GenConViTExpert, GenConViTConfig, GenConViTVariant, ReconstructionMetric
-)
-from enhanced_genconvit import (
-    EnhancedGenConViT, GenConViTConfig as EnhancedConfig,
-    FusionStrategy, ReconstructionMode, DualVariantConfig
-)
-from reconstruction_analysis import (
-    ReconstructionQualityMetrics, ReconstructionConfig,
-    PerceptualLossCalculator, ReconstructionAnalyzer
-)
-from multi_resolution_dataloader import (
-    MultiResolutionDataLoader, DataLoaderConfig,
-    ResolutionSampler, ValidationMetrics
-)
-from data_augmentation import (
-    AugmentationFactory, AugmentationConfig,
-    CompressionSimulation
-)
-from training_monitor import (
-    TrainingMonitor, MonitoringConfig, SystemMetrics, TrainingMetrics
-)
+try:
+    from .genconvit_expert import (
+        GenConViTExpert, GenConViTConfig, GenConViTVariant, ReconstructionMetric
+    )
+    from .enhanced_genconvit import (
+        EnhancedGenConViT, GenConViTConfig as EnhancedConfig,
+        FusionStrategy, ReconstructionMode, DualVariantConfig
+    )
+    from .reconstruction_analysis import (
+        ReconstructionQualityMetrics, ReconstructionConfig,
+        ReconstructionAnalyzer
+    )
+    from .multi_resolution_dataloader import DataLoaderConfig
+    from .data_augmentation import (
+        AugmentationFactory, AugmentationConfig,
+        CompressionSimulation
+    )
+    from .training_monitor import (
+        TrainingMonitor, MonitoringConfig, SystemMetrics, TrainingMetrics
+    )
+except ImportError:  # pragma: no cover - script fallback
+    from genconvit_expert import (
+        GenConViTExpert, GenConViTConfig, GenConViTVariant, ReconstructionMetric
+    )
+    from enhanced_genconvit import (
+        EnhancedGenConViT, GenConViTConfig as EnhancedConfig,
+        FusionStrategy, ReconstructionMode, DualVariantConfig
+    )
+    from reconstruction_analysis import (
+        ReconstructionQualityMetrics, ReconstructionConfig,
+        ReconstructionAnalyzer
+    )
+    from multi_resolution_dataloader import DataLoaderConfig
+    from data_augmentation import (
+        AugmentationFactory, AugmentationConfig,
+        CompressionSimulation
+    )
+    from training_monitor import (
+        TrainingMonitor, MonitoringConfig, SystemMetrics, TrainingMetrics
+    )
 
 # Configure logging
 logging.basicConfig(
@@ -80,6 +101,52 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+MODE_SUFFIXES = {
+    'balanced': '_balanced',
+    'anonymized': '_anonymized',
+    'anonymized_balanced': '_anonymized_balanced'
+}
+
+
+def _apply_dataset_mode(manifest_path: Path, dataset_mode: str) -> Path:
+    """Return manifest path adjusted for the requested dataset mode."""
+    suffix = MODE_SUFFIXES.get(dataset_mode)
+    if not suffix:
+        return manifest_path
+    return manifest_path.with_name(f"{manifest_path.stem}{suffix}{manifest_path.suffix}")
+
+
+def resolve_manifest_paths(
+    config_path: Union[str, Path],
+    dataset_name: str,
+    dataset_mode: str,
+) -> Tuple[Dict[str, Path], Path]:
+    """Resolve manifest paths for GenConViT datasets."""
+
+    ds_config = DatasetConfig(config_path, dataset_name=dataset_name)
+    manifests: Dict[str, Path] = {}
+
+    for split in ('train', 'val', 'test'):
+        base_manifest = ds_config.get_manifest_path(split)
+        variant_manifest = _apply_dataset_mode(base_manifest, dataset_mode)
+        selected_manifest = variant_manifest if variant_manifest.exists() else base_manifest
+
+        if not selected_manifest.exists():
+            raise FileNotFoundError(
+                f"Manifest not found for {dataset_name}/{split} ({dataset_mode}): {selected_manifest}"
+            )
+
+        manifests[split] = selected_manifest
+
+    return manifests, ds_config.root_path
+
+
+def prepare_classification_targets(loss_module: nn.Module, targets: torch.Tensor) -> torch.Tensor:
+    """Cast targets to the appropriate dtype for the given loss module."""
+    if isinstance(loss_module, nn.CrossEntropyLoss):
+        return targets.long()
+    return targets.float()
 
 @dataclass
 class GenConViTTrainingConfig:
@@ -121,6 +188,9 @@ class GenConViTTrainingConfig:
     data_loader_config: DataLoaderConfig = None
     augmentation_config: AugmentationConfig = None
     reconstruction_config: ReconstructionConfig = None
+    dataset_config: str = 'configs/datasets.json'
+    manifest_dataset: str = 'celebdf_v2'
+    manifest_mode: str = 'balanced'
 
     # Monitoring configuration
     monitoring_config: MonitoringConfig = None
@@ -136,6 +206,10 @@ class GenConViTTrainingConfig:
     weights_dir: str = "models/stage_02/genconvit"
     logs_dir: str = "logs/stage_02/genconvit"
     config_path: str = "configs/genconvit_expert_config.json"
+    train_manifest: Optional[str] = None
+    val_manifest: Optional[str] = None
+    test_manifest: Optional[str] = None
+    dataset_root: str = "."
 
     # Performance targets
     target_auc: float = 0.90
@@ -282,107 +356,166 @@ class ReconstructionLoss(nn.Module):
 
 
 class GenConViTDataset(torch.utils.data.Dataset):
-    """
-    Specialized dataset for GenConViT training with reconstruction support.
-    """
+    """Dataset with manifest support for GenConViT training."""
 
     def __init__(
         self,
-        data_path: str,
-        split: str = 'train',
-        resolution: int = 256,
-        augmentation_config: AugmentationConfig = None,
-        return_reconstruction_target: bool = True
+        split: str,
+        resolution: int,
+        augmentation_config: AugmentationConfig,
+        return_reconstruction_target: bool,
+        manifest_path: Optional[str] = None,
+        dataset_root: str = ".",
+        fallback_path: Optional[str] = None
     ):
-        """
-        Initialize GenConViT dataset.
-
-        Args:
-            data_path: Path to dataset
-            split: Data split ('train', 'val', 'test')
-            resolution: Target image resolution
-            augmentation_config: Augmentation configuration
-            return_reconstruction_target: Whether to return reconstruction target
-        """
-        self.data_path = Path(data_path)
         self.split = split
         self.resolution = resolution
         self.return_reconstruction_target = return_reconstruction_target
+        self.manifest_path = Path(manifest_path) if manifest_path else None
+        self.dataset_root = Path(dataset_root)
+        self.augmentation_config = augmentation_config or AugmentationConfig(generative_expert_mode=True)
 
-        # Initialize augmentation factory
-        if augmentation_config is None:
-            augmentation_config = AugmentationConfig(generative_expert_mode=True)
+        if self.manifest_path and self.manifest_path.exists():
+            if not self.dataset_root.exists():
+                raise FileNotFoundError(f"Dataset root not found: {self.dataset_root}")
+            self.use_manifest = True
+            self.data = pd.read_csv(self.manifest_path)
+            if 'valid' in self.data.columns:
+                self.data = self.data[self.data['valid'] == True]
+            self.data = self.data.reset_index(drop=True)
+            if self.data.empty:
+                raise ValueError(f"Manifest {self.manifest_path} contains no valid samples")
 
-        self.augmentation_factory = AugmentationFactory(augmentation_config)
+            if self.split == 'train':
+                self.augmentation = AugmentationFactory.create_augmentation(
+                    "generative",
+                    **self.augmentation_config.__dict__
+                )
+            else:
+                self.augmentation = A.Compose([
+                    A.Resize(self.resolution, self.resolution),
+                    A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                    ToTensorV2(),
+                ])
 
-        # Load dataset
-        from torchvision.datasets import ImageFolder
-        self.dataset = ImageFolder(root=str(self.data_path / split))
-
-        logger.info(f"Loaded {split} dataset: {len(self.dataset)} samples at {resolution}x{resolution}")
+            logger.info(
+                "Loaded GenConViT manifest dataset (%s): samples=%d",
+                self.manifest_path,
+                len(self.data)
+            )
+        else:
+            if not fallback_path:
+                raise FileNotFoundError(
+                    f"Manifest not provided for split={split}; specify fallback_path or manifest."
+                )
+            self.use_manifest = False
+            from torchvision.datasets import ImageFolder
+            fallback_root = Path(fallback_path)
+            if not fallback_root.exists():
+                raise FileNotFoundError(f"Fallback path not found: {fallback_root}")
+            root = fallback_root / split
+            if not root.exists():
+                raise FileNotFoundError(f"Fallback split path not found: {root}")
+            self.dataset = ImageFolder(root=str(root))
+            if self.split == 'train':
+                self.transform = transforms.Compose([
+                    transforms.Resize((self.resolution + 32, self.resolution + 32)),
+                    transforms.RandomCrop((self.resolution, self.resolution)),
+                    transforms.RandomHorizontalFlip(0.5),
+                    transforms.RandomRotation(10),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ])
+            else:
+                self.transform = transforms.Compose([
+                    transforms.Resize((self.resolution, self.resolution)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                ])
+            logger.warning(
+                "Using fallback ImageFolder dataset for split=%s at %s (samples=%d)",
+                split,
+                root,
+                len(self.dataset)
+            )
 
     def __len__(self):
+        if self.use_manifest:
+            return len(self.data)
         return len(self.dataset)
 
     def __getitem__(self, idx):
+        if self.use_manifest:
+            row = self.data.iloc[idx]
+            label = float(row['label'])
+            image_path = self.dataset_root / Path(row['image_path'])
+            if not image_path.exists():
+                raise FileNotFoundError(f"Image not found: {image_path}")
+            image = Image.open(image_path).convert('RGB')
+            image_np = np.array(image)
+            if self.split == 'train':
+                processed = self.augmentation(image_np)
+            else:
+                processed = self.augmentation(image=image_np)['image']
+            if self.return_reconstruction_target:
+                return processed, processed.clone(), torch.tensor(label, dtype=torch.float32)
+            return processed, torch.tensor(label, dtype=torch.float32)
+
         image, label = self.dataset[idx]
-
-        # Apply generative-preserving transformations
-        if self.split == 'train':
-            transforms_list = self.augmentation_factory.create_generative_expert_transforms(
-                resolution=self.resolution,
-                mode='train'
-            )
-        else:
-            transforms_list = self.augmentation_factory.create_generative_expert_transforms(
-                resolution=self.resolution,
-                mode='val'
-            )
-
-        transform = transforms.Compose(transforms_list)
-        processed_image = transform(image)
-
+        processed_image = self.transform(image)
         if self.return_reconstruction_target:
-            # Return both input and target for reconstruction
-            # For training, we use the same image as target (autoencoder setup)
-            return processed_image, processed_image, torch.tensor(label, dtype=torch.float32)
-        else:
-            return processed_image, torch.tensor(label, dtype=torch.float32)
+            return processed_image, processed_image.clone(), torch.tensor(float(label), dtype=torch.float32)
+        return processed_image, torch.tensor(float(label), dtype=torch.float32)
 
     def get_labels(self) -> List[int]:
-        """Get all labels for analysis."""
+        if self.use_manifest:
+            return self.data['label'].astype(int).tolist()
         return [self.dataset[i][1] for i in range(len(self.dataset))]
 
 
 def setup_data_loaders(config: GenConViTTrainingConfig) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """Setup data loaders for GenConViT training."""
 
-    # Create datasets
+    use_manifest = all([
+        config.train_manifest,
+        config.val_manifest,
+        config.test_manifest,
+    ])
+
+    dataset_root = Path(config.dataset_root)
+    if use_manifest and not dataset_root.exists():
+        raise FileNotFoundError(f"Dataset root not found: {dataset_root}")
+
     train_dataset = GenConViTDataset(
-        data_path=config.data_path,
         split='train',
         resolution=256,
         augmentation_config=config.augmentation_config,
-        return_reconstruction_target=True
+        return_reconstruction_target=True,
+        manifest_path=config.train_manifest if use_manifest else None,
+        dataset_root=dataset_root if use_manifest else Path(config.data_path),
+        fallback_path=config.data_path
     )
 
     val_dataset = GenConViTDataset(
-        data_path=config.data_path,
         split='val',
         resolution=256,
         augmentation_config=config.augmentation_config,
-        return_reconstruction_target=True
+        return_reconstruction_target=True,
+        manifest_path=config.val_manifest if use_manifest else None,
+        dataset_root=dataset_root if use_manifest else Path(config.data_path),
+        fallback_path=config.data_path
     )
 
     test_dataset = GenConViTDataset(
-        data_path=config.data_path,
         split='test',
         resolution=256,
         augmentation_config=config.augmentation_config,
-        return_reconstruction_target=True
+        return_reconstruction_target=True,
+        manifest_path=config.test_manifest if use_manifest else None,
+        dataset_root=dataset_root if use_manifest else Path(config.data_path),
+        fallback_path=config.data_path
     )
 
-    # Create data loaders
     train_loader = DataLoader(
         train_dataset,
         batch_size=config.batch_size,
@@ -561,6 +694,7 @@ def train_epoch(
         images = images.to(device)
         targets_recon = targets_recon.to(device)
         targets_class = targets_class.to(device)
+        targets_class_prepared = prepare_classification_targets(classification_loss, targets_class)
 
         optimizer.zero_grad()
 
@@ -587,12 +721,12 @@ def train_epoch(
 
                 elif stage == 'classification_finetuning':
                     # Focus on classification
-                    class_loss = classification_loss(classification_logits.squeeze(), targets_class)
+                    class_loss = classification_loss(classification_logits.squeeze(), targets_class_prepared)
                     loss = class_loss
                     recon_loss = torch.tensor(0.0, device=device)
 
                 else:  # joint training
-                    class_loss = classification_loss(classification_logits.squeeze(), targets_class)
+                    class_loss = classification_loss(classification_logits.squeeze(), targets_class_prepared)
                     recon_loss, recon_details = reconstruction_loss(reconstructed, targets_recon)
 
                     loss = (classification_weight * class_loss +
@@ -630,11 +764,11 @@ def train_epoch(
                 loss = recon_loss
                 class_loss = torch.tensor(0.0, device=device)
             elif stage == 'classification_finetuning':
-                class_loss = classification_loss(classification_logits.squeeze(), targets_class)
+                class_loss = classification_loss(classification_logits.squeeze(), targets_class_prepared)
                 loss = class_loss
                 recon_loss = torch.tensor(0.0, device=device)
             else:
-                class_loss = classification_loss(classification_logits.squeeze(), targets_class)
+                class_loss = classification_loss(classification_logits.squeeze(), targets_class_prepared)
                 recon_loss, recon_details = reconstruction_loss(reconstructed, targets_recon)
                 loss = (classification_weight * class_loss +
                        reconstruction_weight * recon_loss)
@@ -993,7 +1127,18 @@ def main():
     parser.add_argument('--epochs', type=int, default=50, help='Number of epochs')
     parser.add_argument('--batch_size', type=int, default=24, help='Batch size')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate')
-    parser.add_argument('--data_path', type=str, default='data', help='Path to dataset')
+    parser.add_argument('--data_path', type=str, default='data', help='Path to legacy ImageFolder dataset (fallback)')
+    parser.add_argument('--dataset_config', type=str, default=None,
+                       help='Dataset configuration JSON for manifest autoloading')
+    parser.add_argument('--manifest_dataset', type=str, default=None,
+                       help='Dataset key inside dataset configuration for manifest autoloading')
+    parser.add_argument('--manifest_mode', type=str, default=None,
+                       choices=['original', 'balanced', 'anonymized', 'anonymized_balanced'],
+                       help='Manifest variant to use when autoloading')
+    parser.add_argument('--train_manifest', type=str, help='Path to training manifest CSV')
+    parser.add_argument('--val_manifest', type=str, help='Path to validation manifest CSV')
+    parser.add_argument('--test_manifest', type=str, help='Path to test manifest CSV')
+    parser.add_argument('--dataset_root', type=str, default='.', help='Root directory for manifest image paths')
     parser.add_argument('--output_dir', type=str, default='experiments/stage_02/genconvit',
                        help='Output directory')
     parser.add_argument('--checkpoint_path', type=str, help='Path to checkpoint for evaluation')
@@ -1005,8 +1150,26 @@ def main():
     if args.config:
         with open(args.config, 'r') as f:
             config_dict = json.load(f)
-        config = GenConViTTrainingConfig(**{k: v for k, v in config_dict.items()
-                                           if k in GenConViTTrainingConfig.__dataclass_fields__})
+
+        flattened_config = {
+            k: v for k, v in config_dict.items()
+            if k in GenConViTTrainingConfig.__dataclass_fields__
+        }
+
+        data_section = config_dict.get('data', {})
+        for key in (
+            'train_manifest',
+            'val_manifest',
+            'test_manifest',
+            'dataset_root',
+            'dataset_config',
+            'manifest_dataset',
+            'manifest_mode',
+        ):
+            if key in data_section:
+                flattened_config[key] = data_section[key]
+
+        config = GenConViTTrainingConfig(**flattened_config)
     else:
         config = GenConViTTrainingConfig()
 
@@ -1017,8 +1180,48 @@ def main():
     config.batch_size = args.batch_size
     config.learning_rate = args.learning_rate
     config.data_path = args.data_path
+    config.dataset_config = args.dataset_config or config.dataset_config
+    if args.manifest_dataset:
+        config.manifest_dataset = args.manifest_dataset
+    if args.manifest_mode:
+        config.manifest_mode = args.manifest_mode
+    config.train_manifest = args.train_manifest or config.train_manifest
+    config.val_manifest = args.val_manifest or config.val_manifest
+    config.test_manifest = args.test_manifest or config.test_manifest
+    config.dataset_root = args.dataset_root or config.dataset_root
     config.output_dir = args.output_dir
     config.seed = args.seed
+
+    if not all([config.train_manifest, config.val_manifest, config.test_manifest]):
+        dataset_config_path = Path(config.dataset_config)
+        try:
+            manifests, dataset_root = resolve_manifest_paths(
+                dataset_config_path,
+                config.manifest_dataset,
+                config.manifest_mode,
+            )
+        except FileNotFoundError as exc:
+            logger.warning("Unable to auto-resolve manifests: %s", exc)
+        else:
+            config.train_manifest = config.train_manifest or str(manifests['train'])
+            config.val_manifest = config.val_manifest or str(manifests['val'])
+            config.test_manifest = config.test_manifest or str(manifests['test'])
+            if not config.dataset_root or config.dataset_root == '.':
+                config.dataset_root = str(dataset_root)
+            logger.info(
+                "Resolved manifests from %s for %s (%s mode)",
+                dataset_config_path,
+                config.manifest_dataset,
+                config.manifest_mode,
+            )
+
+    if not all([config.train_manifest, config.val_manifest, config.test_manifest]):
+        data_path = Path(config.data_path)
+        if not data_path.exists():
+            raise FileNotFoundError(
+                "No manifests provided and fallback data path does not exist: "
+                f"{data_path}. Generate manifests or specify manifest paths explicitly."
+            )
 
     if args.checkpoint_path:
         config.pretrained_weights = args.checkpoint_path

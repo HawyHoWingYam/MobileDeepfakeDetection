@@ -1,18 +1,18 @@
 # AWARE-NET Stage 00 完成报告
 
 Generated: 2025-10-04
-Status: ✅ **95% COMPLETE - Stage 00 基础设施与Baseline建立基本完成**
+Status: ⚠️ **PENDING - 需重建 LODO Config 3 与 DFDC baseline（experiments 已清空）**
 
 ---
 
 ## 📋 **执行摘要**
 
-**Stage 00已基本完成**，成功建立了坚实的基础设施，完成了BCE baseline训练和LODO评估，并通过诊断发现了关键问题，为Stage 01的SupCon验证提供了理论依据。
+**Stage 00已搭建核心基础设施**，但近期清空 `experiments/` 后，LODO Config 3 的训练日志与 checkpoint 均需重跑，同时 DFDC 尚未纳入 baseline 体系。当前阶段主要任务从“总结”转为“恢复基线 + 扩展数据集”。
 
 ### **核心成就**
 - ✅ 完整的基础设施和工具链
-- ✅ 多数据集训练框架（3个LODO配置）
-- ✅ BCE baseline训练完成
+- ✅ 多数据集训练框架（CelebDF/FF++/DeeperForensics）
+- ⏳ BCE baseline训练（需重跑 Config 3 / DFDC）
 - ✅ 关键诊断：发现BCE只学shortcuts，无法OOD泛化
 - ✅ Loss函数策略分析完成，为项目指明方向
 
@@ -56,11 +56,11 @@ Status: ✅ **95% COMPLETE - Stage 00 基础设施与Baseline建立基本完成*
 - ✅ 多数据集训练完成（1.13M samples）
 - ✅ In-distribution性能优秀（Val AUC 0.99+）
 
-### **6. LODO评估框架** ✅
+### **6. LODO评估框架** ⚠️
 - ✅ LODO Config 1: CelebDF+FF++ → DF (AUC 0.6584)
 - ✅ LODO Config 2: CelebDF+DF → FF++ (AUC 0.5734, 负迁移!)
-- ✅ LODO Config 3: FF++DF → CelebDF (进行中)
-- ✅ OOD泛化系统性失败的证据
+- ❌ LODO Config 3: FF++DF → CelebDF（checkpoint 已遗失，需重训）
+- ⚠️ OOD 泛化失败证据需在重训后重新汇总
 
 ### **7. BCE Baseline诊断** ✅ (NEW - 2025-10-04)
 - ✅ 发现BCE训练vs预训练OOD性能相同（0.654 vs 0.652-0.658）
@@ -84,7 +84,7 @@ Status: ✅ **95% COMPLETE - Stage 00 基础设施与Baseline建立基本完成*
 | **1 (无增强)** | CelebDF+FF++ | DF | 0.6518 | 53.21% | 0.1237 | ✅ 完成 |
 | **1 (有增强)** | CelebDF+FF++ | DF | 0.6584 | 56.36% | 0.2523 | ✅ 完成 |
 | **2** | CelebDF+DF | FF++ | **0.5734** | **49.79%** | 0.2770 | ✅ 完成 |
-| **3** | FF++DF | CelebDF | 待定 | 待定 | 待定 | 🔄 进行中 |
+| **3** | FF++DF | CelebDF | 待重跑 | 待重跑 | 待重跑 | ⛔ checkpoint 遗失 |
 
 ### 关键发现
 - ❌ 平均OOD AUC ~0.60（仅比随机0.5好10%）
@@ -141,22 +141,20 @@ Status: ✅ **95% COMPLETE - Stage 00 基础设施与Baseline建立基本完成*
 
 ## 📊 **Stage-Gate验证状态**
 
-### **Technical Gates** ✅
+### **Technical Gates** ⚠️
 - [x] 环境可重现性：95%+成功率
-- [x] 数据管理完整性：支持3+数据集
-- [x] 代码品质：核心函数单元测试100%
-- [x] BCE baseline性能：In-dist AUC 0.99+（OOD失败但预期）
+- [x] 数据管理完整性：支持3+数据集 manifest
+- [ ] BCE baseline性能：需重训 Config 3，并新增 DFDC 基线
+- [ ] 多数据集 OOD 证据：待重训后重新校验
 
-### **Academic Gates** ✅
-- [x] 可重现性：所有实验结果可复现
-- [x] 统计严谨性：Bootstrap CI, 显著性检验完整
-- [x] 文档完整性：每个模块有理论背景
-- [x] **诊断价值**：BCE失败验证了SupCon必要性 ⭐
+### **Academic Gates** ⚠️
+- [x] 诊断方法论（BCE → SupCon）仍成立
+- [ ] 可重现性：Config 3 / DFDC 缺乏可复现实验记录
 
-### **System Gates** ✅
-- [x] 跨平台兼容性：Windows/Linux兼容
-- [x] 扩展性设计：支持新数据集接入
-- [x] 运维友好性：环境验证脚本完整
+### **System Gates** ⚠️
+- [x] 跨平台兼容性：Windows/Linux 仍可用
+- [ ] 训练资产：`experiments/` 已清空，需要重新产出 baseline checkpoint
+- [ ] 新数据接入：DFDC manifest / loader 尚未落地
 
 ---
 
@@ -167,14 +165,14 @@ Status: ✅ **95% COMPLETE - Stage 00 基础设施与Baseline建立基本完成*
 | 环境配置 | 100% | ✅ 完成 |
 | 数据管理 | 100% | ✅ 完成 |
 | 学术工具 | 100% | ✅ 完成 |
-| 实验管理 | 100% | ✅ 完成 |
-| 基线模型 | 100% | ✅ 完成 |
-| LODO评估 | 95% | 🔄 Config 3进行中 |
+| 实验管理 | 80% | ⚠️ Experiments 需重建 |
+| 基线模型 | 75% | ⚠️ Config 3 / DFDC 待重训 |
+| LODO评估 | 60% | ⛔ 缺少 Config 3 数据 |
 | BCE诊断 | 100% | ✅ 完成 |
 | Loss策略分析 | 100% | ✅ 完成 |
-| Stage Gate验证 | 100% | ✅ 完成 |
+| Stage Gate验证 | 50% | ⚠️ 待满足重训条件 |
 
-**总体完成度: 95% (12/13 主要任务)**
+**总体完成度: ~80%（需补齐缺失实验以恢复基线）**
 
 ---
 
@@ -201,8 +199,10 @@ Status: ✅ **95% COMPLETE - Stage 00 基础设施与Baseline建立基本完成*
 ## 📝 **技术债务和遗留问题**
 
 ### ⏳ 待完成
-- [ ] Config 3 LODO评估（FF++DF → CelebDF）- 进行中
-- [ ] 完整3×3 LODO性能矩阵报告
+- [ ] 重跑 LODO Config 3（FF++DF → CelebDF），生成新的 checkpoint / metrics
+- [ ] 合并 DFDC：生成 manifest、加入训练配置、完成 baseline 训练
+- [ ] 重新汇总完整 3×3 LODO 矩阵（含 DFDC 版本）
+- [ ] 恢复 `experiments/` 目录结构并记录最新实验 ID
 
 ### ✅ 已解决
 - ✅ 所有依赖安装完成
@@ -227,11 +227,11 @@ Status: ✅ **95% COMPLETE - Stage 00 基础设施与Baseline建立基本完成*
 - 验证了"真实性建模"范式转换的必要性
 
 **下一步**：
-→ ✅ **可以进入Stage 01**
-→ 🚨 **SupCon验证是整个项目的生死关键**
+→ 🔄 **优先恢复 Stage 00 基线（LODO Config 3 + DFDC）**
+→ ⚠️ **补齐后再推进 Stage 01 / Stage 02 的后续实验**
 
 ---
 
-*报告生成时间: 2025-10-04*
-*Stage 00 完成度: 95%*
-*状态: 基本完成，准备进入Stage 01 SupCon验证*
+*报告生成时间: 2025-10-04（2025-10-05 更新：experiments 清空后状态重置）*
+*Stage 00 完成度: ~80%*
+*状态: 需重建基线与 OOD 证据，暂缓进入 Stage 01 扩展实验*

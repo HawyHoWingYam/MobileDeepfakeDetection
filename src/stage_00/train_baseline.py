@@ -10,13 +10,15 @@ import json
 import time
 import datetime
 import argparse
+import random
+from collections import deque
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Union
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset, ConcatDataset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, ConcatDataset, WeightedRandomSampler, Sampler
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -25,12 +27,21 @@ from torchvision import transforms
 from PIL import Image
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger("stage_00.train_baseline")
 
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
 from stage_00.baseline_model import EfficientNetV2B3Baseline, BaselineTrainer
 from stage_00.dataset import create_data_loaders
+from utils.dataset_config import DatasetConfig
 from utils.experiment_utils import ExperimentManager, ExperimentConfig
 from utils.metrics import AcademicMetrics
 from utils.visualization import AcademicVisualizer
@@ -63,12 +74,110 @@ def calculate_dataset_weights_from_manifests(dataset_config):
             weight = round(count / total_samples, 3)
             weights[dataset_name] = weight
 
-        print(f"📊 Dataset sample distribution (total: {total_samples:,}):")
+        logger.info("Dataset sample distribution (total: %s)", f"{total_samples:,}")
         for dataset_name, count in dataset_counts.items():
             weight = weights.get(dataset_name, 0)
-            print(f"  {dataset_name}: {count:,} samples ({weight:.1%})")
+            logger.info(
+                "  %s: %s samples (%.1f%%)",
+                dataset_name,
+                f"{count:,}",
+                weight * 100
+            )
 
     return weights
+
+
+MODE_SUFFIXES = {
+    'balanced': '_balanced',
+    'anonymized': '_anonymized',
+    'anonymized_balanced': '_anonymized_balanced'
+}
+
+
+def _apply_dataset_mode(manifest_path: Path, dataset_mode: str) -> Path:
+    """Return manifest path adjusted for the requested dataset mode."""
+    suffix = MODE_SUFFIXES.get(dataset_mode)
+    if not suffix:
+        return manifest_path
+
+    return manifest_path.with_name(f"{manifest_path.stem}{suffix}{manifest_path.suffix}")
+
+
+def resolve_dataset_manifests(
+    config_path: Union[str, Path],
+    dataset_name: str,
+    dataset_mode: str
+) -> tuple[Dict[str, Path], Path]:
+    """Resolve manifest paths for a dataset using DatasetConfig."""
+
+    ds_config = DatasetConfig(config_path, dataset_name=dataset_name)
+    manifests: Dict[str, Path] = {}
+    missing_splits: List[str] = []
+
+    for split in ('train', 'val', 'test'):
+        if split not in ds_config.splits:
+            missing_splits.append(split)
+            continue
+
+        base_manifest = ds_config.get_manifest_path(split)
+        variant_manifest = _apply_dataset_mode(base_manifest, dataset_mode)
+        selected_manifest = variant_manifest
+
+        if variant_manifest == base_manifest:
+            selected_manifest = base_manifest
+        elif not variant_manifest.exists():
+            logger.debug(
+                "Manifest variant %s not found for %s/%s; falling back to %s",
+                variant_manifest,
+                dataset_name,
+                split,
+                base_manifest
+            )
+            selected_manifest = base_manifest
+
+        if not selected_manifest.exists():
+            logger.warning(
+                "Manifest missing for %s/%s: %s",
+                dataset_name,
+                split,
+                selected_manifest
+            )
+            return {}, ds_config.root_path
+
+        manifests[split] = selected_manifest
+
+    if missing_splits:
+        logger.warning(
+            "Dataset %s missing configured splits: %s",
+            dataset_name,
+            missing_splits
+        )
+        return {}, ds_config.root_path
+
+    return manifests, ds_config.root_path
+
+
+def load_multi_dataset_names(config_path: Union[str, Path], exclude: List[str]) -> List[str]:
+    """Load enabled dataset names for unified multi-dataset training."""
+
+    with open(config_path, 'r', encoding='utf-8') as f:
+        raw_config = json.load(f)
+
+    dataset_names = raw_config.get('multi_dataset_configs', {}).get(
+        'unified_training',
+        {}
+    ).get('datasets_included', [])
+
+    if not dataset_names:
+        dataset_names = [
+            name for name, info in raw_config.get('datasets', {}).items()
+            if info.get('enabled', True)
+        ]
+
+    exclude_set = set(exclude)
+    dataset_names = [name for name in dataset_names if name not in exclude_set]
+
+    return dataset_names
 
 class MultiDatasetWrapper(Dataset):
     """
@@ -86,6 +195,9 @@ class MultiDatasetWrapper(Dataset):
         """Build mapping from sample index to (dataset_id, dataset_name)"""
         self.dataset_mapping = []
         self.dataset_names = []
+        self.dataset_offsets = []
+
+        offset = 0
 
         for dataset_id, dataset in enumerate(self.datasets):
             dataset_name = getattr(dataset, 'dataset_name', f'Dataset_{dataset_id}')
@@ -93,9 +205,37 @@ class MultiDatasetWrapper(Dataset):
             if dataset_name not in self.dataset_names:
                 self.dataset_names.append(dataset_name)
 
+            self.dataset_offsets.append(offset)
+
             # Map each sample index to its dataset_id
             for _ in range(len(dataset)):
                 self.dataset_mapping.append(dataset_id)
+            offset += len(dataset)
+
+        self.total_length = offset
+        self._build_label_indices()
+
+    def _build_label_indices(self):
+        """Pre-compute indices for each dataset/label for stratified sampling."""
+        self.label_indices: Dict[int, Dict[int, List[int]]] = {}
+
+        for dataset_id, dataset in enumerate(self.datasets):
+            offset = self.dataset_offsets[dataset_id]
+            per_label: Dict[int, List[int]] = {}
+
+            if hasattr(dataset, 'get_indices_by_label'):
+                local_map = dataset.get_indices_by_label()
+                for label, local_indices in local_map.items():
+                    per_label[int(label)] = [offset + idx for idx in local_indices]
+            else:
+                # Fallback: iterate once and gather labels
+                per_label = {}
+                for local_idx in range(len(dataset)):
+                    _, label = dataset[local_idx]
+                    label_value = int(label.item() if hasattr(label, 'item') else label)
+                    per_label.setdefault(label_value, []).append(offset + local_idx)
+
+            self.label_indices[dataset_id] = per_label
 
     def __len__(self):
         return len(self.concat_dataset)
@@ -121,7 +261,7 @@ class MultiDatasetWrapper(Dataset):
         total_real = 0
         total_fake = 0
 
-        print(f"\n📊 Calculating class counts for {len(self.datasets)} datasets...")
+        logger.info("Calculating class counts for %d datasets...", len(self.datasets))
 
         for idx, dataset in enumerate(self.datasets):
             dataset_name = getattr(dataset, 'dataset_name', f'Dataset {idx+1}')
@@ -130,10 +270,10 @@ class MultiDatasetWrapper(Dataset):
                 counts = dataset.get_class_counts()
                 total_real += counts[0].item()
                 total_fake += counts[1].item()
-                print(f"  ✓ {dataset_name}: {counts[0]:.0f} real, {counts[1]:.0f} fake")
+                logger.info("  ✓ %s: %.0f real, %.0f fake", dataset_name, counts[0], counts[1])
             else:
                 # Fallback: count labels in dataset with progress bar
-                print(f"  ⏳ Counting labels for {dataset_name} ({len(dataset):,} samples)...")
+                logger.info("  ⏳ Counting labels for %s (%s samples)...", dataset_name, f"{len(dataset):,}")
                 labels = []
 
                 # Use tqdm for progress bar
@@ -145,14 +285,125 @@ class MultiDatasetWrapper(Dataset):
                 fake_count = labels.count(1)
                 total_real += real_count
                 total_fake += fake_count
-                print(f"  ✓ {dataset_name}: {real_count:,} real, {fake_count:,} fake")
+                logger.info("  ✓ %s: %s real, %s fake", dataset_name, f"{real_count:,}", f"{fake_count:,}")
 
-        print(f"\n📈 Total class counts:")
-        print(f"  Real (label 0): {total_real:,}")
-        print(f"  Fake (label 1): {total_fake:,}")
-        print(f"  Balance ratio: {total_real/total_fake:.4f}")
+        ratio = total_real / max(total_fake, 1)
+        logger.info("Total class counts → real=%s, fake=%s, ratio=%.4f",
+                    f"{total_real:,}", f"{total_fake:,}", ratio)
 
         return torch.tensor([total_real, total_fake], dtype=torch.float)
+
+
+class StrictBalancedBatchSampler(Sampler[List[int]]):
+    """Sampler enforcing equal dataset and class contributions per batch."""
+
+    def __init__(
+        self,
+        dataset: MultiDatasetWrapper,
+        batch_size: int,
+        seed: int = 42,
+    ) -> None:
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+
+        self.dataset_wrapper = dataset
+        self.batch_size = batch_size
+        self.seed = seed
+        self.rng = random.Random(seed)
+
+        self.dataset_ids = list(range(len(self.dataset_wrapper.datasets)))
+        if not self.dataset_ids:
+            raise ValueError("StrictBalancedBatchSampler requires at least one dataset")
+
+        if batch_size % len(self.dataset_ids) != 0:
+            raise ValueError(
+                "Batch size must be divisible by the number of datasets for strict balancing"
+            )
+
+        # Collect available labels across all datasets
+        label_set = set()
+        for per_label in self.dataset_wrapper.label_indices.values():
+            label_set.update(per_label.keys())
+        if not label_set:
+            raise ValueError("No class labels found across datasets")
+
+        self.labels = sorted(label_set)
+        self.num_labels = len(self.labels)
+
+        if batch_size % (len(self.dataset_ids) * self.num_labels) != 0:
+            raise ValueError(
+                "Batch size must be divisible by (datasets × classes) to enforce strict balance"
+            )
+
+        self.samples_per_dataset = batch_size // len(self.dataset_ids)
+        self.samples_per_label = self.samples_per_dataset // self.num_labels
+
+        if self.samples_per_label == 0:
+            raise ValueError("Batch size too small to allocate samples per class")
+
+        # Prepare pools for deterministic yet reshufflable sampling
+        self.original_pools: Dict[int, Dict[int, List[int]]] = {}
+        self.state: Dict[int, Dict[int, Dict[str, Any]]] = {}
+
+        for ds_id in self.dataset_ids:
+            per_label = self.dataset_wrapper.label_indices.get(ds_id, {})
+            # Ensure every dataset has entries for each label
+            missing = [label for label in self.labels if not per_label.get(label)]
+            if missing:
+                dataset_name = self.dataset_wrapper.get_dataset_name(ds_id)
+                missing_str = ", ".join(str(m) for m in missing)
+                raise ValueError(
+                    f"Dataset '{dataset_name}' lacks samples for label(s): {missing_str}. "
+                    "Provide balanced manifests or disable strict batch balancing."
+                )
+
+            self.original_pools[ds_id] = {
+                label: per_label[label][:] for label in self.labels
+            }
+            self.state[ds_id] = {}
+            for label in self.labels:
+                pool_copy = self.original_pools[ds_id][label][:]
+                self.rng.shuffle(pool_copy)
+                self.state[ds_id][label] = {'pool': pool_copy, 'idx': 0}
+
+        self.num_batches = max(1, len(self.dataset_wrapper) // batch_size)
+
+    def _draw_indices(self, ds_id: int, label: int, count: int) -> List[int]:
+        state = self.state[ds_id][label]
+        pool = state['pool']
+        idx = state['idx']
+
+        if idx + count > len(pool):
+            pool = self.original_pools[ds_id][label][:]
+            self.rng.shuffle(pool)
+            state['pool'] = pool
+            idx = 0
+
+        selected = pool[idx:idx + count]
+        if len(selected) < count:
+            # Fallback to sampling with replacement if pool smaller than quota
+            needed = count - len(selected)
+            selected.extend(self.rng.choices(self.original_pools[ds_id][label], k=needed))
+            idx = 0
+        else:
+            idx += count
+
+        state['idx'] = idx
+        return selected
+
+    def __iter__(self):
+        for _ in range(self.num_batches):
+            batch_indices: List[int] = []
+            for ds_id in self.dataset_ids:
+                for label in self.labels:
+                    batch_indices.extend(
+                        self._draw_indices(ds_id, label, self.samples_per_label)
+                    )
+            self.rng.shuffle(batch_indices)
+            yield batch_indices
+
+    def __len__(self) -> int:
+        return self.num_batches
 
 class UnifiedDeepfakeDataset(Dataset):
     """Dataset class for multi-dataset deepfake detection with albumentations support"""
@@ -201,7 +452,7 @@ class UnifiedDeepfakeDataset(Dataset):
                 A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 ToTensorV2()
             ])
-            print(f"✓ SupCon augmentation enabled for {dataset_name}")
+            logger.info("SupCon augmentation enabled for %s", dataset_name)
         else:
             # No augmentation mode - just normalize
             self.albu_transform = A.Compose([
@@ -212,13 +463,13 @@ class UnifiedDeepfakeDataset(Dataset):
 
         # Load manifest
         self.data = pd.read_csv(manifest_path)
-        print(f"Loaded {len(self.data)} samples from {dataset_name}")
+        logger.info("Loaded %d samples from %s", len(self.data), dataset_name)
 
         # Filter valid samples
         if 'valid' in self.data.columns:
             valid_mask = self.data['valid'] == True
             self.data = self.data[valid_mask]
-            print(f"After filtering: {len(self.data)} valid samples from {dataset_name}")
+            logger.info("After filtering: %d valid samples from %s", len(self.data), dataset_name)
 
         # Apply subset ratio if less than 1.0
         if subset_ratio < 1.0:
@@ -234,11 +485,11 @@ class UnifiedDeepfakeDataset(Dataset):
             fake_subset = fake_samples.sample(n=fake_subset_size, random_state=42)
 
             self.data = pd.concat([real_subset, fake_subset]).reset_index(drop=True)
-            print(f"Subset to {subset_ratio*100:.1f}%: {len(self.data)} samples from {dataset_name}")
+            logger.info("Subset to %.1f%%: %d samples from %s", subset_ratio * 100, len(self.data), dataset_name)
 
         # Print label distribution
         label_counts = self.data['label'].value_counts().sort_index()
-        print(f"{dataset_name} label distribution: {dict(label_counts)}")
+        logger.info("%s label distribution: %s", dataset_name, dict(label_counts))
 
     def get_class_counts(self) -> torch.Tensor:
         """
@@ -251,6 +502,11 @@ class UnifiedDeepfakeDataset(Dataset):
         real_count = label_counts.get(0, 0)
         fake_count = label_counts.get(1, 0)
         return torch.tensor([real_count, fake_count], dtype=torch.float)
+
+    def get_indices_by_label(self) -> Dict[int, List[int]]:
+        """Return local indices grouped by label."""
+        grouped = self.data.groupby('label').groups
+        return {int(label): list(indexes) for label, indexes in grouped.items()}
         
     def __len__(self):
         return len(self.data)
@@ -272,114 +528,194 @@ class UnifiedDeepfakeDataset(Dataset):
             return image_tensor, torch.tensor(label, dtype=torch.float)
 
         except Exception as e:
-            print(f"Error loading {image_path}: {e}")
-            # Return a black image as fallback
-            black_image_np = np.zeros((256, 256, 3), dtype=np.uint8)
-            transformed = self.albu_transform(image=black_image_np)
-            return transformed['image'], torch.tensor(0.0, dtype=torch.float)
+            logger.error("Failed to load %s: %s", image_path, e)
+            raise RuntimeError(f"Failed to load image: {image_path}") from e
 
-def create_multi_dataset_loaders(config_path, batch_size=32, num_workers=0, subset_ratio=1.0):
-    """Create data loaders for multi-dataset training
-    
-    Args:
-        config_path: Path to unified dataset configuration
-        batch_size: Batch size for data loaders
-        num_workers: Number of worker threads
-        subset_ratio: Fraction of data to use (0.1 = 10%, 1.0 = 100%)
-    """
-    
-    # Load unified configuration
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
-    print(f"Loading multi-dataset configuration...")
-    print(f"Datasets: {config['metadata']['datasets_included']}")
-    print(f"Total samples: {config['metadata']['total_samples']:,}")
-    
-    # Image transforms
-    transform = transforms.Compose([
-        transforms.Resize((256, 256)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                           std=[0.229, 0.224, 0.225])
-    ])
-    
-    # Create datasets for each split
+def create_multi_dataset_loaders(
+    config_path,
+    dataset_mode='original',
+    batch_size=32,
+    num_workers=0,
+    subset_ratio=1.0,
+    use_augmentation=False,
+    use_dataset_weights=True,
+    exclude=None,
+    strict_batch_balance=False,
+    seed=42,
+):
+    """Create data loaders for multi-dataset training using DatasetConfig manifests."""
+    config_path = Path(config_path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Dataset configuration not found: {config_path}")
+
+    exclude = exclude or []
+    dataset_names = load_multi_dataset_names(config_path, exclude)
+    if not dataset_names:
+        raise RuntimeError(
+            "No datasets available for multi-dataset training after applying exclusions"
+        )
+
+    logger.info(
+        "Multi-dataset mode → config=%s | mode=%s | datasets=%s",
+        config_path,
+        dataset_mode,
+        dataset_names,
+    )
+
     train_datasets = []
     val_datasets = []
     test_datasets = []
-    
-    # Process each dataset
-    for dataset_name, dataset_config in config['datasets'].items():
-        if not dataset_config['enabled']:
-            print(f"Skipping disabled dataset: {dataset_name}")
+    dataset_sizes = []
+
+    for dataset_name in dataset_names:
+        manifests, _ = resolve_dataset_manifests(config_path, dataset_name, dataset_mode)
+        if not manifests:
+            logger.warning(
+                "Skipping %s: manifests unavailable for mode '%s'",
+                dataset_name,
+                dataset_mode,
+            )
             continue
-            
-        print(f"\\nProcessing {dataset_name}...")
-        manifests = dataset_config['manifests']
-        
-        # Create datasets for each split
-        train_dataset = UnifiedDeepfakeDataset(
+
+        required_splits = {'train', 'val', 'test'}
+        missing = [split for split in required_splits if split not in manifests]
+        if missing:
+            logger.warning(
+                "Skipping %s: missing manifest splits %s",
+                dataset_name,
+                missing,
+            )
+            continue
+
+        logger.info(
+            "Loading %s manifests → train=%s | val=%s | test=%s",
+            dataset_name,
+            manifests['train'],
+            manifests['val'],
+            manifests['test'],
+        )
+
+        train_ds = UnifiedDeepfakeDataset(
             manifest_path=manifests['train'],
             dataset_name=f"{dataset_name}_train",
-            transform=transform,
-            subset_ratio=subset_ratio
+            transform=None,
+            subset_ratio=subset_ratio,
+            use_augmentation=use_augmentation,
         )
-        
-        val_dataset = UnifiedDeepfakeDataset(
-            manifest_path=manifests['val'], 
+        val_ds = UnifiedDeepfakeDataset(
+            manifest_path=manifests['val'],
             dataset_name=f"{dataset_name}_val",
-            transform=transform,
-            subset_ratio=subset_ratio
+            transform=None,
+            subset_ratio=subset_ratio,
+            use_augmentation=False,
         )
-        
-        test_dataset = UnifiedDeepfakeDataset(
+        test_ds = UnifiedDeepfakeDataset(
             manifest_path=manifests['test'],
-            dataset_name=f"{dataset_name}_test", 
-            transform=transform,
-            subset_ratio=subset_ratio
+            dataset_name=f"{dataset_name}_test",
+            transform=None,
+            subset_ratio=subset_ratio,
+            use_augmentation=False,
         )
-        
-        train_datasets.append(train_dataset)
-        val_datasets.append(val_dataset)
-        test_datasets.append(test_dataset)
-    
-    # Combine datasets using our custom wrapper
+
+        train_datasets.append(train_ds)
+        val_datasets.append(val_ds)
+        test_datasets.append(test_ds)
+        dataset_sizes.append(len(train_ds))
+
+    if not train_datasets:
+        raise RuntimeError(
+            "No datasets could be loaded for multi-dataset training. "
+            "Check manifest availability or dataset exclusions."
+        )
+
     combined_train = MultiDatasetWrapper(train_datasets)
     combined_val = MultiDatasetWrapper(val_datasets)
     combined_test = MultiDatasetWrapper(test_datasets)
-    
-    print(f"\\nCombined dataset sizes:")
-    print(f"Train: {len(combined_train):,} samples")
-    print(f"Val: {len(combined_val):,} samples") 
-    print(f"Test: {len(combined_test):,} samples")
-    
-    # Create data loaders
-    train_loader = DataLoader(
-        combined_train,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=torch.cuda.is_available()
+
+    logger.info(
+        "Combined dataset sizes → train=%s, val=%s, test=%s",
+        f"{len(combined_train):,}",
+        f"{len(combined_val):,}",
+        f"{len(combined_test):,}",
     )
-    
+
+    sampler = None
+    batch_sampler = None
+    if strict_batch_balance:
+        batch_sampler = StrictBalancedBatchSampler(
+            combined_train,
+            batch_size=batch_size,
+            seed=seed,
+        )
+        logger.info("Strict batch balancing enabled (equal dataset/class contributions per batch)")
+    elif use_dataset_weights and dataset_sizes:
+        total_samples = sum(dataset_sizes)
+        logger.info(
+            "Balancing dataset contributions across %d datasets",
+            len(dataset_sizes),
+        )
+        sample_weights = []
+        for ds, size in zip(train_datasets, dataset_sizes):
+            weight_per_sample = 1.0 / max(size, 1)
+            sample_weights.extend([weight_per_sample] * size)
+            original_ratio = (size / total_samples) * 100 if total_samples else 0
+            balanced_ratio = 100 / len(dataset_sizes)
+            logger.info(
+                "  %s: original %.1f%% → balanced %.1f%% (%s samples)",
+                getattr(ds, 'dataset_name', 'dataset'),
+                original_ratio,
+                balanced_ratio,
+                f"{size:,}",
+            )
+
+        sample_weights_tensor = torch.tensor(sample_weights, dtype=torch.float)
+        sample_weights_tensor = (
+            sample_weights_tensor / sample_weights_tensor.sum() * len(sample_weights_tensor)
+        )
+
+        sampler = WeightedRandomSampler(
+            sample_weights_tensor,
+            num_samples=len(sample_weights_tensor),
+            replacement=True,
+        )
+        logger.info("WeightedRandomSampler configured for balanced dataset sampling")
+
+    pin_memory = torch.cuda.is_available()
+    shuffle_train = sampler is None and batch_sampler is None
+
+    if batch_sampler is not None:
+        train_loader = DataLoader(
+            combined_train,
+            batch_sampler=batch_sampler,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+    else:
+        train_loader = DataLoader(
+            combined_train,
+            batch_size=batch_size,
+            shuffle=shuffle_train,
+            sampler=sampler,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
     val_loader = DataLoader(
         combined_val,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=torch.cuda.is_available()
+        pin_memory=pin_memory,
     )
-    
     test_loader = DataLoader(
         combined_test,
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=torch.cuda.is_available()
+        pin_memory=pin_memory,
     )
-    
+
     return train_loader, val_loader, test_loader
+
 
 def setup_device_with_fallback():
     """
@@ -389,7 +725,7 @@ def setup_device_with_fallback():
         Tuple of (device, gpu_info_dict or None)
     """
     if not torch.cuda.is_available():
-        print("CUDA not available, using CPU")
+        logger.warning("CUDA not available, using CPU")
         return torch.device('cpu'), None
     
     # Check all available GPUs and their capabilities
@@ -416,32 +752,31 @@ def setup_device_with_fallback():
             torch.cuda.set_device(i)
             test_tensor = torch.zeros(1, device=f'cuda:{i}')
             compatible_gpus.append(gpu_info)
-            print(f"[OK] GPU {i}: {gpu_name} - Compatible")
+            logger.info("[OK] GPU %d: %s - Compatible", i, gpu_name)
         except Exception as e:
-            print(f"[FAIL] GPU {i}: {gpu_name} - Incompatible ({str(e)[:50]})")
+            logger.warning("[FAIL] GPU %d: %s - Incompatible (%s)", i, gpu_name, str(e)[:50])
     
     if compatible_gpus:
         # Select the best compatible GPU (highest memory)
         best_gpu = max(compatible_gpus, key=lambda x: x['memory_gb'])
         torch.cuda.set_device(best_gpu['id'])
         device = torch.device(f"cuda:{best_gpu['id']}")
-        print(f"[SELECTED] GPU {best_gpu['id']}: {best_gpu['name']}")
+        logger.info("[SELECTED] GPU %d: %s", best_gpu['id'], best_gpu['name'])
         return device, best_gpu
-    
+
     # No compatible GPU found, provide upgrade suggestions
-    print("[WARNING] No compatible GPU found!")
-    
+    logger.warning("No compatible GPU found. Falling back to CPU.")
+
     for gpu in all_gpus:
         if gpu['arch'] in ['sm_120']:  # RTX 5060 Ti, 5090, etc.
-            print(f"   {gpu['name']} requires PyTorch nightly build")
-            print(f"   Suggested command: conda install pytorch-cuda=12.6 pytorch pytorch2-nightly -c pytorch-nightly -c nvidia")
+            logger.info(
+                "%s requires PyTorch nightly build. Suggested command: conda install pytorch-cuda=12.6 pytorch pytorch2-nightly -c pytorch-nightly -c nvidia",
+                gpu['name']
+            )
         elif gpu['capability_int'] < 50:  # Very old GPUs
-            print(f"   {gpu['name']} is too old (compute capability {gpu['capability']})")
-    
-    print("[INFO] Falling back to CPU training...")
-    print("   For GPU acceleration, consider:")
-    print("   1. Using a compatible GPU (RTX 3070Ti, RTX 4080, etc.)")
-    print("   2. Installing PyTorch nightly for RTX 50-series support")
+            logger.info("%s is too old (compute capability %s)", gpu['name'], gpu['capability'])
+
+    logger.info("Falling back to CPU training. For GPU acceleration consider: 1) compatible GPU (RTX 3070Ti, 4080, etc.) 2) installing PyTorch nightly for RTX 50-series support")
     
     return torch.device('cpu'), None
 
@@ -592,9 +927,9 @@ class TrainingLogger:
             fig.savefig(f"{plot_path}.pdf", bbox_inches='tight')
             plt.close(fig)
 
-            print(f"  ✓ Saved training curves: {plot_path}.png")
+            logger.info("  ✓ Saved training curves: %s.png", plot_path)
         except Exception as e:
-            print(f"  ⚠ Failed to generate training curves: {e}")
+            logger.warning("  ⚠ Failed to generate training curves: %s", e)
 
     def generate_lr_schedule_plot(self):
         """Generate learning rate schedule plot"""
@@ -619,9 +954,9 @@ class TrainingLogger:
             fig.savefig(f"{plot_path}.pdf", bbox_inches='tight')
             plt.close(fig)
 
-            print(f"  ✓ Saved learning rate plot: {plot_path}.png")
+            logger.info("  ✓ Saved learning rate plot: %s.png", plot_path)
         except Exception as e:
-            print(f"  ⚠ Failed to generate LR plot: {e}")
+            logger.warning("  ⚠ Failed to generate LR plot: %s", e)
 
     def generate_per_dataset_comparison(self):
         """Generate per-dataset performance comparison plot"""
@@ -668,9 +1003,9 @@ class TrainingLogger:
             fig.savefig(f"{plot_path}.pdf", bbox_inches='tight')
             plt.close(fig)
 
-            print(f"  ✓ Saved per-dataset comparison: {plot_path}.png")
+            logger.info("  ✓ Saved per-dataset comparison: %s.png", plot_path)
         except Exception as e:
-            print(f"  ⚠ Failed to generate per-dataset plot: {e}")
+            logger.warning("  ⚠ Failed to generate per-dataset plot: %s", e)
 
     def generate_final_report(self, training_history, test_metrics=None):
         """
@@ -680,9 +1015,10 @@ class TrainingLogger:
             training_history: Complete training history dict
             test_metrics: Optional test set metrics
         """
-        print("\n" + "=" * 80)
-        print("Generating Training Report and Visualizations")
-        print("=" * 80)
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("Generating Training Report and Visualizations")
+        logger.info("=" * 80)
 
         # 1. Training curves
         self.generate_training_curves(training_history)
@@ -699,10 +1035,11 @@ class TrainingLogger:
         # 5. Generate summary markdown
         self._generate_summary_markdown(training_history, test_metrics)
 
-        print(f"\nTraining report generated successfully!")
-        print(f"  Logs: {self.logs_dir}")
-        print(f"  Plots: {self.plots_dir}")
-        print("=" * 80)
+        logger.info("")
+        logger.info("Training report generated successfully!")
+        logger.info("  Logs: %s", self.logs_dir)
+        logger.info("  Plots: %s", self.plots_dir)
+        logger.info("%s", "=" * 80)
 
     def _generate_summary_markdown(self, training_history, test_metrics):
         """Generate a markdown summary of training"""
@@ -750,385 +1087,230 @@ class TrainingLogger:
             if self.dataset_logs:
                 f.write("- `per_dataset_comparison.png/pdf` - Performance by dataset\n")
 
-        print(f"  ✓ Saved training summary: {summary_path}")
+        logger.info("  ✓ Saved training summary: %s", summary_path)
 
 def setup_training(config: Dict[str, Any]) -> tuple:
-    """
-    Setup training components with intelligent GPU detection
-    
-    Args:
-        config: Training configuration dictionary
-        
-    Returns:
-        Tuple of (model, train_loader, val_loader, test_loader, optimizer, scheduler, criterion)
-    """
-    # Intelligent GPU setup with fallback options
+    """Setup training components with manifest-aware configuration."""
     device, gpu_info = setup_device_with_fallback()
-    print(f"Selected device: {device}")
-    
+    logger.info("Selected device: %s", device)
+
     if gpu_info:
-        print(f"GPU: {gpu_info['name']}")
-        print(f"Compute Capability: {gpu_info['capability']}")
-        print(f"GPU Memory: {gpu_info['memory_gb']:.1f} GB")
-        
-        # Adjust batch size based on GPU memory
-        if gpu_info['memory_gb'] < 8:
-            suggested_batch = min(config['training']['batch_size'], 16)
-            if suggested_batch < config['training']['batch_size']:
-                print(f"[WARNING] Reducing batch size to {suggested_batch} due to GPU memory limitation")
-                config['training']['batch_size'] = suggested_batch
-    
-    # Create data loaders using simplified configuration
-    print("\\nCreating data loaders...")
+        logger.info(
+            "GPU: %s (compute %s, %.1f GB)",
+            gpu_info["name"],
+            gpu_info["capability"],
+            gpu_info["memory_gb"],
+        )
+        if gpu_info["memory_gb"] < 8:
+            suggested_batch = min(config["training"]["batch_size"], 16)
+            if suggested_batch < config["training"]["batch_size"]:
+                logger.warning(
+                    "Reducing batch size to %d due to limited GPU memory (%.1f GB)",
+                    suggested_batch,
+                    gpu_info["memory_gb"],
+                )
+                config["training"]["batch_size"] = suggested_batch
+    else:
+        logger.info("GPU not detected; continuing with CPU pipeline")
 
-    # Load dataset configuration to get manifest paths
-    with open(config['data']['dataset_config'], 'r') as f:
-        dataset_config = json.load(f)
+    data_section = config.get("data", {})
+    dataset_config_path = Path(data_section.get("dataset_config", "configs/datasets.json"))
+    if not dataset_config_path.exists():
+        raise FileNotFoundError(
+            f"Dataset configuration file not found: {dataset_config_path}"
+        )
 
-    # Check if multi-dataset training is enabled
-    multi_dataset = config['data'].get('multi_dataset', False)
-    dataset_mode = config['data'].get('dataset_mode', 'original')
+    dataset_mode = data_section.get("dataset_mode", "original")
+    subset_ratio = float(data_section.get("subset_ratio", 1.0))
+    multi_dataset = data_section.get("multi_dataset", False)
+    exclude_datasets = data_section.get("exclude_datasets", []) or []
+    use_dataset_weights = data_section.get("use_dataset_weights", True)
+    use_augmentation = data_section.get("augmentation", False)
+    strict_batch_balance = data_section.get("strict_batch_balance", False)
+    batch_size = config["training"]["batch_size"]
+    num_workers = config["training"].get("num_workers", 4)
+    pin_memory = torch.cuda.is_available()
+    sampler_seed = config.get("training", {}).get("seed", 42)
+
+    logger.info(
+        "Data configuration → dataset_config=%s | mode=%s | multi_dataset=%s | subset_ratio=%.2f",
+        dataset_config_path,
+        dataset_mode,
+        multi_dataset,
+        subset_ratio,
+    )
+    if exclude_datasets:
+        logger.info("Excluding datasets: %s", exclude_datasets)
+    if strict_batch_balance:
+        logger.info("Strict batch balancing enabled for training batches")
 
     if multi_dataset:
-        # Multi-dataset training mode
-        print("🔄 Multi-dataset training mode enabled")
-
-        # Get list of datasets to exclude (for LODO evaluation)
-        exclude_datasets = config['data'].get('exclude_datasets', [])
-        if exclude_datasets:
-            print(f"📌 LODO Mode: Excluding dataset(s): {', '.join(exclude_datasets)}")
-
-        # Build manifest paths for all datasets
-        dataset_short_names = {
-            'celebdf_v2': 'celebdf_v2',
-            'faceforensics_plus_plus': 'faceforensics',
-            'deeperforensics_1_0': 'deeperforensics'
-        }
-
-        # Remove excluded datasets
-        for excluded in exclude_datasets:
-            if excluded in dataset_short_names:
-                del dataset_short_names[excluded]
-                print(f"  ✓ Removed {excluded} from training datasets")
-
-        # Validate at least one dataset remains
-        if len(dataset_short_names) == 0:
-            raise ValueError("Cannot exclude all datasets! At least one dataset must be included for training.")
-
-        print(f"📂 Training on {len(dataset_short_names)} dataset(s): {list(dataset_short_names.keys())}")
-
-        # Create unified config for multi-dataset loader
-        transform = transforms.Compose([
-            transforms.Resize((config['data']['image_size'], config['data']['image_size'])),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                               std=[0.229, 0.224, 0.225])
-        ])
-
-        train_datasets = []
-        val_datasets = []
-        test_datasets = []
-
-        for full_name, short_name in dataset_short_names.items():
-            # Build manifest paths based on mode
-            if dataset_mode == 'anonymized_balanced':
-                manifests = {
-                    'train': f'manifests/{short_name}_train_anonymized_balanced.csv',
-                    'val': f'manifests/{short_name}_val_anonymized_balanced.csv',
-                    'test': f'manifests/{short_name}_test_anonymized_balanced.csv'
-                }
-            elif dataset_mode == 'balanced':
-                # NEW: Use balanced manifests with original paths
-                manifests = {
-                    'train': f'manifests/{short_name}_train_balanced.csv',
-                    'val': f'manifests/{short_name}_val_balanced.csv',
-                    'test': f'manifests/{short_name}_test_balanced.csv'
-                }
-            elif dataset_mode == 'anonymized':
-                manifests = {
-                    'train': f'manifests/{short_name}_train_anonymized.csv',
-                    'val': f'manifests/{short_name}_val_anonymized.csv',
-                    'test': f'manifests/{short_name}_test_anonymized.csv'
-                }
-            else:
-                manifests = {
-                    'train': f'manifests/{short_name}_train.csv',
-                    'val': f'manifests/{short_name}_val.csv',
-                    'test': f'manifests/{short_name}_test.csv'
-                }
-
-            # Check if manifest files exist
-            if not Path(manifests['train']).exists():
-                print(f"⚠️  Skipping {full_name}: manifest not found at {manifests['train']}")
-                continue
-
-            print(f"📂 Loading {full_name} ({dataset_mode} mode)...")
-
-            # Get augmentation setting (only for training split)
-            use_train_augmentation = config['data'].get('augmentation', False)
-
-            # Create datasets
-            train_ds = UnifiedDeepfakeDataset(
-                manifest_path=manifests['train'],
-                dataset_name=f"{full_name}_train",
-                transform=None,  # Not used anymore (albumentations handles everything)
-                subset_ratio=config['data'].get('subset_ratio', 1.0),
-                use_augmentation=use_train_augmentation  # Enable augmentation for training
-            )
-            val_ds = UnifiedDeepfakeDataset(
-                manifest_path=manifests['val'],
-                dataset_name=f"{full_name}_val",
-                transform=None,
-                subset_ratio=config['data'].get('subset_ratio', 1.0),
-                use_augmentation=False  # No augmentation for validation
-            )
-            test_ds = UnifiedDeepfakeDataset(
-                manifest_path=manifests['test'],
-                dataset_name=f"{full_name}_test",
-                transform=None,
-                subset_ratio=config['data'].get('subset_ratio', 1.0),
-                use_augmentation=False  # No augmentation for test
-            )
-
-            train_datasets.append(train_ds)
-            val_datasets.append(val_ds)
-            test_datasets.append(test_ds)
-
-        # Combine datasets
-        combined_train = MultiDatasetWrapper(train_datasets)
-        combined_val = MultiDatasetWrapper(val_datasets)
-        combined_test = MultiDatasetWrapper(test_datasets)
-
-        print(f"\\n📊 Combined dataset sizes:")
-        print(f"  Train: {len(combined_train):,} samples")
-        print(f"  Val: {len(combined_val):,} samples")
-        print(f"  Test: {len(combined_test):,} samples")
-
-        # Calculate dataset weights for balanced sampling
-        use_dataset_weights = config['data'].get('use_dataset_weights', True)
-        sampler = None
-
-        if use_dataset_weights:
-            print(f"\\n⚖️  Calculating dataset-level weights for balanced sampling...")
-
-            # Calculate weights: inverse of dataset size (so smaller datasets get more weight)
-            dataset_sizes = [len(ds) for ds in train_datasets]
-            total_samples = sum(dataset_sizes)
-
-            # Create sample weights: each sample gets weight = 1 / (dataset_size)
-            # This ensures each dataset contributes equally regardless of size
-            sample_weights = []
-            for ds_idx, ds_size in enumerate(dataset_sizes):
-                weight_per_sample = 1.0 / ds_size
-                sample_weights.extend([weight_per_sample] * ds_size)
-
-            # Normalize weights
-            sample_weights = torch.tensor(sample_weights, dtype=torch.float)
-            sample_weights = sample_weights / sample_weights.sum() * len(sample_weights)
-
-            # Print dataset contribution
-            print(f"  Dataset contributions (with balanced sampling):")
-            cumsum = 0
-            for idx, (ds, size) in enumerate(zip(train_datasets, dataset_sizes)):
-                ds_name = getattr(ds, 'dataset_name', f'Dataset {idx+1}')
-                original_ratio = size / total_samples * 100
-                # Each dataset will be sampled equally in expectation
-                balanced_ratio = 100.0 / len(train_datasets)
-                print(f"    {ds_name}: {size:,} samples ({original_ratio:.1f}% → {balanced_ratio:.1f}%)")
-                cumsum += size
-
-            # Create weighted sampler
-            sampler = WeightedRandomSampler(
-                weights=sample_weights,
-                num_samples=len(sample_weights),
-                replacement=True
-            )
-            print(f"  ✓ Weighted sampler created (balances dataset contributions)")
-
-        # Create data loaders
-        train_loader = DataLoader(
-            combined_train,
-            batch_size=config['training']['batch_size'],
-            shuffle=(sampler is None),  # Don't shuffle if using sampler
-            sampler=sampler,
-            num_workers=config['training']['num_workers'],
-            pin_memory=True
+        train_loader, val_loader, test_loader = create_multi_dataset_loaders(
+            config_path=dataset_config_path,
+            dataset_mode=dataset_mode,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            subset_ratio=subset_ratio,
+            use_augmentation=use_augmentation,
+            use_dataset_weights=use_dataset_weights,
+            exclude=exclude_datasets,
+            strict_batch_balance=strict_batch_balance,
+            seed=sampler_seed,
         )
-
-        val_loader = DataLoader(
-            combined_val,
-            batch_size=config['training']['batch_size'],
-            shuffle=False,
-            num_workers=config['training']['num_workers'],
-            pin_memory=True
-        )
-
-        test_loader = DataLoader(
-            combined_test,
-            batch_size=config['training']['batch_size'],
-            shuffle=False,
-            num_workers=config['training']['num_workers'],
-            pin_memory=True
-        )
-
     else:
-        # Single dataset training mode
-        dataset_name = config['data']['dataset_name']
+        if strict_batch_balance:
+            logger.warning(
+                "Strict batch balancing requested but multi-dataset mode is disabled; "
+                "fallback to standard shuffling."
+            )
+        dataset_name = data_section.get("dataset_name", "celebdf_v2")
+        manifests, dataset_root = resolve_dataset_manifests(
+            dataset_config_path,
+            dataset_name,
+            dataset_mode,
+        )
+        if not manifests:
+            raise FileNotFoundError(
+                f"Manifests for dataset '{dataset_name}' (mode={dataset_mode}) were not found. "
+                "Run the manifest generation utilities or adjust dataset configuration."
+            )
 
-        # Build manifest paths dynamically
-        dataset_short_names = {
-            'celebdf_v2': 'celebdf_v2',
-            'faceforensics_plus_plus': 'faceforensics',
-            'deeperforensics_1_0': 'deeperforensics'
-        }
+        logger.info(
+            "Using dataset %s with manifests → train=%s | val=%s | test=%s",
+            dataset_name,
+            manifests["train"],
+            manifests["val"],
+            manifests["test"],
+        )
 
-        short_name = dataset_short_names.get(dataset_name, dataset_name)
-
-        if dataset_mode == 'anonymized_balanced':
-            manifests = {
-                'train': f'manifests/{short_name}_train_anonymized_balanced.csv',
-                'val': f'manifests/{short_name}_val_anonymized_balanced.csv',
-                'test': f'manifests/{short_name}_test_anonymized_balanced.csv'
-            }
-            print(f"Using anonymized + balanced {dataset_name} dataset")
-        elif dataset_mode == 'balanced':
-            manifests = {
-                'train': f'manifests/{short_name}_train_balanced.csv',
-                'val': f'manifests/{short_name}_val_balanced.csv',
-                'test': f'manifests/{short_name}_test_balanced.csv'
-            }
-            print(f"Using balanced {dataset_name} dataset (original paths, 50/50 balanced)")
-        elif dataset_mode == 'anonymized':
-            manifests = {
-                'train': f'manifests/{short_name}_train_anonymized.csv',
-                'val': f'manifests/{short_name}_val_anonymized.csv',
-                'test': f'manifests/{short_name}_test_anonymized.csv'
-            }
-            print(f"Using anonymized {dataset_name} dataset")
-        else:
-            if dataset_name in dataset_config['datasets']:
-                manifests = dataset_config['datasets'][dataset_name]['manifests']
-                print(f"Using original {dataset_name} dataset manifests")
-            else:
-                manifests = {
-                    'train': f'manifests/{short_name}_train.csv',
-                    'val': f'manifests/{short_name}_val.csv',
-                    'test': f'manifests/{short_name}_test.csv'
-                }
-                print(f"Using original {dataset_name} dataset (auto-generated paths)")
-
-        # Create datasets directly with manifest paths
         from stage_00.dataset import CelebDFDataset
 
         train_dataset = CelebDFDataset(
-            manifest_path=manifests['train'],
-            root_path=".",
-            image_size=config['data']['image_size'],
-            augmentation=True,
+            manifest_path=manifests["train"],
+            root_path=str(dataset_root),
+            image_size=data_section.get("image_size", 256),
+            augmentation=use_augmentation,
             normalize=True,
-            path_leakage_check=True
+            path_leakage_check=data_section.get("path_leakage_check", True),
         )
-
         val_dataset = CelebDFDataset(
-            manifest_path=manifests['val'],
-            root_path=".",
-            image_size=config['data']['image_size'],
+            manifest_path=manifests["val"],
+            root_path=str(dataset_root),
+            image_size=data_section.get("image_size", 256),
             augmentation=False,
             normalize=True,
-            path_leakage_check=True
+            path_leakage_check=data_section.get("path_leakage_check", True),
         )
-
         test_dataset = CelebDFDataset(
-            manifest_path=manifests['test'],
-            root_path=".",
-            image_size=config['data']['image_size'],
+            manifest_path=manifests["test"],
+            root_path=str(dataset_root),
+            image_size=data_section.get("image_size", 256),
             augmentation=False,
             normalize=True,
-            path_leakage_check=True
+            path_leakage_check=data_section.get("path_leakage_check", True),
         )
 
-        # Create data loaders
         train_loader = DataLoader(
             train_dataset,
-            batch_size=config['training']['batch_size'],
+            batch_size=batch_size,
             shuffle=True,
-            num_workers=config['training']['num_workers'],
-            pin_memory=True
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=True,
         )
-
         val_loader = DataLoader(
             val_dataset,
-            batch_size=config['training']['batch_size'],
+            batch_size=batch_size,
             shuffle=False,
-            num_workers=config['training']['num_workers'],
-            pin_memory=True
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=False,
         )
-
         test_loader = DataLoader(
             test_dataset,
-            batch_size=config['training']['batch_size'],
+            batch_size=batch_size,
             shuffle=False,
-            num_workers=config['training']['num_workers'],
-            pin_memory=True
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=False,
         )
-    
-    # Create model
-    print("\\nCreating baseline model...")
+
+        for split_name, dataset in [("Train", train_dataset), ("Val", val_dataset), ("Test", test_dataset)]:
+            info = dataset.get_dataset_info()
+            logger.info(
+                "%s dataset → total=%d real=%d fake=%d balance=%.3f",
+                split_name,
+                info["total_samples"],
+                info["real_samples"],
+                info["fake_samples"],
+                info["balance_ratio"],
+            )
+
+    logger.info("Creating baseline model (%s)", config["model"]["name"])
     model = EfficientNetV2B3Baseline(
-        num_classes=1,  # Changed to 1 for true BCE
-        pretrained=config['model']['pretrained'],
-        dropout_rate=config['model']['dropout_rate'],
-        model_name=config['model']['name']
-    )
-    model = model.to(device)
-    
-    print(f"Model info: {model.get_model_info()}")
-    
-    # Setup optimizer
+        num_classes=1,
+        pretrained=config["model"]["pretrained"],
+        dropout_rate=config["model"]["dropout_rate"],
+        model_name=config["model"]["name"],
+    ).to(device)
+    logger.info("Model info: %s", model.get_model_info())
+
     optimizer = optim.AdamW(
         model.parameters(),
-        lr=config['training']['learning_rate'],
-        weight_decay=config['training']['weight_decay'],
-        betas=(0.9, 0.999)
+        lr=config["training"]["learning_rate"],
+        weight_decay=config["training"]["weight_decay"],
+        betas=(0.9, 0.999),
     )
-    
-    # Setup scheduler
+
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
-        T_max=config['training']['num_epochs'],
-        eta_min=1e-6
+        T_max=config["training"]["num_epochs"],
+        eta_min=1e-6,
     )
-    
-    # Setup loss function with class weighting for BCE
-    if config['training'].get('use_class_weights', True):
-        # Check if pos_weight is pre-calculated in config (for multi-dataset)
-        if 'pos_weight' in config['training']:
-            pos_weight = torch.tensor([config['training']['pos_weight']], device=device)
-            print(f"Using pre-calculated pos_weight: {pos_weight.item():.4f}")
+
+    if config["training"].get("use_class_weights", True):
+        if "pos_weight" in config["training"]:
+            pos_weight = torch.tensor([config["training"]["pos_weight"]], device=device)
+            logger.info("Using pre-configured pos_weight: %.4f", pos_weight.item())
         else:
-            # Calculate from dataset for single dataset case
             try:
                 class_counts = train_loader.dataset.get_class_counts()
-                real_count, fake_count = class_counts[0], class_counts[1]
-                
-                # For BCE, pos_weight = count_negative_samples / count_positive_samples
-                # In our case: real_count (label 0) / fake_count (label 1)
-                pos_weight = real_count / fake_count
-                
-                print(f"Dataset distribution:")
-                print(f"  Real samples (label 0): {real_count:.0f} ({100*real_count/(real_count+fake_count):.1f}%)")
-                print(f"  Fake samples (label 1): {fake_count:.0f} ({100*fake_count/(real_count+fake_count):.1f}%)")
-                print(f"  Calculated pos_weight for BCE: {pos_weight.item():.4f}")
-            except:
-                # Fallback to default pos_weight for multi-dataset
-                pos_weight = torch.tensor([2.33], device=device)  
-                print(f"Using default pos_weight: {pos_weight.item():.4f}")
-        
+                real_count = float(class_counts[0].item())
+                fake_count = float(class_counts[1].item())
+                total = real_count + fake_count
+                if fake_count == 0:
+                    pos_weight_value = 1.0
+                    logger.warning("Detected zero fake samples; defaulting pos_weight to 1.0")
+                else:
+                    pos_weight_value = real_count / fake_count
+                pos_weight = torch.tensor([pos_weight_value], device=device)
+                real_pct = (real_count / total * 100) if total else 0.0
+                fake_pct = (fake_count / total * 100) if total else 0.0
+                logger.info(
+                    "Dataset distribution → real=%d (%.1f%%) | fake=%d (%.1f%%)",
+                    int(real_count),
+                    real_pct,
+                    int(fake_count),
+                    fake_pct,
+                )
+                logger.info("Calculated pos_weight for BCE: %.4f", pos_weight.item())
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Unable to derive class weights from dataset (%s); falling back to default pos_weight=2.33",
+                    exc,
+                )
+                pos_weight = torch.tensor([2.33], device=device)
+
         criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     else:
         criterion = nn.BCEWithLogitsLoss()
-    
+        logger.info("Class weighting disabled; using standard BCEWithLogitsLoss")
+
+    logger.debug("Effective training configuration:\n%s", json.dumps(config, indent=2))
+
     return model, train_loader, val_loader, test_loader, optimizer, scheduler, criterion, device
+
+
 
 def train_epoch(model: nn.Module,
                 train_loader: DataLoader,
@@ -1335,7 +1517,11 @@ def validate_epoch(model: nn.Module,
                         'num_samples': len(dataset_targets)
                     }
                 except Exception as e:
-                    print(f"Warning: Could not calculate metrics for dataset {dataset_id}: {e}")
+                    logger.warning(
+                        "Could not calculate metrics for dataset %s: %s",
+                        dataset_id,
+                        e,
+                    )
 
             result['per_dataset_metrics'] = per_dataset_metrics
 
@@ -1343,27 +1529,26 @@ def validate_epoch(model: nn.Module,
 
 def run_evaluation(args):
     """
-    Evaluation-only mode: Load checkpoint and test on specified dataset
-    Used for LODO generalization testing
+    Evaluation-only mode: Load checkpoint and test on specified dataset.
+    Used for LODO generalization testing.
     """
-    print(f"\n{'='*80}")
-    print("LODO Generalization Evaluation Mode")
-    print(f"{'='*80}\n")
+    banner = "=" * 80
+    logger.info("")
+    logger.info(banner)
+    logger.info("LODO Generalization Evaluation Mode")
+    logger.info(banner)
 
-    # Validate required arguments
     if not args.checkpoint:
         raise ValueError("--checkpoint is required for --eval-only mode")
     if not args.test_dataset:
         raise ValueError("--test-dataset is required for --eval-only mode")
 
-    # Setup device
     device, gpu_info = setup_device_with_fallback()
-    print(f"Using device: {device}")
+    logger.info("Using device: %s", device)
     if gpu_info:
-        print(f"GPU: {gpu_info.get('name', 'Unknown')}\n")
+        logger.info("GPU: %s", gpu_info.get('name', 'Unknown'))
 
-    # Load checkpoint
-    print(f"Loading checkpoint: {args.checkpoint}")
+    logger.info("Loading checkpoint: %s", args.checkpoint)
     checkpoint_path = Path(args.checkpoint)
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {args.checkpoint}")
@@ -1378,32 +1563,33 @@ def run_evaluation(args):
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
-    print("✓ Model loaded successfully\n")
+    logger.info("Model checkpoint loaded successfully")
 
-    # Create test dataset
     dataset_short_names = {
         'celebdf_v2': 'celebdf_v2',
         'faceforensics_plus_plus': 'faceforensics',
         'deeperforensics_1_0': 'deeperforensics'
     }
 
-    short_name = dataset_short_names[args.test_dataset]
+    short_name = dataset_short_names.get(args.test_dataset, args.test_dataset)
     dataset_mode = args.dataset_mode
 
     if dataset_mode == 'balanced':
-        manifest_path = f'manifests/{short_name}_test_balanced.csv'
+        manifest_path = Path(f'manifests/{short_name}_test_balanced.csv')
     else:
-        manifest_path = f'manifests/{short_name}_test.csv'
+        manifest_path = Path(f'manifests/{short_name}_test.csv')
 
-    print(f"Loading test dataset: {args.test_dataset}")
-    print(f"Manifest: {manifest_path}")
+    logger.info(
+        "Loading test dataset %s (manifest=%s)",
+        args.test_dataset,
+        manifest_path,
+    )
 
-    # Create test dataset (no augmentation for evaluation)
     test_dataset = UnifiedDeepfakeDataset(
         manifest_path=manifest_path,
         dataset_name=f'{args.test_dataset}_test',
-        transform=None,  # Not used (albumentations handles it)
-        use_augmentation=False  # No augmentation for test evaluation
+        transform=None,
+        use_augmentation=False
     )
 
     test_loader = DataLoader(
@@ -1411,46 +1597,50 @@ def run_evaluation(args):
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=4,
-        pin_memory=True if device.type == 'cuda' else False
+        pin_memory=device.type == 'cuda'
     )
 
-    print(f"✓ Dataset loaded: {len(test_dataset):,} samples\n")
-
-    # Run evaluation
-    print("Running evaluation...")
+    logger.info("Test dataset loaded: %s samples", f"{len(test_dataset):,}")
+    logger.info("Running evaluation...")
     criterion = nn.BCEWithLogitsLoss()
     results = validate_epoch(model, test_loader, criterion, device, epoch=-1)
 
-    # Print results
-    print(f"\n{'='*80}")
-    print("Out-of-Distribution Test Results")
-    print(f"{'='*80}")
-    print(f"\nDataset: {args.test_dataset}")
-    print(f"Samples: {len(test_dataset):,}")
-    print(f"\nPerformance Metrics:")
-    print(f"  AUC-ROC:  {results['auc']:.4f}")
-    print(f"  F1-Score: {results['f1']:.4f}")
-    print(f"  Accuracy: {results['accuracy']:.4f}")
-    print(f"  Loss:     {results['loss']:.4f}")
+    logger.info("")
+    logger.info(banner)
+    logger.info("Out-of-Distribution Test Results")
+    logger.info(banner)
+    logger.info("Dataset: %s", args.test_dataset)
+    logger.info("Samples: %s", f"{len(test_dataset):,}")
+    logger.info("  AUC-ROC:  %.4f", results['auc'])
+    logger.info("  F1-Score: %.4f", results['f1'])
+    logger.info("  Accuracy: %.4f", results['accuracy'])
+    logger.info("  Loss:     %.4f", results['loss'])
 
-    # Print per-dataset breakdown if available
     if 'per_dataset_metrics' in results and results['per_dataset_metrics']:
-        print(f"\nPer-Dataset Breakdown:")
+        logger.info("Per-Dataset Breakdown:")
         for dataset_name, metrics in results['per_dataset_metrics'].items():
-            print(f"  {dataset_name}:")
-            print(f"    AUC: {metrics['auc']:.4f}, F1: {metrics['f1']:.4f}, "
-                  f"Acc: {metrics['accuracy']:.4f} ({metrics['num_samples']:,} samples)")
+            logger.info(
+                "  %s → AUC: %.4f, F1: %.4f, Acc: %.4f (%s samples)",
+                dataset_name,
+                metrics['auc'],
+                metrics['f1'],
+                metrics['accuracy'],
+                f"{metrics['num_samples']:,}",
+            )
 
-    print(f"\n{'='*80}")
-    print("Evaluation completed successfully!")
-    print(f"{'='*80}\n")
+    logger.info(banner)
+    logger.info("Evaluation completed successfully!")
 
     return results
 
+
+
 def main():
     parser = argparse.ArgumentParser(description='AWARE-NET Baseline Training')
-    parser.add_argument('--config', type=str, default='configs/training_config.json',
+    parser.add_argument('--config', type=str, default='configs/training.json',
                        help='Path to training configuration file')
+    parser.add_argument('--dataset-config', type=str, default=None,
+                       help='Override dataset configuration manifest path (defaults to config file)')
     parser.add_argument('--experiment-name', type=str, default='baseline_efficientnet',
                        help='Name of the experiment')
     parser.add_argument('--batch-size', type=int, default=32,
@@ -1462,23 +1652,28 @@ def main():
     parser.add_argument('--resume', type=str, default=None,
                        help='Path to checkpoint to resume from')
     parser.add_argument('--subset-ratio', type=float, default=1.0,
-                       help='Fraction of dataset to use (0.1 = 10%%, 1.0 = 100%%)')
+                       help='Fraction of dataset to use (0.1 = 10%, 1.0 = 100%)')
     parser.add_argument('--no-pretrained', action='store_true',
                        help='Disable pretrained weights (start from random initialization)')
     parser.add_argument('--model', type=str, default='tf_efficientnetv2_b0',
                        choices=['tf_efficientnetv2_b0', 'tf_efficientnetv2_b3', 'efficientnetv2_rw_t'],
                        help='EfficientNetV2 model variant to use')
     parser.add_argument('--dataset', type=str, default='celebdf_v2',
-                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0'],
+                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0', 'dfdc'],
                        help='Dataset to use for training')
     parser.add_argument('--dataset-mode', type=str, default='original',
                        choices=['original', 'anonymized', 'anonymized_balanced', 'balanced'],
                        help='Dataset mode: original, anonymized, anonymized_balanced, or balanced')
     parser.add_argument('--multi-dataset', action='store_true',
-                       help='Enable multi-dataset training (uses all three datasets)')
+                       help='Enable multi-dataset training (uses all configured datasets)')
     parser.add_argument('--exclude-dataset', type=str, action='append', default=[],
-                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0'],
-                       help='Exclude specific dataset(s) from multi-dataset training (can be used multiple times for LODO evaluation)')
+                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0', 'dfdc'],
+                       help='Exclude specific dataset(s) from multi-dataset training (can be used multiple times)')
+    parser.add_argument('--strict-batch-balance', action='store_true',
+                       help='Enforce equal per-dataset and per-class samples within each batch')
+    parser.add_argument('--log-level', type=str, default='INFO',
+                       choices=['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG'],
+                       help='Logging level for console output')
 
     # Evaluation-only mode parameters
     parser.add_argument('--eval-only', action='store_true',
@@ -1486,18 +1681,26 @@ def main():
     parser.add_argument('--checkpoint', type=str, default=None,
                        help='Path to checkpoint for evaluation (required with --eval-only)')
     parser.add_argument('--test-dataset', type=str, default=None,
-                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0'],
+                       choices=['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0', 'dfdc'],
                        help='Dataset to test on for evaluation (required with --eval-only)')
 
     args = parser.parse_args()
 
-    # Check for evaluation-only mode
-    if args.eval_only:
-        print("\n==> Entering evaluation-only mode")
-        run_evaluation(args)
-        return  # Exit after evaluation
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.getLogger().setLevel(log_level)
+    logger.setLevel(log_level)
 
-    # Create default configuration
+    config_path = Path(args.config)
+    if not config_path.exists():
+        parser.error(f"Configuration file not found: {config_path}")
+
+    if args.eval_only:
+        logger.info("")
+        logger.info("==> Entering evaluation-only mode")
+        run_evaluation(args)
+        return None
+
+    # Base configuration seeded from CLI defaults
     config = {
         'experiment': {
             'name': args.experiment_name,
@@ -1505,13 +1708,15 @@ def main():
             'tags': ['baseline', 'efficientnet', 'stage0']
         },
         'data': {
-            'dataset_config': 'configs/datasets.json',
+            'dataset_config': args.dataset_config or 'configs/datasets.json',
             'dataset_name': args.dataset,
             'dataset_mode': args.dataset_mode,
             'multi_dataset': args.multi_dataset,
             'exclude_datasets': args.exclude_dataset,
             'image_size': 256,
-            'subset_ratio': args.subset_ratio
+            'subset_ratio': args.subset_ratio,
+            'augmentation': True,
+            'strict_batch_balance': args.strict_batch_balance
         },
         'model': {
             'name': args.model,
@@ -1533,68 +1738,62 @@ def main():
         }
     }
 
-    # Load config file if it exists and merge with command line args
-    if Path(args.config).exists():
-        print(f"Loading configuration from {args.config}")
-        with open(args.config, 'r') as f:
-            file_config = json.load(f)
+    logger.info("Loading configuration overrides from %s", config_path)
+    with open(config_path, 'r', encoding='utf-8') as f:
+        file_config = json.load(f)
+    config.update(file_config)
 
-        # Start with file config as base
-        config.update(file_config)
+    # Ensure required sections exist and override with CLI arguments
+    training_cfg = config.setdefault('training', {})
+    training_cfg.update({
+        'batch_size': args.batch_size,
+        'num_epochs': args.epochs,
+        'epochs': args.epochs,
+        'learning_rate': args.learning_rate,
+    })
 
-        # Command line arguments override config file
-        if 'training' not in config:
-            config['training'] = {}
-        config['training']['batch_size'] = args.batch_size
-        config['training']['num_epochs'] = args.epochs
-        config['training']['epochs'] = args.epochs
-        config['training']['learning_rate'] = args.learning_rate
+    experiment_cfg = config.setdefault('experiment', {})
+    experiment_cfg['name'] = args.experiment_name
 
-        if 'experiment' not in config:
-            config['experiment'] = {}
-        config['experiment']['name'] = args.experiment_name
+    model_cfg = config.setdefault('model', {})
+    model_cfg.update({
+        'name': args.model,
+        'architecture': args.model,
+        'pretrained': not args.no_pretrained,
+    })
 
-        if 'model' not in config:
-            config['model'] = {}
-        config['model']['name'] = args.model
-        config['model']['architecture'] = args.model
-        config['model']['pretrained'] = not args.no_pretrained
+    data_cfg = config.setdefault('data', {})
+    data_cfg['dataset_name'] = args.dataset
+    data_cfg['dataset_mode'] = args.dataset_mode
+    data_cfg['multi_dataset'] = args.multi_dataset
+    data_cfg['exclude_datasets'] = args.exclude_dataset
+    data_cfg['subset_ratio'] = args.subset_ratio
+    if args.dataset_config:
+        data_cfg['dataset_config'] = args.dataset_config
+    else:
+        data_cfg.setdefault('dataset_config', 'configs/datasets.json')
 
-        if 'data' not in config:
-            config['data'] = {}
-        config['data']['dataset_name'] = args.dataset
-        config['data']['dataset_mode'] = args.dataset_mode
-        config['data']['multi_dataset'] = args.multi_dataset
-        config['data']['exclude_datasets'] = args.exclude_dataset
-        config['data']['subset_ratio'] = args.subset_ratio
-    
-    print("Training Configuration:")
-    print(json.dumps(config, indent=2))
-    
-    # Create experiment configuration - handle both old and new config formats
+    logger.debug("Effective configuration after overrides:\n%s", json.dumps(config, indent=2))
+
     exp_config = ExperimentConfig(
-        experiment_name=config['experiment']['name'],
-        model_name=config['model'].get('name', config['model'].get('architecture', args.model)),
-        dataset_name=config['data'].get('dataset_name', 'celebdf_v2'),
-        description=config['experiment']['description'],
-        tags=config['experiment']['tags'],
-        batch_size=config['training']['batch_size'],
-        learning_rate=config['training']['learning_rate'],
-        num_epochs=config['training'].get('epochs', config['training'].get('num_epochs', args.epochs)),
-        weight_decay=config['training']['weight_decay']
+        experiment_name=experiment_cfg['name'],
+        model_name=model_cfg.get('name', model_cfg.get('architecture', args.model)),
+        dataset_name=data_cfg.get('dataset_name', 'celebdf_v2'),
+        description=experiment_cfg.get('description', ''),
+        tags=experiment_cfg.get('tags', []),
+        batch_size=training_cfg['batch_size'],
+        learning_rate=training_cfg['learning_rate'],
+        num_epochs=training_cfg.get('epochs', training_cfg.get('num_epochs', args.epochs)),
+        weight_decay=training_cfg.get('weight_decay', 1e-4)
     )
-    
-    # Setup experiment manager
+
     exp_manager = ExperimentManager(base_path="experiments")
-    
-    # Run training in experiment context
+
     with exp_manager.experiment_context(exp_config) as experiment_id:
-        print(f"\\nStarted experiment: {experiment_id}")
-        
-        # Setup training components
+        logger.info("Started experiment: %s", experiment_id)
+
         model, train_loader, val_loader, test_loader, optimizer, scheduler, criterion, device = setup_training(config)
-        
-        # Training variables
+
         best_val_auc = 0.0
         patience_counter = 0
         training_history = {
@@ -1606,31 +1805,19 @@ def main():
             'val_f1': []
         }
 
-        # Initialize training logger and visualizer
         visualizer = AcademicVisualizer()
-        logger = TrainingLogger(exp_manager, visualizer)
-        print(f"✓ Training logger initialized")
+        training_logger = TrainingLogger(exp_manager, visualizer)
+        logger.info("Training logger initialized")
+        logger.info("Starting training for %d epochs", training_cfg['num_epochs'])
+        logger.info("%s", "=" * 80)
 
-        print(f"\\nStarting training for {config['training']['num_epochs']} epochs...")
-        print("=" * 80)
-        
-        for epoch in range(1, config['training']['num_epochs'] + 1):
+        for epoch in range(1, training_cfg['num_epochs'] + 1):
             epoch_start_time = time.time()
-            
-            # Training phase
-            train_metrics = train_epoch(
-                model, train_loader, optimizer, criterion, device, epoch
-            )
-            
-            # Validation phase  
-            val_metrics = validate_epoch(
-                model, val_loader, criterion, device, epoch
-            )
-            
-            # Update learning rate
+
+            train_metrics = train_epoch(model, train_loader, optimizer, criterion, device, epoch)
+            val_metrics = validate_epoch(model, val_loader, criterion, device, epoch)
             scheduler.step()
-            
-            # Log metrics to experiment manager
+
             exp_manager.log_metrics(train_metrics, split='train', epoch=epoch)
             exp_manager.log_metrics({
                 'loss': val_metrics['loss'],
@@ -1638,22 +1825,18 @@ def main():
                 'auc': val_metrics['auc'],
                 'f1': val_metrics['f1']
             }, split='val', epoch=epoch)
-            
-            # Update history
+
             training_history['train_loss'].append(train_metrics['loss'])
             training_history['train_accuracy'].append(train_metrics['accuracy'])
             training_history['val_loss'].append(val_metrics['loss'])
             training_history['val_accuracy'].append(val_metrics['accuracy'])
             training_history['val_auc'].append(val_metrics['auc'])
             training_history['val_f1'].append(val_metrics['f1'])
-            
-            # Save checkpoint if this is the best model
+
             is_best = val_metrics['auc'] > best_val_auc
             if is_best:
                 best_val_auc = val_metrics['auc']
                 patience_counter = 0
-                
-                # Save checkpoint
                 exp_manager.save_checkpoint(
                     model=model,
                     optimizer=optimizer,
@@ -1661,32 +1844,44 @@ def main():
                     metrics=val_metrics,
                     is_best=True
                 )
-                
-                print(f"New best model saved! AUC: {best_val_auc:.4f}")
+                logger.info("New best model saved! AUC: %.4f", best_val_auc)
             else:
                 patience_counter += 1
-            
-            # Print epoch summary
+
             epoch_time = time.time() - epoch_start_time
-            print(f"Epoch {epoch:02d} Summary:")
-            print(f"  Train - Loss: {train_metrics['loss']:.4f}, Acc: {train_metrics['accuracy']:.4f}")
-            print(f"  Val   - Loss: {val_metrics['loss']:.4f}, Acc: {val_metrics['accuracy']:.4f}, "
-                  f"AUC: {val_metrics['auc']:.4f}, F1: {val_metrics['f1']:.4f}")
+            logger.info("Epoch %02d Summary:", epoch)
+            logger.info("  Train - Loss: %.4f, Acc: %.4f", train_metrics['loss'], train_metrics['accuracy'])
+            logger.info(
+                "  Val   - Loss: %.4f, Acc: %.4f, AUC: %.4f, F1: %.4f",
+                val_metrics['loss'],
+                val_metrics['accuracy'],
+                val_metrics['auc'],
+                val_metrics['f1'],
+            )
 
-            # Print per-dataset breakdown if available
             if 'per_dataset_metrics' in val_metrics:
-                print(f"\n  Per-Dataset Validation Breakdown:")
+                logger.debug("  Per-dataset validation breakdown:")
                 for dataset_name, metrics in val_metrics['per_dataset_metrics'].items():
-                    print(f"    {dataset_name}:")
-                    print(f"      AUC: {metrics['auc']:.4f}, F1: {metrics['f1']:.4f}, "
-                          f"Acc: {metrics['accuracy']:.4f} ({metrics['num_samples']:,} samples)")
+                    logger.debug(
+                        "    %s → AUC: %.4f, F1: %.4f, Acc: %.4f (%s samples)",
+                        dataset_name,
+                        metrics['auc'],
+                        metrics['f1'],
+                        metrics['accuracy'],
+                        f"{metrics['num_samples']:,}",
+                    )
 
-            print(f"  Time: {epoch_time:.2f}s, LR: {optimizer.param_groups[0]['lr']:.2e}")
-            print(f"  Best AUC: {best_val_auc:.4f}, Patience: {patience_counter}/{config['training']['early_stopping_patience']}")
-            print("-" * 80)
+            logger.info(
+                "  Time: %.2fs, LR: %.2e | Best AUC: %.4f, Patience: %d/%d",
+                epoch_time,
+                optimizer.param_groups[0]['lr'],
+                best_val_auc,
+                patience_counter,
+                training_cfg['early_stopping_patience'],
+            )
+            logger.info("%s", "-" * 80)
 
-            # Log epoch to training logger
-            logger.log_epoch(
+            training_logger.log_epoch(
                 epoch=epoch,
                 train_metrics=train_metrics,
                 val_metrics=val_metrics,
@@ -1694,49 +1889,48 @@ def main():
                 per_dataset_metrics=val_metrics.get('per_dataset_metrics')
             )
 
-            # Early stopping
-            if patience_counter >= config['training']['early_stopping_patience']:
-                print(f"Early stopping triggered after {epoch} epochs")
+            if patience_counter >= training_cfg['early_stopping_patience']:
+                logger.warning("Early stopping triggered after %d epochs", epoch)
                 break
-        
-        print("\\nTraining completed!")
-        print(f"Best validation AUC: {best_val_auc:.4f}")
-        
-        # Final evaluation on test set
-        print("\\nEvaluating on test set...")
-        test_metrics = validate_epoch(
-            model, test_loader, criterion, device,
-            epoch=-1  # Special epoch for test
-        )
-        
-        # Log test metrics
+
+        logger.info("Training completed! Best validation AUC: %.4f", best_val_auc)
+        logger.info("Evaluating on test set...")
+        test_metrics = validate_epoch(model, test_loader, criterion, device, epoch=-1)
+
         exp_manager.log_metrics({
             'loss': test_metrics['loss'],
             'accuracy': test_metrics['accuracy'],
             'auc': test_metrics['auc'],
             'f1': test_metrics['f1']
         }, split='test')
-        
-        print("Final Test Results:")
-        print(f"  Loss: {test_metrics['loss']:.4f}")
-        print(f"  Accuracy: {test_metrics['accuracy']:.4f}")
-        print(f"  AUC: {test_metrics['auc']:.4f}")
-        print(f"  F1: {test_metrics['f1']:.4f}")
 
-        # Print per-dataset test breakdown if available
+        logger.info("Final Test Results:")
+        logger.info("  Loss: %.4f", test_metrics['loss'])
+        logger.info("  Accuracy: %.4f", test_metrics['accuracy'])
+        logger.info("  AUC: %.4f", test_metrics['auc'])
+        logger.info("  F1: %.4f", test_metrics['f1'])
+
         if 'per_dataset_metrics' in test_metrics:
-            print(f"\n  Per-Dataset Test Breakdown:")
+            logger.debug("  Per-dataset test breakdown:")
             for dataset_name, metrics in test_metrics['per_dataset_metrics'].items():
-                print(f"    {dataset_name}:")
-                print(f"      AUC: {metrics['auc']:.4f}, F1: {metrics['f1']:.4f}, "
-                      f"Acc: {metrics['accuracy']:.4f} ({metrics['num_samples']:,} samples)")
+                logger.debug(
+                    "    %s → AUC: %.4f, F1: %.4f, Acc: %.4f (%s samples)",
+                    dataset_name,
+                    metrics['auc'],
+                    metrics['f1'],
+                    metrics['accuracy'],
+                    f"{metrics['num_samples']:,}",
+                )
 
-        # Generate final training report and visualizations
-        logger.generate_final_report(training_history, test_metrics)
+        training_logger.generate_final_report(training_history, test_metrics)
 
-        print(f"\\nExperiment {experiment_id} completed successfully!")
+        logger.info("Experiment %s completed successfully!", experiment_id)
         return experiment_id
+
+
 
 if __name__ == "__main__":
     experiment_id = main()
-    print(f"\\nTraining finished. Experiment ID: {experiment_id}")
+    if experiment_id is not None:
+        logger.info("")
+        logger.info("Training finished. Experiment ID: %s", experiment_id)

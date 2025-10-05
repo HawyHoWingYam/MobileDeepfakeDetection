@@ -11,6 +11,7 @@ Key Features:
 - Handles class imbalance gracefully
 """
 
+import math
 import torch
 from torch.utils.data import Sampler, Dataset
 import numpy as np
@@ -58,6 +59,7 @@ class BalancedBatchSampler(Sampler):
         self.strategy = strategy
         self.drop_last = drop_last
         self.shuffle = shuffle
+        self._resample_warned: set[int] = set()
 
         # Set random seed
         if seed is not None:
@@ -80,6 +82,7 @@ class BalancedBatchSampler(Sampler):
 
         # Prepare sampling
         self._prepare_sampling()
+        self._log_sampling_plan()
 
         logger.info(f"BalancedBatchSampler initialized: "
                    f"samples={self.num_samples}, classes={self.num_classes}, "
@@ -89,15 +92,19 @@ class BalancedBatchSampler(Sampler):
         """Validate sampler configuration."""
         if self.batch_size < self.min_samples_per_class * self.num_classes:
             logger.warning(
-                f"Batch size ({self.batch_size}) may be too small for "
-                f"{self.min_samples_per_class} samples per class × {self.num_classes} classes"
+                "Batch size (%d) may be too small for %d samples per class × %d classes",
+                self.batch_size,
+                self.min_samples_per_class,
+                self.num_classes
             )
 
         for class_label, count in self.class_counts.items():
             if count < self.min_samples_per_class:
                 logger.warning(
-                    f"Class {class_label} has only {count} samples, "
-                    f"less than min_samples_per_class ({self.min_samples_per_class})"
+                    "Class %s has only %d samples, less than min_samples_per_class (%d)",
+                    class_label,
+                    count,
+                    self.min_samples_per_class
                 )
 
     def _prepare_sampling(self):
@@ -110,6 +117,52 @@ class BalancedBatchSampler(Sampler):
             self._prepare_minority_focused_sampling()
         else:
             raise ValueError(f"Unknown strategy: {self.strategy}")
+
+    def _log_sampling_plan(self):
+        """Log expected resampling ratios for transparency."""
+        if self.num_samples == 0 or self.num_classes == 0:
+            return
+
+        if self.drop_last:
+            num_batches = self.num_samples // self.batch_size
+        else:
+            num_batches = math.ceil(self.num_samples / self.batch_size)
+
+        if num_batches == 0:
+            return
+
+        logger.info(
+            "BalancedBatchSampler plan → batches=%d, strategy=%s, drop_last=%s",
+            num_batches,
+            self.strategy,
+            self.drop_last,
+        )
+
+        if self.strategy == 'balanced':
+            extra_per_class = self.extra_samples / self.num_classes if self.num_classes else 0
+            for class_label in self.classes:
+                original = self.class_counts[class_label]
+                expected = self.samples_per_class * num_batches + extra_per_class
+                ratio = expected / max(original, 1)
+                logger.info(
+                    "  class=%s original=%d expected≈%.0f resample_ratio=%.2f",
+                    class_label,
+                    original,
+                    expected,
+                    ratio,
+                )
+        else:
+            for class_label, n_samples in self.class_batch_sizes.items():
+                original = self.class_counts[class_label]
+                expected = n_samples * num_batches
+                ratio = expected / max(original, 1)
+                logger.info(
+                    "  class=%s original=%d expected≈%d resample_ratio=%.2f",
+                    class_label,
+                    original,
+                    expected,
+                    ratio,
+                )
 
     def _prepare_balanced_sampling(self):
         """Prepare balanced sampling (equal samples per class)."""
@@ -177,6 +230,14 @@ class BalancedBatchSampler(Sampler):
                 else:
                     # Sample with replacement
                     selected = random.choices(class_pool, k=n_needed)
+                    if class_label not in self._resample_warned:
+                        logger.warning(
+                            "Sampling with replacement for class %s: available=%d required=%d",
+                            class_label,
+                            len(class_pool),
+                            n_needed
+                        )
+                        self._resample_warned.add(class_label)
 
                 batch_indices.extend(selected)
 
@@ -198,6 +259,14 @@ class BalancedBatchSampler(Sampler):
                     selected = random.sample(class_pool, n_samples)
                 else:
                     selected = random.choices(class_pool, k=n_samples)
+                    if class_label not in self._resample_warned:
+                        logger.warning(
+                            "Sampling with replacement for class %s: available=%d required=%d",
+                            class_label,
+                            len(class_pool),
+                            n_samples
+                        )
+                        self._resample_warned.add(class_label)
 
                 batch_indices.extend(selected)
 

@@ -45,6 +45,27 @@ python tools/scripts/setup_environment.py --validate-only
 python src/stage_00/train_baseline.py --dataset original_imbalanced --training quick_test
 ```
 
+## 📦 DFDC Onboarding Guide
+
+To integrate the DFDC dataset into the AWARE-NET pipeline:
+
+1. **Prepare Frames** – extract frames into `dataset/real/DFDC/<video_id>/...` and `dataset/fake/DFDC/<video_id>/...` (e.g. `ffmpeg -i video.mp4 -vf fps=5 dataset/real/DFDC/id/%06d.jpg`).
+2. **Generate Manifests** – create CSV manifests and validate them:
+   ```bash
+   python -m src.utils.manifest_generator \
+     --config configs/dfdc.json \
+     --real-dir dataset/real/DFDC \
+     --fake-dir dataset/fake/DFDC \
+     --no-validate --no-md5
+   python -m src.utils.data_validator --config configs/dfdc.json --quick
+   ```
+   (Remove `--no-validate/--no-md5` if you want full integrity checks.)
+3. **Register Configuration** – add a `dfdc` entry to `configs/datasets.json` and include it in `multi_dataset_configs.unified_training.datasets_included` when running multi-dataset training.
+4. **Update Training Config** – point `configs/training.json` to the desired dataset (`data.dataset_name: "dfdc"`) or enable `multi_dataset: true` to blend DFDC with other datasets.
+5. **Rebuild Baselines** – rerun Stage 00 baselines (LODO Config 3, 3-dataset mix, 4-dataset mix) so checkpoints/metrics reflect the new data.
+
+Record the regenerated metrics in the Stage 00 status report once DFDC integration is complete.
+
 ## 🏗️ Project Architecture
 
 ```
