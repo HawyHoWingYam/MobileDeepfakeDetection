@@ -199,7 +199,7 @@ def main():
         print("\\nNext steps:")
         print("  1. conda install remaining dependencies from environment.yml")
         print("  2. pip install -e . to install AWARE-NET in development mode")
-        print("  3. Test with: python -c \\"import torch; print(torch.cuda.is_available())\\"")
+        print('  3. Test with: python -c "import torch; print(torch.cuda.is_available())"')
 
 if __name__ == '__main__':
     main()

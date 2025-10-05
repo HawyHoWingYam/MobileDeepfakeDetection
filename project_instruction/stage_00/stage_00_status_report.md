@@ -178,7 +178,7 @@ Status: ✅ **95% COMPLETE - Stage 00 基础设施与Baseline建立基本完成*
 
 ---
 
-## 🚀 **准备进入Stage 01**
+## 🚀 **准备进入Stage 01** ⚠️ (已完成，见Stage 01最终报告)
 
 ### ✅ 前置条件已满足
 - ✅ 基础设施完整
@@ -187,15 +187,14 @@ Status: ✅ **95% COMPLETE - Stage 00 基础设施与Baseline建立基本完成*
 - ✅ BCE baseline完成（作为对比组）
 - ✅ 理论动机明确（BCE失败 → 需要SupCon）
 
-### 🚨 Stage 01关键任务
-1. **SupCon快速验证**（5-10 epochs）
-   - 目标：OOD AUC > 0.68（超过BCE 3%）
-   - 关键：验证SupCon是否能解决BCE的问题
-   - 风险：如果失败，整个项目需要重新设计
+### 🔄 **Stage 01更新** (2025-10-05)
+**Stage 01实验已全部完成**，结果显示：
+- LODO平均AUC ~0.62（单模型OOD泛化失败）
+- SupCon vs BCE提升 < 2%（对比学习效果有限）
+- **定位调整**：Stage 01作为In-dist过滤器（AUC 0.99+）
+- **OOD策略**：由Stage 02-04异构专家系统解决
 
-2. **两层Loss架构实施**
-   - 特征层：SupCon学习可迁移表示
-   - 任务层：BCE/其他在好特征上做决策
+详见：`../stage_01/stage_01_status_report.md`
 
 ---
 

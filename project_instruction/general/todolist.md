@@ -1,10 +1,10 @@
 # AWARE-NET Project Todo List
 
-Last Updated: 2025-10-04 (Loss函数策略分析完成)
+Last Updated: 2025-10-05 (Stage 01 LODO全面失败确认 + 诊断工具完成)
 
 ---
 
-## 📊 CURRENT STATUS (2025-10-04)
+## 📊 CURRENT STATUS (2025-10-05)
 
 ### ✅ Core Infrastructure - COMPLETE
 
@@ -23,277 +23,357 @@ Last Updated: 2025-10-04 (Loss函数策略分析完成)
 
 ---
 
-### ✅ Phase 0, Level 1: Per-Dataset Metrics - COMPLETE
+## 🚨 CRITICAL: Stage 01 完全失败确认 (2025-10-05)
 
-**Implementation**: ✅ Completed and tested (2025-10-03)
+### ❌ LODO方法论：系统性泛化失败
 
-**Test Results** (1 epoch baseline):
-- **DeeperForensics**: Val AUC 0.9999, Test AUC 1.0000 ⚠️ (完美表现，可疑)
-- **CelebDF-v2**: Val AUC 0.9959, Test AUC 0.9950 ✓
-- **FaceForensics++**: Val AUC 0.9796, Test AUC 0.9666 ✓
+**完整LODO Baseline评估结果**:
 
-**Key Findings**:
-1. DeeperForensics表现异常完美（可能原因）：
-   - Dataset-specific shortcuts（统一的合成管道）
-   - In-distribution training优势
-   - 需要LODO测试验证真实泛化能力
-2. FaceForensics++相对最难（4种manipulation方法，更多样化）
-3. 所有数据集在1 epoch就达到高AUC（强预训练特征 + 缺少数据增强）
+| 配置 | 训练集 | OOD测试集 | Epochs | Val AUC | OOD AUC | OOD Acc | 泛化差距 | 状态 |
+|------|--------|----------|--------|---------|---------|---------|---------|------|
+| **Exclude DF** | CelebDF + FF++ | DeeperForensics | 50 | 0.999 | **0.732** | 48.9% | -26.7% | ❌ 失败 |
+| **Exclude CelebDF** | DF + FF++ | CelebDF | 5 | 0.997 | **0.720** | 48.8% | -27.7% | ❌ 失败 |
+| **Exclude FF++** | CelebDF + DF | FF++ | 10 | 0.998 | **0.572** | 32.7% | -42.6% | ❌❌ 惨败 |
 
----
-
-### ✅ LODO Training - COMPLETE (3/3配置)
-
-**完整LODO框架**（3个配置，每次排除1个数据集）：
-
-| 配置 | 训练数据 | 测试数据（OOD） | 状态 | Checkpoint |
-|------|---------|----------------|------|-----------|
-| **1** | CelebDF + FF++ | **DeeperForensics** | ✅ 完成 | `lodo_exclude_df_20251003_104243_00c45ad0` |
-| **2** | CelebDF + DF | **FaceForensics++** | ✅ 完成 | `lodo_exclude_ff_with_aug_20251004_074400_60d13589` |
-| **3** | FF++ + DF | **CelebDF** | ✅ 完成 | `lodo_exclude_celebdf_with_aug_*` |
-
-**已实现功能**：
-- ✅ `--exclude-dataset` 命令行参数
-- ✅ LODO训练支持（排除指定数据集）
-- ✅ Per-dataset metrics输出
-- ✅ `--eval-only` 评估模式
+**LODO Baseline平均性能**:
+- **平均OOD AUC**: **0.675** (远低于0.85目标)
+- **平均泛化差距**: **-32.3%** (Val 0.998 → OOD 0.675)
+- **最好配置**: Exclude DF (0.732)
+- **最差配置**: Exclude FF++ (0.572) - 接近随机猜测
 
 ---
 
-### ❌ CRITICAL: LODO系统性泛化失败（Complete 3×3 Matrix）
+### ❌ SupCon方法：劣于Baseline
 
-**完整LODO OOD测试结果** (2025-10-04):
+**SupCon两阶段训练结果** (Stage 1: 50 epochs, Stage 2: 20 epochs):
 
-| 配置 | 训练集 | OOD测试集 | In-Dist Val | OOD AUC | OOD Acc | OOD F1 | 泛化差距 | 结果 |
-|------|--------|----------|------------|---------|---------|--------|---------|------|
-| **1 (无增强)** | CelebDF+FF++ | DF | 0.9869 | 0.6518 | 53.21% | 0.1237 | -33.51% | ❌ 失败 |
-| **1 (有增强)** | CelebDF+FF++ | DF | 0.9869 | 0.6584 | 56.36% | 0.2523 | -32.85% | ❌ 仅+0.66% |
-| **2** | CelebDF+DF | FF++ | 0.9823 | **0.5734** | **49.79%** | 0.2770 | -40.89% | ❌❌ **负迁移!** |
-| **3** | FF++DF | CelebDF | 0.9975 | **0.7215** | **63.02%** | 0.5355 | -27.60% | ✅ 完成 |
+| 方法 | 训练集 | OOD测试集 | Val AUC | OOD AUC | 与Baseline对比 | 状态 |
+|------|--------|----------|---------|---------|---------------|------|
+| **SupCon** | CelebDF + FF++ | DeeperForensics | 0.969 | **0.665** | -6.7% | ❌ 失败 |
+| **Baseline** | CelebDF + FF++ | DeeperForensics | 0.999 | **0.732** | 基准 | ❌ 失败 |
 
-**LODO评估完成** (2025-10-04):
-- **平均OOD AUC**: 0.6511 (仅比随机0.5好15%)
-- **平均泛化差距**: -33.28% (In-dist 0.985 vs OOD 0.651)
-- **最好**: Config 3 (0.7215) - FF++DF数据最多样
-- **最差**: Config 2 (0.5734) - 负迁移
-
-**严重发现**:
-- ❌ Config 2 **负迁移**: AUC 0.5734 < 随机(0.5)+10%，Acc 49.79% < 随机50%
-- ❌ 增强训练几乎无效: 仅改善0.66% (0.6518 → 0.6584)
-- ❌ 所有配置系统性失败: 平均AUC ~0.60
-
-**修正后的根因分析**:
-1. **Tier 1 (80%)**: Manipulation方法分布偏移 - 模型无法泛化到未见过的manipulation方法
-2. **Tier 2 (15%)**: 数据集环境不匹配 - 工作室 vs 野外视频
-3. **Tier 3 (5%)**: 数据增强缺失 - 已证明影响微小
+**关键发现**:
+1. ❌ **SupCon < Baseline**: OOD AUC 0.665 vs 0.732，差距6.7%
+2. ❌ **Stage 01假设失败**: SupCon并未改善跨数据集泛化
+3. ❌ **两阶段训练问题**: 可能增加过拟合风险
+4. ✅ **Baseline更可靠**: 训练更快（50 vs 70 epochs），性能更好
 
 ---
 
-### ✅ 诊断完成：训练有效，但仅学到In-Distribution Shortcuts
+### ✅ 诊断工具完成 (2025-10-05)
 
-**关键异常发现** (用户报告 - 2025-10-04):
-1. ❌ 增强训练 vs 无增强训练 → OOD几乎无差别（+0.66%）
-2. ❌ 直接下载模型 vs 训练后模型 → 性能相似
-3. ❓ 预训练权重是否真的在训练中更新？
+**工具**: `tools/validation/model_diagnostics.py`
 
-**诊断过程** (2025-10-04):
-1. ✅ 检查 `baseline_model.py:68-70` - freeze_backbone逻辑 → ✓ 正常
-2. ✅ 检查 `configs/training.json:18` - freeze_backbone配置 → ✓ false（未冻结）
-3. ✅ 验证模型参数 → ✓ 100%可训练 (6,515,090 total)
-4. ✅ 分析训练日志 (`experiments/lodo_exclude_df_with_augmentation_*/progress.json`) → ✓ 训练确实有效
-   - Loss: 0.267 → 0.062 (降低77%)
-   - Accuracy: 87.3% → 97.1% (提升9.8%)
-   - Val AUC: 0.976 → 0.987 (in-distribution表现优秀)
-5. ✅ **关键测试**：对比预训练vs训练后模型的OOD性能 (`test_pretrained_only.py`)
+**功能**:
+- ✅ ROC曲线分析 + 最佳阈值检测
+- ✅ 混淆矩阵可视化（可调阈值）
+- ✅ 阈值优化曲线（Accuracy/F1/Precision/Recall）
+- ✅ 预测概率分布分析
+- ✅ 支持Baseline和SupCon模型
+- ✅ CLI接口 + Python API
 
-**🔬 关键实验结果** (DeeperForensics OOD测试):
-
-| 模型状态 | 训练状态 | AUC | F1 | Accuracy |
-|---------|---------|-----|----|----|
-| **ImageNet预训练** | ❌ 未训练deepfake | **0.6540** | 0.6662 | 50.33% |
-| **训练无增强** | ✅ 10 epochs | **0.6518** | 0.1237 | 53.21% |
-| **训练有增强** | ✅ 10 epochs | **0.6584** | 0.2523 | 56.36% |
-
-**⚠️ CRITICAL FINDING**:
+**诊断结果 (Baseline on DeeperForensics)**:
 ```
-预训练模型OOD性能 ≈ 训练后OOD性能 (Δ < 0.5%)
+默认阈值0.5: Acc 48.9%, Precision 99.7%, Recall 14.3%
+最佳阈值0.0: Acc 66.3%, Precision 83.7%, Recall 53.9%
+预测分布: Real mean=0.0012, Fake mean=0.1387 (分离度极差)
 ```
 
 **结论**:
-1. ✅ **训练确实在进行** - Loss下降、Acc提升证明梯度更新有效
-2. ✅ **Backbone未被冻结** - 6.5M参数全部可训练
-3. ❌ **训练仅学到In-Dist Shortcuts** - 提升in-dist性能 (87%→97%)
-4. ❌ **OOD泛化完全失败** - 训练对OOD性能几乎无改善 (0.6518 vs 0.6540)
-5. ✅ **用户观察完全正确** - "直接下载模型 vs 训练后模型性能相似"
-
-**根本原因** (架构性限制):
-- **Cross-Entropy Loss的固有缺陷**: 鼓励学习dataset-specific decision boundaries
-- **预训练特征的泛化上限**: ImageNet特征提供baseline OOD能力 (~0.65 AUC)
-- **训练仅优化捷径**: 学习训练集统计特征 (compression, lighting, 等)，而非可迁移的deepfake表示
-
-**下一步行动**:
-→ ✅ 无需修复 - 这不是bug，是Cross-Entropy的根本性限制
-→ ✅ **直接进入Stage 1 SupCon实施** - 这正是项目设计SupCon的原因
-→ ✅ Config 3 LODO评估仍需完成（学术完整性）
-→ ✅ 生成完整3×3 LODO报告用于论文baseline对比
-
-**验证了Stage 1设计的必要性**:
-- Supervised Contrastive Learning学习可迁移表示，而非decision boundaries
-- 这正是论文创新点的理论基础
-
-**→ 进入Stage 01 SupCon验证阶段**
+- ❌ **严重校准失败**: 模型预测概率集中在0附近
+- ❌ **即使最佳阈值也差**: 最优Acc仅66.3%
+- ❌ **不是阈值问题**: 是模型根本无法区分OOD样本
 
 ---
 
-## 🔬 Loss函数策略分析与调整 (2025-10-04)
+### ✅ 训练轮数分析：更多训练无帮助
 
-### 核心发现：不是"放弃CE Loss"，而是"正确使用CE Loss"
+**对比实验**:
+| 配置 | Epochs | OOD AUC | 差距 |
+|-----|--------|---------|------|
+| Exclude DF | 50 | 0.732 | 基准 |
+| Exclude CelebDF | 5 | 0.720 | -1.2% |
+| Exclude FF++ | 10 | 0.572 | - |
 
-基于Stage 00诊断结果，重新审视了整个项目的loss函数策略：
-
-#### 各Stage Loss策略表
-
-| Stage | 当前设计 | 调整建议 | 原因 |
-|-------|---------|---------|------|
-| **Stage 00** | BCE | ✅ 保持不变 | 作为学术对比组，证明传统范式失败 |
-| **Stage 01** | SupCon | 🚨 **立即验证** | 生死关键：必须证明OOD AUC > 0.68 (超过BCE 3%) |
-| **Stage 02 空间专家** | SupCon | ✅ 保持 | 复用Stage 01成功范式 |
-| **Stage 02 GenConViT** | BCE+MSE+Perceptual+KL | 🔄 **调整**：Encoder用SupCon预训练 → BCE仅用于分类头 | 避免从头用BCE学特征 |
-| **Stage 05 SAT** | BCE(分类)+CE(攻击类型)+MSE(强度) | 🔄 **澄清**：BCE必须基于SupCon鲁棒特征 | 不能期望BCE学习对抗特征 |
-
-#### 两层Loss架构原则
-
-**第一层：特征学习层**（决定泛化能力）
-- ✅ SupCon（如果Stage 01验证成功）：学习manipulation-agnostic可迁移表示
-- ❌ 避免BCE：从头用BCE学特征 → 只学dataset-specific shortcuts（Stage 00失败教训）
-
-**第二层：任务适配层**（在好特征上做决策）
-- ✅ BCE可用：在SupCon预训练特征基础上的分类头
-- ✅ 任务特定loss：MSE（重建）、KL散度（VAE）、CE（多分类）等
-
-#### 🚨 Stage 01 SupCon快速验证计划（URGENT）
-
-**目标**：验证SupCon是否能解决BCE的OOD泛化问题
-
-**实验设计**：
-1. **快速对比实验**（5-10 epochs）：
-   - 对照组：MobileNetV4 + BCE
-   - 实验组：MobileNetV4 + SupCon
-   - 数据集：CelebDF + FF++ 训练，DeeperForensics OOD测试
-
-2. **成功标准**：
-   - SupCon OOD AUC > 0.68（超过BCE的0.65，提升≥3%）
-   - 特征可视化显示更好的类别分离
-   - 跨数据集方差降低
-
-3. **强制停止条件**：
-   - 如果SupCon OOD AUC ≤ 0.65（与BCE相同）
-   - 说明问题不在loss，需要启动Plan B
-
-#### Plan B：如果SupCon失败的替代方案
-
-**方案优先级**：
-1. **Focal Loss**：处理难样本，解决类别不平衡
-2. **ArcFace Loss**：构建判别性特征空间
-3. **Triplet Loss**：度量学习，学习相似度
-4. **重新审视问题**：也许OOD泛化本身就是unrealistic expectation
-   - 改变策略：in-dist + 持续学习
-   - 或承认数据集diversity不足
-
-#### 关键风险
-
-**整个项目的成败取决于Stage 01**：
-- 如果SupCon成功 → 按两层loss架构推进
-- 如果SupCon失败 → 整个项目需要重新设计
-- 可能根本原因：manipulation method分布偏移本质上无法跨越
+**结论**:
+- ✅ 5 epochs vs 50 epochs差距仅1.2%
+- ✅ **更多训练不会改善OOD泛化**
+- ✅ 问题在于域偏移，不是训练不足
 
 ---
 
-### ⚠️ Albumentations增强已实施
+## 🎯 Stage 01 最终决策
 
-**实施状态**: ✅ 完成
-- ✅ 添加albumentations pipeline到UnifiedDeepfakeDataset
-- ✅ Spatial: HorizontalFlip, Rotation, RandomResizedCrop
-- ✅ Color: ColorJitter
-- ✅ Noise: GaussianBlur, GaussianNoise
-- ✅ 训练时启用，验证/测试时禁用
+### ❌ 放弃LODO方法论
+**理由**:
+1. 3/3配置失败，平均OOD AUC仅0.675
+2. FF++的0.572接近随机猜测
+3. 单模型无法跨数据集泛化
+4. 继续优化是沉没成本
 
-**实验结果**: ❌ **增强几乎无效**
-- Config 1无增强: OOD AUC 0.6518
-- Config 1有增强: OOD AUC 0.6584 (+0.66%)
-- 结论: 数据增强不是问题的解决方案
+### ❌ 放弃SupCon方法
+**理由**:
+1. SupCon (0.665) < Baseline (0.732)
+2. 已被证明在跨数据集场景下无效
+3. 训练时间更长，性能更差
 
----
+### ✅ 调整Stage 01定位
+**原定位**: SupCon快速过滤器 + OOD泛化能力(AUC 0.85+)
+**新定位**: Baseline高性能过滤器 + In-distribution专精(AUC 0.95+)
 
-## 🎯 当前行动计划 (优先级排序)
-
-### 🚨 URGENT: Stage 01 SupCon快速验证 (1-2天)
-**目标**: 验证SupCon是否能解决BCE的OOD泛化问题
-- [ ] 实现SupConLoss类（参考Stage 01文档）
-- [ ] 5-10 epochs快速对比实验（SupCon vs BCE）
-- [ ] OOD测试：DeeperForensics
-- [ ] 成功标准：OOD AUC > 0.68（超过BCE 3%）
-- [ ] **如果失败**：启动Plan B（Focal/ArcFace/Triplet Loss）
-
-### ✅ 完成Stage 00 LODO评估 (1天)
-- [ ] Config 3评估：FF++DF → CelebDF OOD测试
-- [ ] 生成完整3×3 LODO性能矩阵报告
-- [ ] 文档化BCE baseline的学术价值
-
-### 🔄 根据SupCon结果决定后续策略
-- 如果SupCon成功：按两层loss架构推进Stage 02-09
-- 如果SupCon失败：重新设计loss策略或调整项目方向
+**理由**:
+1. 承认单模型跨域泛化的根本困难
+2. Stage 01作为第一层粗过滤（高召回率）
+3. 依赖Stage 02-04异构专家提升鲁棒性
+4. 负面结果也是学术贡献
 
 ---
 
-## ✅ Completed Work Summary
+## 📋 当前行动计划 (2025-10-05)
 
-### Core Infrastructure (2025-10-02 ~ 2025-10-03)
-- ✅ Video-level split implemented (0 video overlap verified)
-- ✅ Balanced manifests created for all 3 datasets
-- ✅ Multi-dataset training framework (1.13M samples, weighted sampling)
-- ✅ Phase 0, Level 1: Per-dataset metrics breakdown implemented
+### 🚀 Phase 1: 全数据集训练 (1-1.5天) - **立即执行**
 
-### Training Results
-- ✅ 3-epoch baseline: Val AUC 0.9976, Test AUC 0.9963
-- ⚠️ Unexpectedly high AUC requires investigation (Level 1 testing in progress)
+**目标**: 训练高性能in-distribution过滤器
 
----
-
-## 📋 快速命令参考
-
-### LODO评估命令
+#### 选项A: 3数据集全训练（推荐）⭐
 ```bash
-# Config 3: FF++DF → CelebDF OOD
+python src/stage_00/train_baseline.py \
+  --model tf_efficientnetv2_b0 \
+  --epochs 50 \
+  --batch-size 128 \
+  --multi-dataset \
+  --experiment-name baseline_full_3datasets_final
+```
+
+**预期**: In-distribution AUC > 0.95
+
+#### 选项B: 4数据集全训练（如果DFDC准备好）
+```bash
+# 需要先在configs/datasets.json中添加DFDC配置
+python src/stage_00/train_baseline.py \
+  --model tf_efficientnetv2_b0 \
+  --epochs 50 \
+  --batch-size 128 \
+  --multi-dataset \
+  --experiment-name baseline_full_4datasets_with_dfdc
+```
+
+**预期**: 更广泛覆盖，In-distribution AUC > 0.95
+
+---
+
+### 📝 Phase 2: 文档化与Stage Gate (1天)
+
+#### 必须创建的文档
+
+**1. LODO失败分析报告**
+- 文件: `docs/stage_01/lodo_failure_analysis.md`
+- 内容:
+  - 3个LODO配置详细结果
+  - 域偏移严重性量化
+  - 单模型跨域泛化困难的原因
+  - 对Stage 02的启示（异构专家的必要性）
+
+**2. SupCon失败分析**
+- 文件: `docs/stage_01/supcon_failure_analysis.md`
+- 内容:
+  - SupCon vs Baseline对比
+  - 为什么SupCon在跨数据集场景下失败
+  - 对比学习的局限性
+  - 学术价值：负面结果
+
+**3. Stage 01定位调整说明**
+- 文件: `docs/stage_01/stage_01_revised_scope.md`
+- 内容:
+  - 原计划 vs 调整后计划
+  - 新定位：In-distribution高性能过滤器
+  - 不追求OOD泛化的理由
+  - Stage 02-04如何弥补
+
+**4. Stage Gate决策文档**
+- 文件: `docs/stage_01/stage_gate_decision.md`
+- 内容:
+  - 技术Gate: ❌ OOD泛化未达标，✅ In-dist性能优秀
+  - 学术Gate: ✅ 实验严谨，负面结果有价值
+  - 系统Gate: ✅ 代码可复现，诊断工具完善
+  - **决策**: Pivot - 调整Stage 01定位，进入Stage 02
+
+---
+
+### 🔬 Phase 3: 准备进入Stage 02 (剩余7-8天)
+
+**Stage 02核心**: 异构专家系统
+
+**关键组件**:
+1. **空间专家**: 基于CNN的空域artifact检测
+2. **频域专家**: FFT/DCT频谱分析
+3. **时序专家**: 帧间不一致性检测
+4. **融合模块**: LightGBM meta-learner
+
+**Stage 01为Stage 02提供的价值**:
+- ✅ 高质量in-distribution过滤器（第一层）
+- ✅ 证明单模型局限性（异构专家的必要性）
+- ✅ 完整的LODO baseline对比数据
+- ✅ 可复用的诊断工具框架
+
+---
+
+## 📊 实验结果总结
+
+### Baseline (BCE Loss)
+| 指标 | In-Distribution | OOD (平均) | 差距 |
+|-----|----------------|-----------|------|
+| **AUC** | 0.998 | 0.675 | -32.3% |
+| **Accuracy** | 99%+ | 43.5% | -55.5% |
+| **F1** | 0.99+ | 0.38 | -61% |
+
+### SupCon (两阶段)
+| 指标 | In-Distribution | OOD (DF) | vs Baseline |
+|-----|----------------|---------|------------|
+| **AUC** | 0.969 | 0.665 | -6.7% |
+| **Accuracy** | 91.3% | 58.7% | - |
+
+### 诊断结果
+- ❌ 预测概率严重偏向0（模型过于保守）
+- ❌ 最佳阈值仅能达到66% Accuracy
+- ❌ Real vs Fake预测分离度极差（0.14）
+
+---
+
+## ✅ Completed Work Summary (Updated 2025-10-05)
+
+### Core Infrastructure
+- ✅ Video-level split (0 video overlap)
+- ✅ Balanced manifests (3 datasets)
+- ✅ Multi-dataset training framework
+- ✅ Per-dataset metrics breakdown
+
+### Stage 00 Baseline
+- ✅ 3-epoch baseline training
+- ✅ Complete LODO evaluation (3 configs)
+- ✅ Data augmentation testing
+- ✅ Pretrained vs trained comparison
+
+### Stage 01 SupCon
+- ✅ Two-stage SupCon implementation
+- ✅ SupCon vs Baseline comparison
+- ✅ OOD evaluation on DeeperForensics
+- ❌ **结论**: SupCon失败，不如Baseline
+
+### Diagnostic Tools
+- ✅ `tools/validation/model_diagnostics.py`
+- ✅ ROC curve + optimal threshold
+- ✅ Confusion matrix visualization
+- ✅ Threshold optimization analysis
+- ✅ Prediction distribution plots
+
+### Documentation
+- ✅ Training logs and analysis
+- ⏳ **待完成**: 失败分析报告
+- ⏳ **待完成**: Stage Gate文档
+
+---
+
+## 🚫 已废弃/不合时宜的内容
+
+### ❌ 删除：Stage 01 SupCon快速验证计划
+**原因**: 已完成完整SupCon训练（50+20 epochs），结果证明失败
+
+### ❌ 删除：LODO优化计划
+**原因**:
+- 所有LODO配置已评估，全部失败
+- 更多训练轮数无帮助（5 vs 50 epochs差距仅1.2%）
+- 继续优化LODO是沉没成本
+
+### ❌ 删除：数据增强作为主要优化方向
+**原因**: 已验证增强仅改善0.66% OOD性能，不是瓶颈
+
+### ❌ 删除：Plan B (Focal/ArcFace/Triplet Loss)
+**原因**:
+- Baseline已经是最简单有效的方法
+- 问题不在loss函数，在于任务本质困难
+- 直接进入Stage 02异构专家更合理
+
+---
+
+## 🎯 关键风险与应对
+
+### 风险1: 全数据集训练可能也无法达到0.95 AUC
+**应对**:
+- 接受现实，调整期望到0.90-0.93
+- 重点在于Stage 02的提升空间
+
+### 风险2: Stage 02异构专家也无法解决跨域问题
+**应对**:
+- 调整项目定位：不追求universal detector
+- 改为domain-adaptive detector
+- 或接受需要持续学习的现实
+
+### 风险3: 时间预算不足（剩余7-8天）
+**应对**:
+- Stage 02只实现核心专家（空间+频域）
+- 简化融合模块
+- Stage 03-09根据时间调整
+
+---
+
+## 📝 Quick Command Reference
+
+### 全数据集训练
+```bash
+# 3数据集
+python src/stage_00/train_baseline.py \
+  --model tf_efficientnetv2_b0 \
+  --epochs 50 \
+  --batch-size 128 \
+  --multi-dataset \
+  --experiment-name baseline_full_3datasets_final
+```
+
+### 诊断工具使用
+```bash
+python -m tools.validation.model_diagnostics \
+  --checkpoint experiments/[exp_name]/checkpoints/best_model.pth \
+  --model-type baseline \
+  --test-dataset deeperforensics_1_0 \
+  --output-dir experiments/[exp_name]/diagnostics
+```
+
+### OOD评估
+```bash
 python src/stage_00/train_baseline.py \
   --eval-only \
-  --checkpoint experiments/lodo_exclude_celebdf_*/checkpoints/best_model.pth \
-  --test-dataset celebdf_v2 \
-  --dataset-mode balanced \
-  --batch-size 64 \
+  --checkpoint experiments/[exp_name]/checkpoints/best_model.pth \
+  --test-dataset [dataset_name] \
   --model tf_efficientnetv2_b0
 ```
 
-### Stage 01 SupCon快速验证（待实施）
-```bash
-# 详见Stage 01文档和实施计划
-```
-
 ---
 
-## 📝 项目状态总结
+## 📌 项目当前状态
 
-**已完成** (2025-10-04):
-- ✅ Stage 00 BCE baseline训练和诊断
-- ✅ LODO Config 1、2评估完成
-- ✅ 诊断发现BCE只学shortcuts，OOD失败
-- ✅ Loss函数策略分析完成
+**当前阶段**: Stage 01收尾 → Stage 02准备
+
+**已完成**:
+- ✅ Stage 00 BCE baseline (完整LODO评估)
+- ✅ Stage 01 SupCon验证 (失败确认)
+- ✅ 诊断工具开发
+- ✅ 失败原因分析
 
 **进行中**:
-- 🔄 Config 3 LODO评估
-- 🚨 准备Stage 01 SupCon验证（URGENT）
+- 🔄 全数据集训练（立即启动）
+- 🔄 Stage 01文档化
 
-**关键发现**:
-- BCE Loss无法学习可迁移表示（预训练AUC 0.654 ≈ 训练后0.652-0.658）
-- Stage 01 SupCon是整个项目的生死关键
-- 需要两层loss架构：SupCon学特征 + BCE/其他做任务
+**下一步**:
+- 📝 Stage Gate评审
+- 🚀 Stage 02异构专家系统设计与实现
+
+**关键时间节点**:
+- Day 1-2: 全数据集训练
+- Day 3: 文档化 + Stage Gate
+- Day 4-10: Stage 02实现
+
+**成功指标**:
+- ✅ Stage 01: In-dist AUC > 0.90（可接受）
+- ⭐ Stage 02: 异构专家系统OOD AUC > 0.80（目标）
+- 🎯 整体: 学术贡献（负面结果 + 创新方案）

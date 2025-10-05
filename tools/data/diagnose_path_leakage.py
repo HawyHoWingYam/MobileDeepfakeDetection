@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 # Add src to path
-sys.path.append(str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from stage_00.baseline_model import EfficientNetV2B3Baseline
 from stage_00.train_baseline import UnifiedDeepfakeDataset

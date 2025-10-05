@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import time
+import datetime
 import argparse
 from pathlib import Path
 from typing import Dict, List, Any
@@ -18,6 +19,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset, ConcatDataset, WeightedRandomSampler
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torchvision import transforms
 from PIL import Image
@@ -442,6 +444,313 @@ def setup_device_with_fallback():
     print("   2. Installing PyTorch nightly for RTX 50-series support")
     
     return torch.device('cpu'), None
+
+class TrainingLogger:
+    """
+    Enhanced training logger with CSV, TXT logging and visualization support
+
+    Automatically generates:
+    - CSV logs for easy analysis
+    - TXT logs for human reading
+    - Training curve plots
+    - Learning rate schedules
+    - Per-dataset breakdowns
+    """
+
+    def __init__(self, experiment_manager, visualizer=None):
+        """
+        Initialize training logger
+
+        Args:
+            experiment_manager: ExperimentManager instance
+            visualizer: AcademicVisualizer instance (optional)
+        """
+        self.exp_manager = experiment_manager
+        self.visualizer = visualizer or AcademicVisualizer()
+
+        # Get experiment directory
+        self.exp_dir = Path(self.exp_manager.base_path) / self.exp_manager.current_experiment
+        self.logs_dir = self.exp_dir / "logs"
+        self.plots_dir = self.exp_dir / "plots"
+
+        # Create log files
+        self.csv_log_path = self.logs_dir / "training_log.csv"
+        self.txt_log_path = self.logs_dir / "training_log.txt"
+        self.lr_log_path = self.logs_dir / "lr_schedule.csv"
+        self.dataset_log_path = self.logs_dir / "per_dataset_metrics.csv"
+
+        # In-memory storage
+        self.epoch_logs = []
+        self.lr_logs = []
+        self.dataset_logs = []
+
+        # Initialize TXT log file
+        with open(self.txt_log_path, 'w') as f:
+            f.write(f"Training Log - {datetime.datetime.now().isoformat()}\n")
+            f.write("=" * 80 + "\n\n")
+
+    def log_epoch(self, epoch, train_metrics, val_metrics, lr, per_dataset_metrics=None):
+        """
+        Log metrics for one epoch
+
+        Args:
+            epoch: Current epoch number
+            train_metrics: Training metrics dict
+            val_metrics: Validation metrics dict
+            lr: Current learning rate
+            per_dataset_metrics: Optional per-dataset breakdown
+        """
+        # Prepare epoch log entry
+        log_entry = {
+            'epoch': epoch,
+            'lr': lr,
+            'train_loss': train_metrics.get('loss', 0),
+            'train_accuracy': train_metrics.get('accuracy', 0),
+            'val_loss': val_metrics.get('loss', 0),
+            'val_accuracy': val_metrics.get('accuracy', 0),
+            'val_auc': val_metrics.get('auc', 0),
+            'val_f1': val_metrics.get('f1', 0),
+            'val_precision': val_metrics.get('precision', 0),
+            'val_recall': val_metrics.get('recall', 0),
+            'timestamp': datetime.datetime.now().isoformat()
+        }
+
+        self.epoch_logs.append(log_entry)
+
+        # Log learning rate
+        self.lr_logs.append({'epoch': epoch, 'lr': lr, 'timestamp': datetime.datetime.now().isoformat()})
+
+        # Log per-dataset metrics if available
+        if per_dataset_metrics:
+            for dataset_name, metrics in per_dataset_metrics.items():
+                dataset_entry = {
+                    'epoch': epoch,
+                    'dataset': dataset_name,
+                    'auc': metrics.get('auc', 0),
+                    'f1': metrics.get('f1', 0),
+                    'accuracy': metrics.get('accuracy', 0),
+                    'precision': metrics.get('precision', 0),
+                    'recall': metrics.get('recall', 0),
+                    'num_samples': metrics.get('num_samples', 0)
+                }
+                self.dataset_logs.append(dataset_entry)
+
+        # Append to TXT log
+        self._write_txt_log(epoch, train_metrics, val_metrics, lr, per_dataset_metrics)
+
+        # Save CSV incrementally (in case of interruption)
+        self._save_csv_incremental()
+
+    def _write_txt_log(self, epoch, train_metrics, val_metrics, lr, per_dataset_metrics):
+        """Write formatted text log entry"""
+        with open(self.txt_log_path, 'a') as f:
+            f.write(f"Epoch {epoch:03d} - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"  Learning Rate: {lr:.6e}\n")
+            f.write(f"  Train - Loss: {train_metrics.get('loss', 0):.4f}, Acc: {train_metrics.get('accuracy', 0):.4f}\n")
+            f.write(f"  Val   - Loss: {val_metrics.get('loss', 0):.4f}, Acc: {val_metrics.get('accuracy', 0):.4f}, "
+                   f"AUC: {val_metrics.get('auc', 0):.4f}, F1: {val_metrics.get('f1', 0):.4f}\n")
+
+            if per_dataset_metrics:
+                f.write(f"  Per-Dataset Breakdown:\n")
+                for dataset_name, metrics in per_dataset_metrics.items():
+                    f.write(f"    {dataset_name}: AUC={metrics.get('auc', 0):.4f}, "
+                           f"F1={metrics.get('f1', 0):.4f}, Acc={metrics.get('accuracy', 0):.4f} "
+                           f"({metrics.get('num_samples', 0):,} samples)\n")
+
+            f.write("-" * 80 + "\n\n")
+
+    def _save_csv_incremental(self):
+        """Save logs to CSV files incrementally"""
+        # Save epoch logs
+        if self.epoch_logs:
+            df_epochs = pd.DataFrame(self.epoch_logs)
+            df_epochs.to_csv(self.csv_log_path, index=False)
+
+        # Save LR schedule
+        if self.lr_logs:
+            df_lr = pd.DataFrame(self.lr_logs)
+            df_lr.to_csv(self.lr_log_path, index=False)
+
+        # Save per-dataset metrics
+        if self.dataset_logs:
+            df_datasets = pd.DataFrame(self.dataset_logs)
+            df_datasets.to_csv(self.dataset_log_path, index=False)
+
+    def generate_training_curves(self, training_history):
+        """
+        Generate training curves plot
+
+        Args:
+            training_history: Dict with 'train_loss', 'val_loss', etc.
+        """
+        try:
+            fig = self.visualizer.plot_performance_over_time(training_history)
+            plot_path = self.plots_dir / "training_curves"
+
+            # Save as both PNG and PDF
+            fig.savefig(f"{plot_path}.png", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{plot_path}.pdf", bbox_inches='tight')
+            plt.close(fig)
+
+            print(f"  ✓ Saved training curves: {plot_path}.png")
+        except Exception as e:
+            print(f"  ⚠ Failed to generate training curves: {e}")
+
+    def generate_lr_schedule_plot(self):
+        """Generate learning rate schedule plot"""
+        if not self.lr_logs:
+            return
+
+        try:
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+            epochs = [log['epoch'] for log in self.lr_logs]
+            lrs = [log['lr'] for log in self.lr_logs]
+
+            ax.plot(epochs, lrs, 'o-', linewidth=2, markersize=4, color='#2E86AB')
+            ax.set_xlabel('Epoch')
+            ax.set_ylabel('Learning Rate')
+            ax.set_title('Learning Rate Schedule')
+            ax.set_yscale('log')
+            ax.grid(True, alpha=0.3)
+
+            plot_path = self.plots_dir / "learning_rate"
+            fig.savefig(f"{plot_path}.png", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{plot_path}.pdf", bbox_inches='tight')
+            plt.close(fig)
+
+            print(f"  ✓ Saved learning rate plot: {plot_path}.png")
+        except Exception as e:
+            print(f"  ⚠ Failed to generate LR plot: {e}")
+
+    def generate_per_dataset_comparison(self):
+        """Generate per-dataset performance comparison plot"""
+        if not self.dataset_logs:
+            return
+
+        try:
+            df = pd.DataFrame(self.dataset_logs)
+
+            # Get unique datasets
+            datasets = df['dataset'].unique()
+
+            if len(datasets) < 2:
+                return  # No point plotting single dataset
+
+            # Create subplots for each metric
+            metrics = ['auc', 'f1', 'accuracy']
+            fig, axes = plt.subplots(1, len(metrics), figsize=(15, 5))
+
+            if len(metrics) == 1:
+                axes = [axes]
+
+            colors = plt.cm.Set2(np.linspace(0, 1, len(datasets)))
+
+            for idx, metric in enumerate(metrics):
+                ax = axes[idx]
+
+                for i, dataset in enumerate(datasets):
+                    dataset_data = df[df['dataset'] == dataset]
+                    ax.plot(dataset_data['epoch'], dataset_data[metric],
+                           'o-', label=dataset, color=colors[i],
+                           linewidth=2, markersize=4)
+
+                ax.set_xlabel('Epoch')
+                ax.set_ylabel(metric.upper())
+                ax.set_title(f'{metric.upper()} by Dataset')
+                ax.legend()
+                ax.grid(True, alpha=0.3)
+
+            plt.tight_layout()
+
+            plot_path = self.plots_dir / "per_dataset_comparison"
+            fig.savefig(f"{plot_path}.png", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{plot_path}.pdf", bbox_inches='tight')
+            plt.close(fig)
+
+            print(f"  ✓ Saved per-dataset comparison: {plot_path}.png")
+        except Exception as e:
+            print(f"  ⚠ Failed to generate per-dataset plot: {e}")
+
+    def generate_final_report(self, training_history, test_metrics=None):
+        """
+        Generate complete visualization report at end of training
+
+        Args:
+            training_history: Complete training history dict
+            test_metrics: Optional test set metrics
+        """
+        print("\n" + "=" * 80)
+        print("Generating Training Report and Visualizations")
+        print("=" * 80)
+
+        # 1. Training curves
+        self.generate_training_curves(training_history)
+
+        # 2. Learning rate schedule
+        self.generate_lr_schedule_plot()
+
+        # 3. Per-dataset comparison
+        self.generate_per_dataset_comparison()
+
+        # 4. Save final CSVs
+        self._save_csv_incremental()
+
+        # 5. Generate summary markdown
+        self._generate_summary_markdown(training_history, test_metrics)
+
+        print(f"\nTraining report generated successfully!")
+        print(f"  Logs: {self.logs_dir}")
+        print(f"  Plots: {self.plots_dir}")
+        print("=" * 80)
+
+    def _generate_summary_markdown(self, training_history, test_metrics):
+        """Generate a markdown summary of training"""
+        summary_path = self.logs_dir / "training_summary.md"
+
+        with open(summary_path, 'w') as f:
+            f.write("# Training Summary\n\n")
+            f.write(f"**Generated**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+
+            # Training info
+            f.write("## Training Progress\n\n")
+            f.write(f"- Total Epochs: {len(self.epoch_logs)}\n")
+
+            if self.epoch_logs:
+                last_epoch = self.epoch_logs[-1]
+                f.write(f"- Final Train Loss: {last_epoch['train_loss']:.4f}\n")
+                f.write(f"- Final Train Accuracy: {last_epoch['train_accuracy']:.4f}\n")
+                f.write(f"- Final Val Loss: {last_epoch['val_loss']:.4f}\n")
+                f.write(f"- Final Val AUC: {last_epoch['val_auc']:.4f}\n")
+                f.write(f"- Final Val F1: {last_epoch['val_f1']:.4f}\n\n")
+
+                # Best validation performance
+                best_auc_epoch = max(self.epoch_logs, key=lambda x: x['val_auc'])
+                f.write(f"- Best Val AUC: {best_auc_epoch['val_auc']:.4f} (Epoch {best_auc_epoch['epoch']})\n\n")
+
+            # Test metrics
+            if test_metrics:
+                f.write("## Test Set Performance\n\n")
+                f.write(f"- Test Loss: {test_metrics.get('loss', 0):.4f}\n")
+                f.write(f"- Test Accuracy: {test_metrics.get('accuracy', 0):.4f}\n")
+                f.write(f"- Test AUC: {test_metrics.get('auc', 0):.4f}\n")
+                f.write(f"- Test F1: {test_metrics.get('f1', 0):.4f}\n\n")
+
+            # Artifacts
+            f.write("## Generated Artifacts\n\n")
+            f.write("### Logs\n")
+            f.write("- `training_log.csv` - Detailed epoch-by-epoch metrics\n")
+            f.write("- `training_log.txt` - Human-readable training log\n")
+            f.write("- `lr_schedule.csv` - Learning rate schedule\n")
+            if self.dataset_logs:
+                f.write("- `per_dataset_metrics.csv` - Per-dataset performance breakdown\n")
+            f.write("\n### Plots\n")
+            f.write("- `training_curves.png/pdf` - Training and validation curves\n")
+            f.write("- `learning_rate.png/pdf` - Learning rate schedule\n")
+            if self.dataset_logs:
+                f.write("- `per_dataset_comparison.png/pdf` - Performance by dataset\n")
+
+        print(f"  ✓ Saved training summary: {summary_path}")
 
 def setup_training(config: Dict[str, Any]) -> tuple:
     """
@@ -1296,7 +1605,12 @@ def main():
             'val_auc': [],
             'val_f1': []
         }
-        
+
+        # Initialize training logger and visualizer
+        visualizer = AcademicVisualizer()
+        logger = TrainingLogger(exp_manager, visualizer)
+        print(f"✓ Training logger initialized")
+
         print(f"\\nStarting training for {config['training']['num_epochs']} epochs...")
         print("=" * 80)
         
@@ -1370,7 +1684,16 @@ def main():
             print(f"  Time: {epoch_time:.2f}s, LR: {optimizer.param_groups[0]['lr']:.2e}")
             print(f"  Best AUC: {best_val_auc:.4f}, Patience: {patience_counter}/{config['training']['early_stopping_patience']}")
             print("-" * 80)
-            
+
+            # Log epoch to training logger
+            logger.log_epoch(
+                epoch=epoch,
+                train_metrics=train_metrics,
+                val_metrics=val_metrics,
+                lr=optimizer.param_groups[0]['lr'],
+                per_dataset_metrics=val_metrics.get('per_dataset_metrics')
+            )
+
             # Early stopping
             if patience_counter >= config['training']['early_stopping_patience']:
                 print(f"Early stopping triggered after {epoch} epochs")
@@ -1407,7 +1730,10 @@ def main():
                 print(f"    {dataset_name}:")
                 print(f"      AUC: {metrics['auc']:.4f}, F1: {metrics['f1']:.4f}, "
                       f"Acc: {metrics['accuracy']:.4f} ({metrics['num_samples']:,} samples)")
-        
+
+        # Generate final training report and visualizations
+        logger.generate_final_report(training_history, test_metrics)
+
         print(f"\\nExperiment {experiment_id} completed successfully!")
         return experiment_id
 
