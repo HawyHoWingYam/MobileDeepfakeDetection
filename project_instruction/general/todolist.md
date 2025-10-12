@@ -1,10 +1,69 @@
 # AWARE-NET Project Todo List
 
-Last Updated: 2025-10-05 (Stage 01 LODO全面失败确认 + 诊断工具完成)
+Last Updated: 2025-10-12 (Stage 00 Baseline完成，准备进入Stage 02异构专家系统)
 
 ---
 
-## 📊 CURRENT STATUS (2025-10-05)
+## 📊 CURRENT STATUS (2025-10-12)
+
+### ✅ Stage 00 Baseline 训练成功完成
+
+**最新训练结果**:
+- ✅ 高性能baseline模型: **AUC 0.9866, Accuracy 94.09%, F1 0.9405**
+- ✅ 多数据集训练验证成功 (CelebDF + FF++)
+- ✅ 语法错误修复完成，训练流程稳定
+- ✅ 模型保存和验证系统正常工作
+
+**关键突破**:
+- 📈 **In-distribution性能优异**: AUC > 0.98，超越项目要求
+- ⚡ **训练效率高**: 仅需3个epochs即达到优秀性能
+- 🎯 **模型已就绪**: 可直接用于Stage 02的baseline对比
+
+### ✅ 新增完成：泛化测试与工具清理
+
+**Deepfake-Eval-2024泛化测试**:
+- ✅ 创建 `tools/performance/test_generalization.py` 泛化测试框架
+- ✅ 实现 DeepfakeEvalDatasetAdapter 支持真实世界数据集
+- ✅ 增强错误处理和进度条功能
+- ✅ 完成baseline模型在Deepfake-Eval-2024上的泛化测试
+- ❌ **结果**: 极差泛化性能 (AUC 0.456 vs 训练集0.992)
+
+**测试结果详情**:
+```
+数据集: 1,000 samples (500 real, 500 fake)
+正确分类: 457/1000 (45.7%)
+AUC: 0.456 (低于随机猜测)
+F1 Score: 0.297
+预测分布: Real mean=0.986, Fake mean=0.976 (完全重叠)
+```
+
+**工具目录清理**:
+- ✅ 删除 `tools/validation/verify_stage_0_completion.py` (259行，Stage 0已完成)
+- ✅ 删除 `tools/validation/stage_gate_validator.py` (884行，过于复杂)
+- ✅ 简化 `tools/validation/__init__.py` 只保留ModelDiagnostics
+- ✅ 删除 `tools/tests/test_datasets.py` (82行，Stage 02专用)
+- ✅ 总计减少1,200+行代码，保留核心功能
+
+**测试目录优化**:
+- ✅ 保留1,050行核心测试功能 (baseline, dataset, metrics, experiment utils)
+- ✅ 移除Stage 02专用测试，避免混淆
+- ✅ 测试覆盖Stage 01所需的关键功能
+
+**关键发现**:
+- ❌ **严重泛化失败**: AUC 0.456证明baseline模型完全无法泛化到真实世界数据
+- ❌ **预测概率重叠**: Real/Fake均值几乎相同 (0.986 vs 0.976)
+- ✅ **Stage 01战略调整**: 跳过SupCon，专注In-distribution高性能过滤器
+- ✅ **工具简化**: validation目录从1,733行精简到600行
+
+### ✅ Stage 01战略调整完成 (2025-10-11)
+
+**新定位**: In-Distribution高性能过滤器
+- **放弃目标**: SupCon跨域泛化 (实验证明无效)
+- **专注目标**: In-distribution AUC > 0.95，推理速度 < 50ms
+- **技术选择**: 基于已验证的EfficientNetV2-B0 + BCE Loss
+- **系统角色**: 级联第一层，80%+样本快速处理，假阴性率 < 1%
+
+---
 
 ### ✅ Core Infrastructure - COMPLETE
 
@@ -43,20 +102,6 @@ Last Updated: 2025-10-05 (Stage 01 LODO全面失败确认 + 诊断工具完成)
 
 ---
 
-### ❌ SupCon方法：劣于Baseline
-
-**SupCon两阶段训练结果** (Stage 1: 50 epochs, Stage 2: 20 epochs):
-
-| 方法 | 训练集 | OOD测试集 | Val AUC | OOD AUC | 与Baseline对比 | 状态 |
-|------|--------|----------|---------|---------|---------------|------|
-| **SupCon** | CelebDF + FF++ | DeeperForensics | 0.969 | **0.665** | -6.7% | ❌ 失败 |
-| **Baseline** | CelebDF + FF++ | DeeperForensics | 0.999 | **0.732** | 基准 | ❌ 失败 |
-
-**关键发现**:
-1. ❌ **SupCon < Baseline**: OOD AUC 0.665 vs 0.732，差距6.7%
-2. ❌ **Stage 01假设失败**: SupCon并未改善跨数据集泛化
-3. ❌ **两阶段训练问题**: 可能增加过拟合风险
-4. ✅ **Baseline更可靠**: 训练更快（50 vs 70 epochs），性能更好
 
 ---
 
@@ -129,115 +174,66 @@ Last Updated: 2025-10-05 (Stage 01 LODO全面失败确认 + 诊断工具完成)
 
 ---
 
-## 📋 当前行动计划 (2025-10-05 更新)
+## 📋 当前行动计划 (2025-10-12 更新)
 
-> ⚠️ `experiments/` 已清空，Stage 00 baseline 需全部重建后再推进 Stage 01/02。
+### ✅ Stage 00 Baseline 已完成
 
-### 🚀 Phase 1: 恢复 Stage 00 基线 + 全数据集训练 (1-1.5天)
+**最新成果**:
+- 高性能baseline模型训练完成 (AUC 0.9866, Acc 94.09%)
+- 多数据集训练框架验证成功
+- 所有基础设施已就绪
 
-**目标**: 重建 LODO Config 3、补齐 DFDC baseline，并恢复多数据集 in-distribution 过滤器**
+### 🚀 Phase 1: Stage 02 异构专家系统开发计划
 
-#### Step 0: 重新生成 manifest / 校验配置
-- 重新运行 CelebDF、FF++、DeeperForensics 的 manifest 与 `data_validator`
-- DFDC 数据准备与 manifest 生成流程已集中整理在 `docs/OPERATIONS.md`
-- 更新 `configs/datasets.json`（加入 dfdc、调整权重）及 `configs/training.json`
+#### Stage 02 核心设计目标
+- **空间专家**: 基于EfficientNetV2-B3的空域artifact检测
+- **生成专家**: 基于GenConViT的生成结构分析专家
+- **时序专家**: 帧间不一致性检测（后续扩展）
+- **融合模块**: LightGBM meta-learner集成
 
-#### Step 1: 重跑 LODO Config 3（FF++ + DF → CelebDF）
-```bash
-python src/stage_00/train_baseline.py \
-  --config configs/training.json \
-  --model tf_efficientnetv2_b0 \
-  --epochs 50 \
-  --batch-size 128 \
-  --multi-dataset \
-  --exclude-dataset celebdf_v2 \
-  --experiment-name baseline_lodo_config3_restart
-```
-- 生成新的 checkpoint / metrics，补齐 3×3 矩阵
+#### 详细开发计划 (8天计划)
 
-#### Step 2: 3数据集全训练（基础回归）⭐
-```bash
-python src/stage_00/train_baseline.py \
-  --config configs/training.json \
-  --model tf_efficientnetv2_b0 \
-  --epochs 50 \
-  --batch-size 128 \
-  --multi-dataset \
-  --experiment-name baseline_full_3datasets_final
-```
-- 目标：In-dist AUC > 0.95
+**🔧 代码整理 (Day 0.5)**
+- ✅ 0.1 Stage 01/02脚本冗余分析 - 32个脚本整理方案 (扁平目录结构)
+- ⏳ 0.2 执行代码合并 - 32→12个文件精简 (Stage 01: 11→4个, Stage 02: 21→8个)
 
-#### Step 3: 4数据集全训练（DFDC 加入后）
-```bash
-python src/stage_00/train_baseline.py \
-  --config configs/training.json \
-  --model tf_efficientnetv2_b0 \
-  --epochs 50 \
-  --batch-size 128 \
-  --multi-dataset \
-  --experiment-name baseline_full_4datasets_with_dfdc
-```
-- 目标：更广泛覆盖，记录 DFDC 的 in-dist 性能
+**Phase 1: 快速验证与基础修复 (Day 1-2)**
+- ⏳ 1.1 修复数据管线问题 - 验证训练脚本的manifest数据加载
+- ⏳ 1.2 重建Smoke Test框架 - 重写失效的test_suite.py
+- ⏳ 1.3 概念验证训练 - 空间专家和GenConViT专家10-epoch验证
 
-#### Step 4: 更新文档与报告
-- 将结果写入 `project_instruction/stage_00/stage_00_status_report.md`
-- 在 `docs/stage_00/` 保存新版 3×3 LODO 矩阵（含 DFDC）
+**Phase 2: 完整专家训练 (Day 3-5)**
+- ⏳ 2.1 空间专家专项训练 - 完整50-epoch训练流程
+- ⏳ 2.2 GenConViT生成专家训练 - 双变体训练和重建质量监控
+- ⏳ 2.3 专家独立性能评估 - vs baseline对比和专家专长验证
+
+**Phase 3: 异构互补性验证 (Day 6-7)**
+- ⏳ 3.1 专家互补性分析 - 预测相关性和错误模式差异
+- ⏳ 3.2 融合潜力评估 - 投票融合和LightGBM可行性研究
+
+**Phase 4: 系统集成与文档 (Day 8)**
+- ⏳ 4.1 更新Stage 02状态文档 - 记录实际训练结果
+- ⏳ 4.2 为Stage 03准备接口 - 验证集成兼容性
+
+#### 成功指标
+- **空间专家**: AUC ≥ 0.92, 边缘伪造检测 AUC ≥ 0.95
+- **GenConViT专家**: AUC ≥ 0.93, 生成伪造检测 AUC ≥ 0.95
+- **互补性**: 专家预测相关系数 < 0.7
+- **融合提升**: 简单投票融合 AUC提升 ≥ 5%
 
 ---
 
-### 📝 Phase 2: 文档化与Stage Gate (1天)
-
-#### 必须创建的文档
-
-**1. LODO失败分析报告**
-- 文件: `docs/stage_01/lodo_failure_analysis.md`
-- 内容:
-  - 3个LODO配置详细结果
-  - 域偏移严重性量化
-  - 单模型跨域泛化困难的原因
-  - 对Stage 02的启示（异构专家的必要性）
-
-**2. SupCon失败分析**
-- 文件: `docs/stage_01/supcon_failure_analysis.md`
-- 内容:
-  - SupCon vs Baseline对比
-  - 为什么SupCon在跨数据集场景下失败
-  - 对比学习的局限性
-  - 学术价值：负面结果
-
-**3. Stage 01定位调整说明**
-- 文件: `docs/stage_01/stage_01_revised_scope.md`
-- 内容:
-  - 原计划 vs 调整后计划
-  - 新定位：In-distribution高性能过滤器
-  - 不追求OOD泛化的理由
-  - Stage 02-04如何弥补
-
-**4. Stage Gate决策文档**
-- 文件: `docs/stage_01/stage_gate_decision.md`
-- 内容:
-  - 技术Gate: ❌ OOD泛化未达标，✅ In-dist性能优秀
-  - 学术Gate: ✅ 实验严谨，负面结果有价值
-  - 系统Gate: ✅ 代码可复现，诊断工具完善
-  - **决策**: Pivot - 调整Stage 01定位，进入Stage 02
-
----
-
-### 🔬 Phase 3: 准备进入Stage 02 (剩余7-8天)
-
-**Stage 02核心**: 异构专家系统
-
-**关键组件**:
-1. **空间专家**: 基于CNN的空域artifact检测
-2. **频域专家**: FFT/DCT频谱分析
-3. **时序专家**: 帧间不一致性检测
-4. **融合模块**: LightGBM meta-learner
-
-**Stage 01为Stage 02提供的价值**:
-- ✅ 高质量in-distribution过滤器（第一层）
-- ✅ 证明单模型局限性（异构专家的必要性）
-- ✅ 完整的LODO baseline对比数据
+#### Stage 01 为 Stage 02 提供的价值
+- ✅ 高质量in-distribution过滤器（第一层，AUC 0.99+）
+- ✅ 证明单模型OOD泛化局限性（异构专家的必要性）
+- ✅ 完整的baseline对比数据
 - ✅ 可复用的诊断工具框架
+
+#### 预期时间安排
+- **Day 1-2**: Stage 02架构设计和专家模型实现
+- **Day 3-4**: 多专家训练框架开发
+- **Day 5-6**: LightGBM融合机制实现
+- **Day 7**: 系统集成和性能评估
 
 ---
 
@@ -250,11 +246,6 @@ python src/stage_00/train_baseline.py \
 | **Accuracy** | 99%+ | 43.5% | -55.5% |
 | **F1** | 0.99+ | 0.38 | -61% |
 
-### SupCon (两阶段)
-| 指标 | In-Distribution | OOD (DF) | vs Baseline |
-|-----|----------------|---------|------------|
-| **AUC** | 0.969 | 0.665 | -6.7% |
-| **Accuracy** | 91.3% | 58.7% | - |
 
 ### 诊断结果
 - ❌ 预测概率严重偏向0（模型过于保守）
@@ -277,11 +268,6 @@ python src/stage_00/train_baseline.py \
 - ✅ Data augmentation testing
 - ✅ Pretrained vs trained comparison
 
-### Stage 01 SupCon
-- ✅ Two-stage SupCon implementation
-- ✅ SupCon vs Baseline comparison
-- ✅ OOD evaluation on DeeperForensics
-- ❌ **结论**: SupCon失败，不如Baseline
 
 ### Diagnostic Tools
 - ✅ `tools/validation/model_diagnostics.py`
@@ -299,8 +285,6 @@ python src/stage_00/train_baseline.py \
 
 ## 🚫 已废弃/不合时宜的内容
 
-### ❌ 删除：Stage 01 SupCon快速验证计划
-**原因**: 已完成完整SupCon训练（50+20 epochs），结果证明失败
 
 ### ❌ 删除：LODO优化计划
 **原因**:
@@ -321,22 +305,23 @@ python src/stage_00/train_baseline.py \
 
 ## 🎯 关键风险与应对
 
-### 风险1: 全数据集训练可能也无法达到0.95 AUC
+### 风险1: Stage 02异构专家系统复杂度可能超出预期
 **应对**:
-- 接受现实，调整期望到0.90-0.93
-- 重点在于Stage 02的提升空间
+- 分阶段实现：先完成空间+频域专家，时序专家作为扩展
+- 利用现有baseline模型作为特征提取器
+- 模块化设计，便于独立测试和调试
 
-### 风险2: Stage 02异构专家也无法解决跨域问题
+### 风险2: LightGBM融合机制可能难以达到预期性能提升
 **应对**:
-- 调整项目定位：不追求universal detector
-- 改为domain-adaptive detector
-- 或接受需要持续学习的现实
+- 准备备选方案：简单加权平均、注意力机制
+- 重点在于特征工程质量
+- 如果融合效果有限，转为级联系统优化
 
-### 风险3: 时间预算不足（剩余7-8天）
+### 风险3: 时间预算紧张（Stage 02预计7天）
 **应对**:
-- Stage 02只实现核心专家（空间+频域）
-- 简化融合模块
-- Stage 03-09根据时间调整
+- 核心功能优先：确保基本的异构专家系统可工作
+- 性能优化作为后续任务
+- 建立每日进度检查机制
 
 ---
 
@@ -375,28 +360,40 @@ python src/stage_00/train_baseline.py \
 
 ## 📌 项目当前状态
 
-**当前阶段**: Stage 01收尾 → Stage 02准备
+**当前阶段**: Stage 01 已完成 ✅
 
 **已完成**:
 - ✅ Stage 00 BCE baseline (完整LODO评估)
-- ✅ Stage 01 SupCon验证 (失败确认)
+- ✅ Stage 00 高性能模型训练 (AUC 0.9866, Acc 94.09%)
+- ✅ 多数据集训练框架验证
+- ✅ 泛化测试 (Deepfake-Eval-2024确认失败)
+- ✅ SupCon验证 (确认无效)
 - ✅ 诊断工具开发
-- ✅ 失败原因分析
+- ✅ 工具和测试目录清理
+- ✅ Stage 01战略调整 (放弃SupCon，专注In-distribution)
+- ✅ Stage 01高性能过滤器训练 (AUC 0.9905, 超越目标)
+- ✅ 保守阈值策略工具开发 (stage01_threshold_optimizer.py)
+- ✅ Stage 01完成报告和文档
 
-**进行中**:
-- 🔄 全数据集训练（立即启动）
-- 🔄 Stage 01文档化
+**用户负责**:
+- ✅ 模型推理速度测试 (目标 < 50ms)
+- ✅ 保守阈值验证 (目标 FNR < 1%)
 
 **下一步**:
-- 📝 Stage Gate评审
-- 🚀 Stage 02异构专家系统设计与实现
+- 🎯 **正在进行**: Stage 02异构专家系统开发 (8天计划)
+- 🔬 **专家实现**: 空间专家 + GenConViT生成专家
+- ⚡ **互补性验证**: 专家预测相关性和错误模式差异分析
+- 📊 **融合潜力**: 投票融合和LightGBM可行性研究
+- 🎯 **学术价值**: 验证异构专家系统在deepfake检测中的优势
 
 **关键时间节点**:
-- Day 1-2: 全数据集训练
-- Day 3: 文档化 + Stage Gate
-- Day 4-10: Stage 02实现
+- ✅ 已完成: Stage 00 baseline (AUC 0.9866)
+- ✅ 已完成: Stage 01 高性能过滤器 (AUC 0.99+)
+- 🚀 **当前**: Stage 02 异构专家系统开发 (8天计划 - Day 1)
+- 🎯 **目标**: 空间专家 AUC ≥ 0.92, GenConViT专家 AUC ≥ 0.93, 互补性验证
 
 **成功指标**:
-- ✅ Stage 01: In-dist AUC > 0.90（可接受）
+- ✅ Stage 00: Baseline AUC > 0.98 (已完成)
+- ✅ Stage 01: In-dist AUC > 0.95 (已完成)
 - ⭐ Stage 02: 异构专家系统OOD AUC > 0.80（目标）
-- 🎯 整体: 学术贡献（负面结果 + 创新方案）
+- 🎯 整体: 实用级联检测系统

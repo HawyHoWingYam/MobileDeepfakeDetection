@@ -6,9 +6,9 @@
   },
 
   "experiment": {
-    "name": "baseline_4dataset_balanced_b0",
-    "description": "EfficientNetV2-B0 baseline with 4 balanced datasets (CelebDF, FF++, DeeperForensics, DFDC)",
-    "tags": ["baseline", "efficientnet", "stage0", "multi-dataset", "balanced"]
+    "name": "stage01_indistribution_high_performance",
+    "description": "Stage 01: In-distribution high-performance filter with EfficientNetV2-B0, 4 balanced datasets, optimized for speed and high recall",
+    "tags": ["stage01", "in-distribution", "high-performance", "efficientnet", "multi-dataset", "balanced"]
   },
 
   "model": {
@@ -19,19 +19,19 @@
   },
 
   "training": {
-    "batch_size": 256,
-    "epochs": 5,
+    "batch_size": 128,
+    "epochs": 10,
     "learning_rate": 0.003,
     "weight_decay": 0.0001,
     "optimizer": "adamw",
     "scheduler": "cosine",
     "num_workers": 16,
     "mixed_precision": true,
-    "early_stopping_patience": 8,
+    "early_stopping_patience": 10,
     "gradient_clipping": 1.0,
-    "warmup_epochs": 5,
+    "warmup_epochs": 3,
     "use_class_weights": false,
-    "comment": "RTX 5090 + B0 optimized: batch_size=256 (8x), lr=0.003 (3x), workers=16 (4x), epochs=5"
+    "comment": "Stage 01 RTX 5090 optimized: batch_size=128, epochs=10 for quick validation test, lr=0.003, workers=16, FIXED checkpoint saving with improved floating point comparison"
   },
 
   "data": {
@@ -40,7 +40,7 @@
     "dataset_mode": "balanced",
     "multi_dataset": true,
     "use_dataset_weights": true,
-    "strict_batch_balance": true,
+    "strict_batch_balance": false,
     "image_size": 256,
     "augmentation": true,
     "subset_ratio": 1.0,
@@ -63,9 +63,12 @@
   },
 
   "targets": {
-    "min_auc": 0.88,
-    "min_f1": 0.85,
-    "max_inference_time_ms": 100,
-    "max_memory_usage_gb": 4
+    "min_auc": 0.95,
+    "min_f1": 0.93,
+    "max_inference_time_ms": 50,
+    "max_memory_usage_gb": 2,
+    "min_recall": 0.99,
+    "max_false_negative_rate": 0.01,
+    "min_filter_rate": 0.80
   }
 }

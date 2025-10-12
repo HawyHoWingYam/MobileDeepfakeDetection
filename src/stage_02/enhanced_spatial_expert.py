@@ -19,7 +19,7 @@ import logging
 from pathlib import Path
 import math
 
-from .spatial_expert import EfficientNetV2SpatialExpert
+import timm
 
 
 @dataclass
@@ -423,6 +423,40 @@ class MultiResolutionInferencePipeline:
             ensemble_pred = torch.mean(torch.stack(predictions), dim=0)
 
         return ensemble_pred
+
+
+class EfficientNetV2SpatialExpert(nn.Module):
+    """
+    Base Spatial Expert using EfficientNetV2 for spatial artifact detection
+    """
+
+    def __init__(self, config_path: str):
+        super().__init__()
+        self.config_path = config_path
+        self.model_name = "efficientnetv2_rw_s"  # Default model
+        self.num_classes = 1
+
+        # Load model
+        self.backbone = timm.create_model(
+            self.model_name,
+            pretrained=True,
+            num_classes=0,
+            global_pool='avg'
+        )
+
+        # Add classifier
+        self.classifier = nn.Linear(self.backbone.num_features, self.num_classes)
+
+        # Additional spatial modules can be added here
+        self.spatial_attention = nn.Sequential(
+            nn.Conv2d(1, 1, kernel_size=7, padding=3),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        features = self.backbone(x)
+        logits = self.classifier(features)
+        return logits
 
 
 class EnhancedSpatialExpert(EfficientNetV2SpatialExpert):

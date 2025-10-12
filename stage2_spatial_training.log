@@ -1,0 +1,10 @@
+2025-10-12 15:00:08,401 - __main__ - INFO - Resolved manifests from configs/datasets.json for celebdf_v2 (balanced mode)
+2025-10-12 15:00:08,402 - __main__ - INFO - Starting Stage 2 spatial expert training with mode: concept_validation
+2025-10-12 15:00:08,402 - __main__ - INFO - Starting concept validation (10 epochs)
+2025-10-12 15:00:08,565 - __main__ - INFO - Using device: cuda
+2025-10-12 15:00:08,653 - __main__ - ERROR - Training failed with error: module 'albumentations' has no attribute 'RandomHorizontalFlip'
+2025-10-12 15:00:34,113 - __main__ - INFO - Resolved manifests from configs/datasets.json for celebdf_v2 (balanced mode)
+2025-10-12 15:00:34,113 - __main__ - INFO - Starting Stage 2 spatial expert training with mode: concept_validation
+2025-10-12 15:00:34,113 - __main__ - INFO - Starting concept validation (10 epochs)
+2025-10-12 15:00:34,316 - __main__ - INFO - Using device: cuda
+2025-10-12 15:00:34,408 - __main__ - ERROR - Training failed with error: module 'albumentations' has no attribute 'RandomHorizontalFlip'

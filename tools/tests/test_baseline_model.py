@@ -14,6 +14,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from stage_00.baseline_model import EfficientNetV2B3Baseline
 
+# Add tools to path for generalization testing
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 class TestBaselineModel:
     """Test cases for EfficientNetV2B3Baseline model"""
 
@@ -158,6 +161,121 @@ class TestBaselineModel:
         assert len(features.shape) == 2
         # Features should be finite
         assert torch.isfinite(features).all()
+
+
+class TestGeneralization:
+    """Test cases for model generalization on real-world datasets"""
+
+    @pytest.mark.slow
+    def test_deepfake_eval_generalization(self):
+        """Test model generalization on Deepfake-Eval-2024 dataset"""
+        try:
+            from tools.performance.test_generalization import GeneralizationTester, GeneralizationConfig
+        except ImportError:
+            pytest.skip("Generalization testing module not available")
+
+        # Test configuration
+        model_path = "experiments/test_final_fix_*/checkpoints/best_model.pth"
+        dataset_path = "/workspace/Deepfake-Eval-2024"
+
+        # Find the actual model file (handle wildcard)
+        import glob
+        model_files = glob.glob(model_path)
+        if not model_files:
+            pytest.skip(f"No model file found at {model_path}")
+        model_path = model_files[0]
+
+        if not Path(dataset_path).exists():
+            pytest.skip(f"Deepfake-Eval-2024 dataset not found at {dataset_path}")
+
+        # Create config
+        config = GeneralizationConfig(
+            model_path=model_path,
+            dataset_path=dataset_path,
+            batch_size=16,  # Smaller batch size for testing
+            save_predictions=False,  # Don't save predictions in tests
+            save_visualizations=False,  # Don't generate visualizations in tests
+            generate_detailed_report=False  # Don't generate report in tests
+        )
+
+        # Initialize tester
+        tester = GeneralizationTester(config)
+
+        # Load model
+        tester.load_model()
+
+        # Load dataset
+        samples = tester.load_dataset()
+
+        # Test on a subset for faster testing
+        test_samples = samples[:50]  # Only test on first 50 samples
+
+        # Run testing
+        results = tester.test_model(test_samples)
+
+        # Basic assertions
+        assert 'performance_metrics' in results
+        assert 'accuracy' in results['performance_metrics']
+        assert 'f1_score' in results['performance_metrics']
+        assert 'auc_roc' in results['performance_metrics']
+
+        # Check that metrics are reasonable
+        accuracy = results['performance_metrics']['accuracy']
+        f1_score = results['performance_metrics']['f1_score']
+        auc_roc = results['performance_metrics']['auc_roc']
+
+        assert 0.0 <= accuracy <= 1.0
+        assert 0.0 <= f1_score <= 1.0
+        assert 0.0 <= auc_roc <= 1.0
+
+        # Print results for manual inspection
+        print(f"Generalization Test Results (50 samples):")
+        print(f"  Accuracy: {accuracy:.4f}")
+        print(f"  F1-Score: {f1_score:.4f}")
+        print(f"  AUC-ROC: {auc_roc:.4f}")
+
+    def test_generalization_adapter_functionality(self):
+        """Test Deepfake-Eval-2024 adapter functionality"""
+        try:
+            from tools.performance.test_generalization import DeepfakeEvalDatasetAdapter, GeneralizationConfig
+        except ImportError:
+            pytest.skip("Generalization testing module not available")
+
+        dataset_path = "/workspace/Deepfake-Eval-2024"
+        if not Path(dataset_path).exists():
+            pytest.skip(f"Deepfake-Eval-2024 dataset not found at {dataset_path}")
+
+        # Create config and adapter
+        config = GeneralizationConfig(dataset_path=dataset_path)
+        adapter = DeepfakeEvalDatasetAdapter(dataset_path, config)
+
+        # Test metadata loading
+        assert adapter.metadata_df is not None
+        assert len(adapter.metadata_df) > 0
+
+        # Test label mapping
+        assert 'label' in adapter.metadata_df.columns
+        unique_labels = adapter.metadata_df['label'].unique()
+        assert all(label in [0, 1] for label in unique_labels)
+
+        # Test dataset info
+        info = adapter.get_dataset_info()
+        assert 'total_samples' in info
+        assert 'real_samples' in info
+        assert 'fake_samples' in info
+        assert info['total_samples'] > 0
+
+        # Test sample loading
+        samples = adapter.get_test_samples()
+        assert len(samples) > 0
+
+        # Test sample structure
+        sample = samples[0]
+        assert 'image_path' in sample
+        assert 'label' in sample
+        assert 'filename' in sample
+        assert Path(sample['image_path']).exists()
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -1,0 +1,64 @@
+2025-10-12 15:10:33,855 - __main__ - WARNING - Unable to auto-resolve manifests: Manifest not found for celebdf_v2/train (balanced): manifests/celebdf_v2_train_balanced.csv
+2025-10-12 15:11:30,252 - __main__ - INFO - Starting Stage 2 spatial expert training with mode: concept_validation
+2025-10-12 15:11:30,252 - __main__ - INFO - Starting concept validation (10 epochs)
+2025-10-12 15:11:30,458 - __main__ - INFO - Using device: cuda
+2025-10-12 15:11:30,555 - __main__ - INFO - Loaded manifest dataset (/workspace/MobileDeepfakeDetection/manifests/celebdf_v2_train_balanced.csv): samples=83599
+2025-10-12 15:11:30,573 - __main__ - INFO - Loaded manifest dataset (/workspace/MobileDeepfakeDetection/manifests/celebdf_v2_val_balanced.csv): samples=17478
+2025-10-12 15:11:30,596 - __main__ - INFO - Loaded manifest dataset (/workspace/MobileDeepfakeDetection/manifests/celebdf_v2_test_balanced.csv): samples=18037
+2025-10-12 15:11:30,597 - __main__ - INFO - Data loaders created: train=2612 batches, val=547 batches, test=564 batches
+2025-10-12 15:11:30,816 - timm.models._builder - INFO - Loading pretrained weights from Hugging Face hub (timm/efficientnetv2_rw_s.ra2_in1k)
+2025-10-12 15:11:38,930 - timm.models._hub - INFO - [timm/efficientnetv2_rw_s.ra2_in1k] Safe alternative available for 'pytorch_model.bin' (as 'model.safetensors'). Loading weights using safetensors.
+2025-10-12 15:11:39,162 - __main__ - INFO - Spatial expert model created: efficientnetv2_rw_s
+2025-10-12 15:11:39,163 - __main__ - INFO - Model parameters: 22,150,139
+2025-10-12 15:11:39,164 - __main__ - INFO - Trainable parameters: 22,150,139
+2025-10-12 15:11:39,414 - __main__ - INFO - Graduated optimizer and scheduler created
+2025-10-12 15:11:39,414 - __main__ - INFO - Learning rates: backbone=0.000100, classifier=0.001000, spatial=0.001000
+2025-10-12 15:11:39,414 - __main__ - INFO - Starting training for 10 epochs (mode: concept_validation)
+2025-10-12 15:11:39,414 - __main__ - INFO - 
+Epoch 1/10
+2025-10-12 15:11:39,414 - __main__ - INFO - --------------------------------------------------
+2025-10-12 15:11:39,530 - __main__ - ERROR - Training failed with error: Caught FileNotFoundError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/_utils/worker.py", line 349, in _worker_loop
+    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+            ~~~~~~~~~~~~^^^^^
+  File "/workspace/MobileDeepfakeDetection/src/stage_02/train_stage2_spatial.py", line 432, in __getitem__
+    raise FileNotFoundError(f"Image not found: {image_path}")
+FileNotFoundError: Image not found: /workspace/MobileDeepfakeDetection/dataset/dataset/fake/CelebDF-v2/id0_id1_0009/id0_id1_0009_f000105_face0.jpg
+
+2025-10-12 15:14:13,482 - __main__ - INFO - Starting Stage 2 spatial expert training with mode: concept_validation
+2025-10-12 15:14:13,483 - __main__ - INFO - Starting concept validation (10 epochs)
+2025-10-12 15:14:13,636 - __main__ - INFO - Using device: cuda
+2025-10-12 15:14:13,723 - __main__ - INFO - Loaded manifest dataset (/workspace/MobileDeepfakeDetection/manifests/celebdf_v2_train_balanced.csv): samples=83599
+2025-10-12 15:14:13,740 - __main__ - INFO - Loaded manifest dataset (/workspace/MobileDeepfakeDetection/manifests/celebdf_v2_val_balanced.csv): samples=17478
+2025-10-12 15:14:13,760 - __main__ - INFO - Loaded manifest dataset (/workspace/MobileDeepfakeDetection/manifests/celebdf_v2_test_balanced.csv): samples=18037
+2025-10-12 15:14:13,761 - __main__ - INFO - Data loaders created: train=2612 batches, val=547 batches, test=564 batches
+2025-10-12 15:14:13,965 - timm.models._builder - INFO - Loading pretrained weights from Hugging Face hub (timm/efficientnetv2_rw_s.ra2_in1k)
+2025-10-12 15:14:14,290 - timm.models._hub - INFO - [timm/efficientnetv2_rw_s.ra2_in1k] Safe alternative available for 'pytorch_model.bin' (as 'model.safetensors'). Loading weights using safetensors.
+2025-10-12 15:14:14,568 - __main__ - INFO - Spatial expert model created: efficientnetv2_rw_s
+2025-10-12 15:14:14,569 - __main__ - INFO - Model parameters: 22,150,139
+2025-10-12 15:14:14,569 - __main__ - INFO - Trainable parameters: 22,150,139
+2025-10-12 15:14:14,754 - __main__ - INFO - Graduated optimizer and scheduler created
+2025-10-12 15:14:14,754 - __main__ - INFO - Learning rates: backbone=0.000100, classifier=0.001000, spatial=0.001000
+2025-10-12 15:14:14,754 - __main__ - INFO - Starting training for 10 epochs (mode: concept_validation)
+2025-10-12 15:14:14,754 - __main__ - INFO - 
+Epoch 1/10
+2025-10-12 15:14:14,754 - __main__ - INFO - --------------------------------------------------
+2025-10-12 15:14:14,955 - __main__ - ERROR - Training failed with error: Caught KeyError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/_utils/worker.py", line 349, in _worker_loop
+    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+            ~~~~~~~~~~~~^^^^^
+  File "/workspace/MobileDeepfakeDetection/src/stage_02/train_stage2_spatial.py", line 436, in __getitem__
+    tensor = self.augmentation(image_np)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/venv/main/lib/python3.12/site-packages/albumentations/core/composition.py", line 593, in __call__
+    raise KeyError(msg)
+KeyError: 'You have to pass data to augmentations as named arguments, for example: aug(image=image)'
+

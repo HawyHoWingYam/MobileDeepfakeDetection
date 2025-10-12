@@ -20,7 +20,7 @@ from scipy.stats import entropy, pearsonr
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from .unified_feature_extractor import ExpertOutput, ExpertType
+from .genconvit_expert import ExpertOutput, ExpertType
 
 
 class ComplementarityMetric(Enum):

@@ -381,7 +381,7 @@ class ExperimentManager:
         with open(progress_path, 'w') as f:
             json.dump(progress_data, f, indent=2)
     
-    def save_checkpoint(self, 
+    def save_checkpoint(self,
                        model: torch.nn.Module,
                        optimizer: torch.optim.Optimizer,
                        epoch: int,
@@ -389,7 +389,7 @@ class ExperimentManager:
                        is_best: bool = False):
         """
         Save model checkpoint
-        
+
         Args:
             model: PyTorch model
             optimizer: Optimizer state
@@ -397,13 +397,21 @@ class ExperimentManager:
             metrics: Performance metrics
             is_best: Whether this is the best checkpoint
         """
+        print(f"🔧 save_checkpoint called - is_best={is_best}, experiment={self.current_experiment}")
+
         if not self.current_experiment:
             warnings.warn("No active experiment to save checkpoint to")
+            print("❌ ERROR: No active experiment for checkpoint saving!")
             return
-        
+
         exp_dir = self.base_path / self.current_experiment
         checkpoint_dir = exp_dir / "checkpoints"
-        
+
+        print(f"📁 Checkpoint directory: {checkpoint_dir}")
+
+        # Ensure directory exists
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
@@ -412,18 +420,44 @@ class ExperimentManager:
             'experiment_id': self.current_experiment,
             'timestamp': datetime.datetime.now().isoformat()
         }
-        
+
         # Save regular checkpoint
         checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch:03d}.pth"
+        print(f"💾 Saving regular checkpoint: {checkpoint_path}")
         torch.save(checkpoint, checkpoint_path)
-        
+
+        # Verify regular checkpoint was saved
+        if checkpoint_path.exists():
+            print(f"✅ Regular checkpoint saved successfully ({checkpoint_path.stat().st_size:,} bytes)")
+        else:
+            print(f"❌ ERROR: Regular checkpoint not found after saving!")
+
         # Save best checkpoint
         if is_best:
             best_path = checkpoint_dir / "best_model.pth"
+            print(f"🏆 SAVING BEST CHECKPOINT: {best_path}")
             torch.save(checkpoint, best_path)
             self.current_result.model_path = str(best_path)
-            
-            print(f"Saved best checkpoint: {best_path}")
+
+            # Verify best checkpoint was saved
+            if best_path.exists():
+                file_size = best_path.stat().st_size
+                print(f"🎉 BEST CHECKPOINT SAVED SUCCESSFULLY!")
+                print(f"   Path: {best_path}")
+                print(f"   Size: {file_size:,} bytes")
+                print(f"   Epoch: {epoch}")
+                print(f"   AUC: {metrics.get('auc', 'N/A'):.4f}" if 'auc' in metrics else f"   AUC: N/A")
+            else:
+                print(f"❌ ERROR: Best checkpoint not found after saving!")
+                print(f"   Expected path: {best_path}")
+        else:
+            print("ℹ️  Not the best checkpoint - skipping best_model.pth save")
+
+        # Return the path of the saved checkpoint
+        if is_best:
+            return best_path
+        else:
+            return checkpoint_path
     
     def load_checkpoint(self, 
                        experiment_id: str,

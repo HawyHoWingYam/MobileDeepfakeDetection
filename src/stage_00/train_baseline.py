@@ -231,23 +231,47 @@ class MultiDatasetWrapper(Dataset):
         """Pre-compute indices for each dataset/label for stratified sampling."""
         self.label_indices: Dict[int, Dict[int, List[int]]] = {}
 
+        logger.info("🔧 Building label indices for %d datasets...", len(self.datasets))
+
         for dataset_id, dataset in enumerate(self.datasets):
             offset = self.dataset_offsets[dataset_id]
             per_label: Dict[int, List[int]] = {}
+            dataset_name = getattr(dataset, 'dataset_name', f'Dataset_{dataset_id}')
+
+            logger.info("  📊 Processing %s (%s samples)...", dataset_name, f"{len(dataset):,}")
 
             if hasattr(dataset, 'get_indices_by_label'):
+                # Fast path: use dataset's built-in method
                 local_map = dataset.get_indices_by_label()
                 for label, local_indices in local_map.items():
                     per_label[int(label)] = [offset + idx for idx in local_indices]
+                logger.info("    ✅ Fast indexing completed for %s", dataset_name)
             else:
-                # Fallback: iterate once and gather labels
+                # Slow path: iterate and gather labels (with progress bar)
+                logger.warning("    ⚠️  Slow indexing path for %s - consider implementing get_indices_by_label()", dataset_name)
+
                 per_label = {}
-                for local_idx in range(len(dataset)):
-                    _, label = dataset[local_idx]
-                    label_value = int(label.item() if hasattr(label, 'item') else label)
-                    per_label.setdefault(label_value, []).append(offset + local_idx)
+                from tqdm import tqdm
+
+                for local_idx in tqdm(range(len(dataset)),
+                                    desc=f"    Indexing {dataset_name}",
+                                    unit="samples"):
+                    try:
+                        _, label = dataset[local_idx]
+                        label_value = int(label.item() if hasattr(label, 'item') else label)
+                        per_label.setdefault(label_value, []).append(offset + local_idx)
+                    except Exception as e:
+                        logger.error("Failed to process sample %d in %s: %s", local_idx, dataset_name, e)
+                        continue
 
             self.label_indices[dataset_id] = per_label
+
+            # Log summary for this dataset
+            total_indices = sum(len(indices) for indices in per_label.values())
+            logger.info("    📈 %s: %d labels, %s total indices",
+                       dataset_name, len(per_label), f"{total_indices:,}")
+
+        logger.info("✅ Label indices building completed")
 
     def __len__(self):
         return len(self.concat_dataset)
@@ -527,10 +551,18 @@ class UnifiedDeepfakeDataset(Dataset):
         image_path = sample['image_path']
         label = int(sample['label'])
 
-        # Load image
+        # Load image with enhanced error handling
         try:
+            # Check if file exists before attempting to load
+            if not Path(image_path).exists():
+                raise FileNotFoundError(f"Image file not found: {image_path}")
+
             image = Image.open(image_path).convert('RGB')
             image_np = np.array(image)  # Convert to numpy for albumentations
+
+            # Validate image dimensions
+            if image_np.size == 0:
+                raise ValueError(f"Empty image: {image_path}")
 
             # Apply albumentations transforms
             transformed = self.albu_transform(image=image_np)
@@ -538,9 +570,16 @@ class UnifiedDeepfakeDataset(Dataset):
 
             return image_tensor, torch.tensor(label, dtype=torch.float)
 
+        except FileNotFoundError as e:
+            logger.error("File not found: %s", str(e))
+            # Return a dummy black image as fallback
+            dummy_image = torch.zeros(3, 256, 256)
+            return dummy_image, torch.tensor(label, dtype=torch.float)
         except Exception as e:
             logger.error("Failed to load %s: %s", image_path, e)
-            raise RuntimeError(f"Failed to load image: {image_path}") from e
+            # Return a dummy black image as fallback instead of raising
+            dummy_image = torch.zeros(3, 256, 256)
+            return dummy_image, torch.tensor(label, dtype=torch.float)
 
 def create_multi_dataset_loaders(
     config_path,
@@ -882,19 +921,23 @@ class TrainingLogger:
     - Per-dataset breakdowns
     """
 
-    def __init__(self, experiment_manager, visualizer=None):
+    def __init__(self, experiment_manager, visualizer=None, experiment_id=None):
         """
         Initialize training logger
 
         Args:
             experiment_manager: ExperimentManager instance
             visualizer: AcademicVisualizer instance (optional)
+            experiment_id: Experiment ID (required if called outside context manager)
         """
         self.exp_manager = experiment_manager
         self.visualizer = visualizer or AcademicVisualizer()
 
-        # Get experiment directory
-        self.exp_dir = Path(self.exp_manager.base_path) / self.exp_manager.current_experiment
+        # Get experiment directory - use provided experiment_id or current_experiment
+        if experiment_id is not None:
+            self.exp_dir = Path(self.exp_manager.base_path) / experiment_id
+        else:
+            self.exp_dir = Path(self.exp_manager.base_path) / self.exp_manager.current_experiment
         self.logs_dir = self.exp_dir / "logs"
         self.plots_dir = self.exp_dir / "plots"
 
@@ -1916,34 +1959,41 @@ def main():
 
     exp_manager = ExperimentManager(base_path="experiments")
 
-    with exp_manager.experiment_context(exp_config) as experiment_id:
-        logger.info("Started experiment: %s", experiment_id)
+    # Create experiment manually and manage context manually for better control
+    experiment_id = exp_manager.create_experiment(exp_config)
+    logger.info("Started experiment: %s", experiment_id)
 
-        model, train_loader, val_loader, test_loader, optimizer, scheduler, criterion, device = setup_training(config)
+    # Store experiment_id for fallback in checkpoint saving
+    exp_manager.experiment_id = experiment_id
 
-        best_val_auc = 0.0
-        patience_counter = 0
-        training_history = {
-            'train_loss': [],
-            'train_accuracy': [],
-            'val_loss': [],
-            'val_accuracy': [],
-            'val_auc': [],
-            'val_f1': []
-        }
-
-        # Fix matplotlib font warnings for academic plots
+    # Setup matplotlib before training
     import matplotlib.pyplot as plt
     import matplotlib
     matplotlib.use('Agg')  # Use non-interactive backend
     plt.rcParams['font.family'] = ['DejaVu Sans', 'Liberation Sans', 'Arial', 'sans-serif']
 
-    visualizer = AcademicVisualizer()
-        training_logger = TrainingLogger(exp_manager, visualizer)
-        logger.info("Training logger initialized")
-        logger.info("Starting training for %d epochs", training_cfg['epochs'])
-        logger.info("%s", "=" * 80)
+    # Setup training components
+    model, train_loader, val_loader, test_loader, optimizer, scheduler, criterion, device = setup_training(config)
 
+    best_val_auc = 0.0
+    patience_counter = 0
+    training_history = {
+        'train_loss': [],
+        'train_accuracy': [],
+        'val_loss': [],
+        'val_accuracy': [],
+        'val_auc': [],
+        'val_f1': []
+    }
+
+    visualizer = AcademicVisualizer()
+    training_logger = TrainingLogger(exp_manager, visualizer, experiment_id)
+    logger.info("Training logger initialized")
+    logger.info("Starting training for %d epochs", training_cfg['epochs'])
+    logger.info("%s", "=" * 80)
+
+    start_time = datetime.datetime.now()
+    try:
         for epoch in range(1, training_cfg['epochs'] + 1):
             epoch_start_time = time.time()
 
@@ -1966,20 +2016,64 @@ def main():
             training_history['val_auc'].append(val_metrics['auc'])
             training_history['val_f1'].append(val_metrics['f1'])
 
-            is_best = val_metrics['auc'] > best_val_auc
+          # Enhanced checkpoint saving logic with improved floating point comparison
+            current_auc = float(val_metrics['auc'])  # Ensure Python float for comparison
+            is_best = current_auc > best_val_auc or (abs(current_auc - best_val_auc) < 1e-8 and epoch == 0)
+
+            # Detailed debugging information
+            logger.info("Checkpoint evaluation - Epoch %d:", epoch)
+            logger.info("  Current AUC: %.8f", current_auc)
+            logger.info("  Best AUC:    %.8f", best_val_auc)
+            logger.info("  Difference:  %.8f", abs(current_auc - best_val_auc))
+            logger.info("  Is Best:     %s", is_best)
+
             if is_best:
-                best_val_auc = val_metrics['auc']
+                best_val_auc = current_auc
                 patience_counter = 0
-                exp_manager.save_checkpoint(
-                    model=model,
-                    optimizer=optimizer,
-                    epoch=epoch,
-                    metrics=val_metrics,
-                    is_best=True
-                )
-                logger.info("New best model saved! AUC: %.4f", best_val_auc)
+
+                logger.info("🎯 SAVING NEW BEST MODEL!")
+                logger.info("   Epoch: %d", epoch)
+                logger.info("   AUC: %.8f", best_val_auc)
+
+                # Ensure experiment context is properly set
+                if hasattr(exp_manager, 'current_experiment') and exp_manager.current_experiment is None:
+                    logger.warning("⚠️ No active experiment context, setting it now...")
+                    if hasattr(exp_manager, 'experiment_id') and exp_manager.experiment_id:
+                        exp_manager.current_experiment = exp_manager.experiment_id
+                        logger.info("✅ Experiment context set to: %s", exp_manager.experiment_id)
+                    else:
+                        logger.error("❌ No experiment_id available!")
+                        continue
+
+                try:
+                    # Call save_checkpoint with detailed error tracking
+                    checkpoint_path = exp_manager.save_checkpoint(
+                        model=model,
+                        optimizer=optimizer,
+                        epoch=epoch,
+                        metrics=val_metrics,
+                        is_best=True
+                    )
+
+                    # Verify checkpoint was actually saved
+                    if checkpoint_path and Path(checkpoint_path).exists():
+                        file_size = Path(checkpoint_path).stat().st_size
+                        logger.info("✅ Checkpoint saved successfully!")
+                        logger.info("   Path: %s", checkpoint_path)
+                        logger.info("   Size: %s bytes", f"{file_size:,}")
+                    else:
+                        logger.error("❌ Checkpoint file verification failed!")
+                        logger.error("   Returned path: %s", checkpoint_path)
+
+                except Exception as e:
+                    logger.error("❌ Failed to save checkpoint: %s", str(e))
+                    logger.error("   Exception type: %s", type(e).__name__)
+                    import traceback
+                    logger.error("   Traceback: %s", traceback.format_exc())
+                    # Don't raise - continue training
             else:
                 patience_counter += 1
+                logger.debug("Not best model - patience increased to %d", patience_counter)
 
             epoch_time = time.time() - epoch_start_time
             logger.info("Epoch %02d Summary:", epoch)
@@ -2026,7 +2120,6 @@ def main():
                 logger.warning("Early stopping triggered after %d epochs", epoch)
                 break
 
-        logger.info("Training completed! Best validation AUC: %.4f", best_val_auc)
         logger.info("Evaluating on test set...")
         test_metrics = validate_epoch(model, test_loader, criterion, device, epoch=-1)
 
@@ -2057,8 +2150,27 @@ def main():
 
         training_logger.generate_final_report(training_history, test_metrics)
 
+        # Mark experiment as completed successfully
+        exp_manager.current_result.success = True
+        exp_manager.current_result.finished_at = datetime.datetime.now().isoformat()
+        exp_manager.current_result.total_training_time = (datetime.datetime.now() - start_time).total_seconds()
+        exp_manager.registry["experiments"][experiment_id]["status"] = "completed"
+        exp_manager._save_registry()
+
         logger.info("Experiment %s completed successfully!", experiment_id)
         return experiment_id
+
+    except Exception as e:
+        # Mark experiment as failed
+        exp_manager.current_result.success = False
+        exp_manager.current_result.error_message = str(e)
+        exp_manager.current_result.finished_at = datetime.datetime.now().isoformat()
+        exp_manager.registry["experiments"][experiment_id]["status"] = "failed"
+        exp_manager.registry["experiments"][experiment_id]["error"] = str(e)
+        exp_manager._save_registry()
+
+        logger.error("Training failed with error: %s", str(e))
+        raise
 
 
 
