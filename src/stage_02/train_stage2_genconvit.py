@@ -239,7 +239,7 @@ class GenConViTTrainingConfig:
 
     # Optimization - OPTIMIZED FOR RTX 5090
     mixed_precision: bool = True  # ENABLED for RTX 5090 performance boost
-    gradient_clipping: float = 0.1
+    gradient_clipping: float = 1.0  # IMPROVED: Increased from 0.1 to 1.0 for better stability
     gradient_checkpointing: bool = True
 
     # Paths

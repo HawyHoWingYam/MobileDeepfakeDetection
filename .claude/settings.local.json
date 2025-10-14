@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcopy:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(conda activate aware_net_rtx50)",
+      "Bash(cmd /c:*)",
+      "Bash(conda:*)",
+      "Bash(dir)",
+      "Bash(dir:*)",
+      "Bash(tree:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(cat:*)",
+      "Bash(python:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell:*)",
+      "Bash(del check_data_overlap.py analyze_predictions.py simple_analysis.py create_path_blind_test.py evaluate_path_blind.py)",
+      "Bash(del \"configs\\multi_dataset_config.json\")",
+      "Bash(git config:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)",
+      "Bash(git commit:*)",
+      "Bash(git pull:*)",
+      "Bash(git rm:*)",
+      "Bash(git reset:*)",
+      "Read(//d/work/**)",
+      "Bash(git filter-branch:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(copy:*)",
+      "Bash(xargs ls:*)",
+      "Bash(del:*)",
+      "Bash(find:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
