@@ -1,0 +1,11 @@
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+experiments/*/checkpoints/
+models/*/checkpoints/
+src/*/models/*/checkpoints/
+dataset/*
+*.pyc
+*.csv
+*.log
