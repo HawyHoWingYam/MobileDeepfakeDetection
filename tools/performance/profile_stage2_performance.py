@@ -25,10 +25,8 @@ import gc
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent / "src"))
 
-from stage_02.spatial_expert import EfficientNetV2SpatialExpert
+from stage_02.enhanced_spatial_expert import EfficientNetV2SpatialExpert
 from stage_02.genconvit_expert import GenConViTExpert
-from stage_02.unified_feature_extractor import UnifiedFeatureExtractor
-from stage_02.multi_resolution_dataloader import MultiResolutionDataLoaderFactory, DataLoaderConfig
 
 
 @dataclass

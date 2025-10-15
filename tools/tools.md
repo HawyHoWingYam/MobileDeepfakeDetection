@@ -13,7 +13,8 @@ tools/
 │   ├── environment_manager.py   - 智能PyTorch安裝器
 │   └── setup_environment.py     - 全面環境驗證器
 ├── performance/             # 性能分析工具
-│   └── profile_stage2_performance.py - Stage 2性能分析
+│   ├── profile_stage2_performance.py - Stage 2性能分析
+│   └── stage01_threshold_optimizer.py - Stage 01阈值优化
 ├── validation/              # 驗證工具
 │   ├── stage_gate_validator.py      - Stage Gate驗證器
 │   └── verify_stage_0_completion.py - Stage 0完成驗證
@@ -21,6 +22,7 @@ tools/
     ├── test_baseline_model.py
     ├── test_dataset.py
     ├── test_metrics.py
+    ├── test_stage02_smoke.py - Stage 02煙霧測試
     └── ...
 ```
 
@@ -67,6 +69,14 @@ python tools/setup/setup_environment.py
 #### Stage 2性能分析
 ```bash
 python tools/performance/profile_stage2_performance.py
+```
+
+#### Stage 01阈值优化
+```bash
+python tools/performance/stage01_threshold_optimizer.py \
+  --checkpoint experiments/full_training_20251014_100257_cf074fe9/checkpoints/best_model.pth \
+  --dataset celebdf_v2 \
+  --output-dir analysis/threshold_optimization
 ```
 
 ### 驗證工具 (validation/)
@@ -118,7 +128,124 @@ pytest tools/tests/
 ```bash
 pytest tools/tests/test_dataset.py
 pytest tools/tests/test_baseline_model.py
+pytest tools/tests/test_stage02_smoke.py  # Stage 02煙霧測試
 ```
+
+# Stage 02 Heterogeneous Expert Tools
+
+## Stage 02 Configuration
+
+Stage 02 uses a dedicated configuration file for heterogeneous expert training:
+
+```bash
+# Configuration location
+configs/stage02_training.json
+```
+
+### Key Configuration Sections
+
+- **spatial_expert**: EfficientNetV2-B0 with focal loss and graduated learning rates
+- **genconvit_expert**: Generative-Contrastive Vision Transformer with dual-variant training
+- **training**: Optimized for expert models (batch_size=32, epochs=50)
+- **expert_fusion**: Adaptive weighted fusion strategies
+- **progressive_validation**: Concept validation and resolution comparison
+
+## Stage 02 Smoke Testing
+
+Quick validation tests to ensure Stage 02 components are working before training:
+
+```bash
+# Run all Stage 02 smoke tests
+python tools/tests/test_stage02_smoke.py
+
+# Or run with pytest
+pytest tools/tests/test_stage02_smoke.py -v
+```
+
+### Smoke Test Coverage
+
+1. **Model Import Tests**: Verify spatial and GenConViT experts can be imported
+2. **Initialization Tests**: Check models can be created and moved to GPU
+3. **Forward Pass Tests**: Validate single batch inference
+4. **Configuration Tests**: Ensure stage02_training.json loads correctly
+5. **Dependency Tests**: Check PyTorch version, CUDA availability, system memory
+
+### Test Markers
+
+- `@pytest.mark.gpu`: Tests requiring GPU (skip on CPU-only systems)
+- `@pytest.mark.skipif`: Conditional skipping based on module availability
+
+## Stage 02 Training Commands
+
+### Spatial Expert Training
+
+```bash
+# Concept validation (10 epochs)
+PYTHONPATH=. python src/stage_02/train_stage2_spatial.py \
+  --mode concept_validation \
+  --config configs/stage02_training.json \
+  --epochs 10 \
+  --batch_size 32
+
+# Full training
+PYTHONPATH=. python src/stage_02/train_stage2_spatial.py \
+  --mode full_training \
+  --config configs/stage02_training.json \
+  --epochs 50 \
+  --batch_size 32 \
+  --dataset_config configs/datasets.json \
+  --manifest_dataset celebdf_v2 \
+  --manifest_mode balanced
+```
+
+### GenConViT Expert Training
+
+```bash
+# Concept validation
+PYTHONPATH=. python src/stage_02/train_stage2_genconvit.py \
+  --config configs/stage02_training.json \
+  --epochs 10 \
+  --batch_size 16 \
+  --dataset_config configs/datasets.json \
+  --manifest_dataset celebdf_v2 \
+  --manifest_mode balanced
+```
+
+### Using Manifests vs ImageFolder
+
+Stage 02 supports both manifest-based and ImageFolder data loading:
+
+```bash
+# Manifest-based (recommended, uses existing datasets.json)
+--dataset_config configs/datasets.json --manifest_dataset celebdf_v2 --manifest_mode balanced
+
+# Fallback ImageFolder (for testing)
+--data_path /path/to/ImageFolder --train_manifest --val_manifest --test_manifest
+```
+
+## Integration with Stage 01 Results
+
+Stage 02 builds on the high-performance baseline from Stage 01:
+
+- **Baseline Reference**: Stage 01 AUC 0.99144 (full_training_20251014_100257_cf074fe9)
+- **Performance Target**: Stage 02 aims for OOD improvement over Stage 01
+- **Cascade Integration**: Stage 02 processes ~5% samples routed from Stage 01
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Import Errors**: Run smoke tests to verify all dependencies
+2. **CUDA Out of Memory**: Reduce batch_size in config
+3. **Manifest Not Found**: Check configs/datasets.json paths
+4. **Model Loading Failures**: Verify checkpoint paths and model compatibility
+
+### Performance Tips
+
+- Use `--mode concept_validation` for quick testing (10 epochs)
+- Monitor GPU memory usage during multi-expert training
+- Validate data loading with small subsets first
+- Use existing manifests from Stage 01 for consistency
 
 # Model Diagnostics Tool
 

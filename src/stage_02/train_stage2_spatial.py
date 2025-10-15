@@ -41,6 +41,7 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from PIL import Image
 from torch.cuda.amp import GradScaler, autocast
+from tqdm import tqdm
 
 # AWARE-NET imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -615,7 +616,7 @@ def train_epoch(
     scaler: Optional[GradScaler] = None,
     epoch: int = 0
 ) -> Dict[str, float]:
-    """Train one epoch with advanced monitoring."""
+    """Train one epoch with progress bar monitoring."""
 
     model.train()
     total_loss = 0.0
@@ -628,7 +629,14 @@ def train_epoch(
         if criterion.total_epochs is None:
             criterion.total_epochs = config.epochs
 
-    for batch_idx, (images, targets) in enumerate(train_loader):
+    # Create progress bar
+    pbar = tqdm(train_loader,
+                 desc=f"Epoch {epoch+1}/{config.epochs} (Training)",
+                 leave=False,
+                 ncols=120,
+                 unit="batch")
+
+    for batch_idx, (images, targets) in enumerate(pbar):
         images, targets = images.to(device), targets.to(device).float()
 
         optimizer.zero_grad()
@@ -662,17 +670,26 @@ def train_epoch(
         total += targets.size(0)
         correct += (predicted == targets).sum().item()
 
-        # Log progress
-        if batch_idx % 50 == 0:
-            logger.info(f"Batch {batch_idx}/{len(train_loader)}: "
-                       f"Loss={loss.item():.4f}, "
-                       f"Acc={100.*correct/total:.2f}%, "
-                       f"LR={scheduler.get_last_lr()[0]:.6f}")
+        # Update progress bar with current stats
+        current_acc = 100. * correct / total
+        current_loss = total_loss / (batch_idx + 1)
+        current_lr = scheduler.get_last_lr()[0] if hasattr(scheduler, 'get_last_lr') else 0.0
+
+        pbar.set_postfix({
+            'Loss': f'{current_loss:.4f}',
+            'Acc': f'{current_acc:.2f}%',
+            'LR': f'{current_lr:.6f}'
+        })
+
+    pbar.close()
 
     epoch_metrics = {
         'train_loss': total_loss / len(train_loader),
         'train_accuracy': 100. * correct / total
     }
+
+    logger.info(f"Epoch {epoch+1} completed: Loss={epoch_metrics['train_loss']:.4f}, "
+               f"Accuracy={epoch_metrics['train_accuracy']:.2f}%")
 
     return epoch_metrics
 

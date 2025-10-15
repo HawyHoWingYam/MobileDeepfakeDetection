@@ -1,0 +1,126 @@
+{
+  "metadata": {
+    "name": "AWARE-NET Stage 02 Training Configuration",
+    "description": "Training config for heterogeneous expert models with spatial and generative specialists",
+    "version": "1.0.0"
+  },
+
+  "experiment": {
+    "name": "stage02_heterogeneous_experts",
+    "description": "Stage 02: Heterogeneous expert models with EfficientNetV2-B0 spatial expert and GenConViT generative expert, multi-dataset training for OOD generalization",
+    "tags": ["stage02", "heterogeneous-experts", "spatial-expert", "genconvit", "multi-dataset", "ood-generalization"]
+  },
+
+  "spatial_expert": {
+    "name": "efficientnetv2_rw_s",
+    "pretrained": true,
+    "dropout_rate": 0.2,
+    "freeze_backbone": false,
+    "focal_loss_alpha": 0.25,
+    "focal_loss_gamma": 2.0,
+    "graduated_lr": {
+      "backbone_lr_multiplier": 0.1,
+      "classifier_lr_multiplier": 1.0,
+      "spatial_modules_lr_multiplier": 1.5
+    }
+  },
+
+  "genconvit_expert": {
+    "name": "genconvit",
+    "pretrained": true,
+    "dropout_rate": 0.1,
+    "freeze_backbone": false,
+    "dual_variant_training": true,
+    "reconstruction_weight": 0.3,
+    "classification_weight": 0.7,
+    "contrastive_temperature": 0.07
+  },
+
+  "training": {
+    "batch_size": 32,
+    "epochs": 50,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "optimizer": "adamw",
+    "scheduler": "cosine",
+    "num_workers": 8,
+    "mixed_precision": true,
+    "early_stopping_patience": 15,
+    "gradient_clipping": 1.0,
+    "warmup_epochs": 5,
+    "use_class_weights": false,
+    "concept_validation_epochs": 10,
+    "resolution_comparison_epochs": 15,
+    "comment": "Stage 02 RTX 5090 optimized: batch_size=32 for expert models, epochs=50 for full training, lr=0.001 for stable convergence"
+  },
+
+  "data": {
+    "dataset_config": "configs/datasets.json",
+    "dataset_name": "celebdf_v2",
+    "dataset_mode": "balanced",
+    "multi_dataset": true,
+    "use_dataset_weights": true,
+    "strict_batch_balance": false,
+    "image_size": 256,
+    "augmentation": true,
+    "subset_ratio": 1.0,
+    "spatial_expert_mode": true,
+    "resolution_comparison": [224, 256, 288, 320],
+    "comment": "dataset_mode: 'balanced' (50/50 class balance). use_dataset_weights: equal 25% per dataset. spatial_expert_mode: enable spatial artifact-preserving augmentations"
+  },
+
+  "monitoring": {
+    "log_interval": 50,
+    "save_interval": 10,
+    "eval_interval": 1,
+    "save_best_only": true,
+    "monitor_metric": "val_auc",
+    "grad_cam_analysis": true,
+    "complementarity_analysis": true
+  },
+
+  "paths": {
+    "models_dir": "models/stage_02",
+    "results_dir": "results/stage_02",
+    "logs_dir": "logs/stage_02",
+    "experiments_dir": "experiments/stage_02",
+    "spatial_weights_dir": "models/stage_02/spatial",
+    "genconvit_weights_dir": "models/stage_02/genconvit"
+  },
+
+  "targets": {
+    "min_auc": 0.90,
+    "min_f1": 0.85,
+    "max_inference_time_ms": 150,
+    "max_memory_usage_gb": 4,
+    "spatial_artifact_auc": 0.92,
+    "ood_improvement": 0.05,
+    "expert_complementarity": 0.10,
+    "baseline_improvement": 0.03
+  },
+
+  "expert_fusion": {
+    "method": "adaptive_weighted",
+    "confidence_threshold": 0.7,
+    "disagreement_weight": 0.3,
+    "uncertainty_weight": 0.2,
+    "performance_weight": 0.5
+  },
+
+  "progressive_validation": {
+    "concept_validation": {
+      "sample_size": 1000,
+      "target_auc": 0.85,
+      "early_stop_if_below": 0.75
+    },
+    "resolution_comparison": {
+      "efficiency_weight": 0.3,
+      "quality_weight": 0.7,
+      "max_resolution_increase": 1.5
+    },
+    "model_upgrade_decision": {
+      "upgrade_threshold_auc": 0.90,
+      "cost_benefit_ratio": 2.0
+    }
+  }
+}
