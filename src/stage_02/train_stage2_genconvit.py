@@ -261,7 +261,7 @@ class GenConViTTrainingConfig:
     max_inference_time: float = 150.0  # ms
 
     # Progressive training configuration - OPTIMIZED FOR RTX 5090
-    enable_progressive_training: bool = True
+    enable_progressive_training: bool = False  # DISABLED for command line args to work
     initial_batch_size: int = 16  # Increased from 8 for RTX 5090
     initial_epochs: int = 1  # Reduced for faster ramp-up
     batch_size_increment: int = 8  # Increased from 4
