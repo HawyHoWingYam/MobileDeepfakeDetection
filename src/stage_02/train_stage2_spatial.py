@@ -107,6 +107,64 @@ def resolve_manifest_paths(
 
     return manifests, ds_config.root_path
 
+
+def resolve_multi_dataset_manifests(
+    config_path: Union[str, Path],
+    dataset_names: List[str],
+    dataset_mode: str,
+    dataset_weights: Optional[Dict[str, float]] = None
+) -> Dict[str, Any]:
+    """Resolve manifest paths for multiple datasets with weighted sampling."""
+
+    logger.info("=== Multi-Dataset Configuration ===")
+
+    all_manifests = {}
+    dataset_info = {}
+    total_weight = 0.0
+
+    for dataset_name in dataset_names:
+        try:
+            manifests, dataset_root = resolve_manifest_paths(config_path, dataset_name, dataset_mode)
+
+            # Load sample counts for each split
+            split_counts = {}
+            for split, manifest_path in manifests.items():
+                df = pd.read_csv(manifest_path)
+                if 'valid' in df.columns:
+                    df = df[df['valid'] == True]
+                split_counts[split] = len(df)
+
+            weight = dataset_weights.get(dataset_name, 0.25) if dataset_weights else 0.25
+            total_weight += weight
+
+            dataset_info[dataset_name] = {
+                'manifests': manifests,
+                'root_path': dataset_root,
+                'split_counts': split_counts,
+                'weight': weight
+            }
+
+            logger.info(f"Dataset {dataset_name}: weight={weight:.2f}, "
+                       f"samples={split_counts}")
+
+        except Exception as e:
+            logger.warning(f"Failed to load dataset {dataset_name}: {e}")
+            continue
+
+    # Normalize weights
+    if total_weight > 0 and dataset_info:
+        for dataset_name in dataset_info:
+            dataset_info[dataset_name]['weight'] /= total_weight
+
+    logger.info(f"Loaded {len(dataset_info)} datasets with normalized weights")
+    logger.info("="*40)
+
+    return {
+        'datasets': dataset_info,
+        'total_weight': total_weight,
+        'dataset_names': list(dataset_info.keys())
+    }
+
 # Simplified configuration classes to replace deleted dependencies
 @dataclass
 class SpatialExpertConfig:
@@ -257,6 +315,13 @@ class SpatialTrainingConfig:
     dataset_config: str = 'configs/datasets.json'
     manifest_dataset: str = 'celebdf_v2'
     manifest_mode: str = 'balanced'
+
+    # Multi-dataset configuration
+    multi_dataset: bool = False
+    use_dataset_weights: bool = True
+    dataset_names: Optional[List[str]] = None
+    dataset_weights: Optional[Dict[str, float]] = None
+    target_samples_per_epoch: Optional[int] = None
 
     # Monitoring configuration
     monitoring_config: MonitoringConfig = None
@@ -449,46 +514,159 @@ class SpatialExpertDataset(torch.utils.data.Dataset):
         return [self.dataset[i][1] for i in range(len(self.dataset))]
 
 
-def setup_data_loaders(config: SpatialTrainingConfig) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    """Setup data loaders with manifest support."""
+class MultiDatasetSpatialExpert(torch.utils.data.Dataset):
+    """Multi-dataset wrapper for spatial expert training with weighted sampling."""
+
+    def __init__(
+        self,
+        split: str,
+        resolution: int,
+        augmentation_config: AugmentationConfig,
+        multi_dataset_config: Dict[str, Any],
+        target_samples_per_epoch: Optional[int] = None
+    ):
+        self.split = split
+        self.resolution = resolution
+        self.augmentation_config = augmentation_config
+        self.multi_dataset_config = multi_dataset_config
+        self.datasets = []
+        self.dataset_weights = []
+        self.cumulative_sizes = []
+
+        # Load all datasets
+        for dataset_name, dataset_info in multi_dataset_config['datasets'].items():
+            if split in dataset_info['split_counts'] and dataset_info['split_counts'][split] > 0:
+                dataset = SpatialExpertDataset(
+                    split=split,
+                    resolution=resolution,
+                    augmentation_config=augmentation_config,
+                    manifest_path=str(dataset_info['manifests'][split]),
+                    dataset_root=str(dataset_info['root_path'])
+                )
+                self.datasets.append(dataset)
+                self.dataset_weights.append(dataset_info['weight'])
+
+        if not self.datasets:
+            raise ValueError(f"No valid datasets found for split: {split}")
+
+        # Normalize weights
+        total_weight = sum(self.dataset_weights)
+        self.dataset_weights = [w / total_weight for w in self.dataset_weights]
+
+        # Calculate cumulative sizes for sampling
+        self.cumulative_sizes = []
+        cumulative = 0
+        for dataset in self.datasets:
+            cumulative += len(dataset)
+            self.cumulative_sizes.append(cumulative)
+
+        # Determine target samples per epoch
+        if target_samples_per_epoch:
+            self.target_length = target_samples_per_epoch
+        else:
+            # Use sum of all datasets as default
+            self.target_length = sum(len(dataset) for dataset in self.datasets)
+
+        logger.info(f"Multi-dataset {split} created: {len(self.datasets)} datasets, "
+                   f"total samples={self.target_length}, weights={self.dataset_weights}")
+
+    def __len__(self):
+        return self.target_length
+
+    def __getitem__(self, idx):
+        # Weighted random sampling of datasets
+        dataset_idx = np.random.choice(len(self.datasets), p=self.dataset_weights)
+        dataset = self.datasets[dataset_idx]
+
+        # Random sample from selected dataset
+        sample_idx = np.random.randint(0, len(dataset))
+        return dataset[sample_idx]
+
+    def get_dataset_info(self) -> Dict[str, Any]:
+        """Get information about loaded datasets for logging."""
+        return {
+            'num_datasets': len(self.datasets),
+            'dataset_lengths': [len(dataset) for dataset in self.datasets],
+            'dataset_weights': self.dataset_weights,
+            'total_samples': self.target_length
+        }
+
+
+def setup_data_loaders(config: SpatialTrainingConfig, multi_dataset_config: Optional[Dict[str, Any]] = None) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """Setup data loaders with manifest support and multi-dataset capability."""
 
     resolution = config.concept_validation['resolution'] if config.mode == 'concept_validation' else 256
-    use_manifest = all([
-        config.train_manifest,
-        config.val_manifest,
-        config.test_manifest,
-    ])
 
-    dataset_root = Path(config.dataset_root)
-    if use_manifest and not dataset_root.exists():
-        raise FileNotFoundError(f"Dataset root not found: {dataset_root}")
+    if config.multi_dataset and multi_dataset_config:
+        # Multi-dataset setup
+        logger.info("Setting up multi-dataset data loaders")
 
-    train_dataset = SpatialExpertDataset(
-        split='train',
-        resolution=resolution,
-        augmentation_config=config.augmentation_config,
-        manifest_path=config.train_manifest if use_manifest else None,
-        dataset_root=dataset_root if use_manifest else Path(config.data_path),
-        fallback_path=config.data_path
-    )
+        train_dataset = MultiDatasetSpatialExpert(
+            split='train',
+            resolution=resolution,
+            augmentation_config=config.augmentation_config,
+            multi_dataset_config=multi_dataset_config,
+            target_samples_per_epoch=config.target_samples_per_epoch
+        )
 
-    val_dataset = SpatialExpertDataset(
-        split='val',
-        resolution=resolution,
-        augmentation_config=config.augmentation_config,
-        manifest_path=config.val_manifest if use_manifest else None,
-        dataset_root=dataset_root if use_manifest else Path(config.data_path),
-        fallback_path=config.data_path
-    )
+        val_dataset = MultiDatasetSpatialExpert(
+            split='val',
+            resolution=resolution,
+            augmentation_config=config.augmentation_config,
+            multi_dataset_config=multi_dataset_config,
+            target_samples_per_epoch=config.target_samples_per_epoch
+        )
 
-    test_dataset = SpatialExpertDataset(
-        split='test',
-        resolution=resolution,
-        augmentation_config=config.augmentation_config,
-        manifest_path=config.test_manifest if use_manifest else None,
-        dataset_root=dataset_root if use_manifest else Path(config.data_path),
-        fallback_path=config.data_path
-    )
+        test_dataset = MultiDatasetSpatialExpert(
+            split='test',
+            resolution=resolution,
+            augmentation_config=config.augmentation_config,
+            multi_dataset_config=multi_dataset_config,
+            target_samples_per_epoch=config.target_samples_per_epoch
+        )
+
+        # Log dataset information
+        train_info = train_dataset.get_dataset_info()
+        logger.info(f"Multi-dataset train: {train_info}")
+
+    else:
+        # Single dataset setup (original logic)
+        use_manifest = all([
+            config.train_manifest,
+            config.val_manifest,
+            config.test_manifest,
+        ])
+
+        dataset_root = Path(config.dataset_root)
+        if use_manifest and not dataset_root.exists():
+            raise FileNotFoundError(f"Dataset root not found: {dataset_root}")
+
+        train_dataset = SpatialExpertDataset(
+            split='train',
+            resolution=resolution,
+            augmentation_config=config.augmentation_config,
+            manifest_path=config.train_manifest if use_manifest else None,
+            dataset_root=dataset_root if use_manifest else Path(config.data_path),
+            fallback_path=config.data_path
+        )
+
+        val_dataset = SpatialExpertDataset(
+            split='val',
+            resolution=resolution,
+            augmentation_config=config.augmentation_config,
+            manifest_path=config.val_manifest if use_manifest else None,
+            dataset_root=dataset_root if use_manifest else Path(config.data_path),
+            fallback_path=config.data_path
+        )
+
+        test_dataset = SpatialExpertDataset(
+            split='test',
+            resolution=resolution,
+            augmentation_config=config.augmentation_config,
+            manifest_path=config.test_manifest if use_manifest else None,
+            dataset_root=dataset_root if use_manifest else Path(config.data_path),
+            fallback_path=config.data_path
+        )
 
     train_loader = DataLoader(
         train_dataset,
@@ -821,11 +999,37 @@ def train_spatial_expert(config: SpatialTrainingConfig) -> ExperimentResult:
     os.makedirs(config.weights_dir, exist_ok=True)
     os.makedirs(config.logs_dir, exist_ok=True)
 
+    # Setup multi-dataset configuration if needed
+    multi_dataset_config = None
+    if config.multi_dataset:
+        try:
+            dataset_config_path = Path(config.dataset_config)
+            with open(dataset_config_path, 'r') as f:
+                datasets_config = json.load(f)
+
+            # Extract dataset names and weights from configuration
+            dataset_names = config.dataset_names or ['celebdf_v2', 'faceforensics_plus_plus', 'deeperforensics_1_0', 'dfdc']
+            dataset_weights = config.dataset_weights or datasets_config.get('multi_dataset_configs', {}).get('unified_training', {}).get('sampling_strategy', {}).get('dataset_weights', {})
+
+            multi_dataset_config = resolve_multi_dataset_manifests(
+                config_path=dataset_config_path,
+                dataset_names=dataset_names,
+                dataset_mode=config.manifest_mode,
+                dataset_weights=dataset_weights
+            )
+
+            logger.info(f"Multi-dataset training enabled with {len(multi_dataset_config['dataset_names'])} datasets")
+
+        except Exception as e:
+            logger.error(f"Failed to setup multi-dataset configuration: {e}")
+            raise
+
     # Setup experiment management
+    dataset_name = "multi_dataset_spatial" if config.multi_dataset else "spatial_artifacts_dataset"
     exp_config = ExperimentConfig(
         experiment_name=f"spatial_expert_{config.mode}_{config.epochs}epochs",
         model_name=config.model_config.model_name,
-        dataset_name="spatial_artifacts_dataset",
+        dataset_name=dataset_name,
         batch_size=config.batch_size,
         learning_rate=config.learning_rate,
         num_epochs=config.epochs,
@@ -838,7 +1042,7 @@ def train_spatial_expert(config: SpatialTrainingConfig) -> ExperimentResult:
     experiment_id = experiment_manager.create_experiment(exp_config)
 
     # Setup data loaders
-    train_loader, val_loader, test_loader = setup_data_loaders(config)
+    train_loader, val_loader, test_loader = setup_data_loaders(config, multi_dataset_config)
 
     # Create model
     model = create_model(config).to(device)
@@ -1022,6 +1226,11 @@ def main():
             'dataset_config',
             'manifest_dataset',
             'manifest_mode',
+            'multi_dataset',
+            'use_dataset_weights',
+            'dataset_names',
+            'dataset_weights',
+            'target_samples_per_epoch',
         ):
             if key in data_section:
                 flattened_config[key] = data_section[key]
@@ -1048,7 +1257,7 @@ def main():
     config.output_dir = args.output_dir
     config.seed = args.seed
 
-    if not all([config.train_manifest, config.val_manifest, config.test_manifest]):
+    if not all([config.train_manifest, config.val_manifest, config.test_manifest]) and not config.multi_dataset:
         dataset_config_path = Path(config.dataset_config)
         try:
             manifests, dataset_root = resolve_manifest_paths(
@@ -1071,7 +1280,17 @@ def main():
                 config.manifest_mode,
             )
 
-    if not all([config.train_manifest, config.val_manifest, config.test_manifest]):
+    # Log multi-dataset configuration
+    if config.multi_dataset:
+        logger.info("Multi-dataset training enabled:")
+        logger.info(f"  - Dataset names: {config.dataset_names}")
+        logger.info(f"  - Use dataset weights: {config.use_dataset_weights}")
+        logger.info(f"  - Target samples per epoch: {config.target_samples_per_epoch}")
+        logger.info(f"  - Dataset mode: {config.manifest_mode}")
+    else:
+        logger.info(f"Single dataset training: {config.manifest_dataset}")
+
+    if not all([config.train_manifest, config.val_manifest, config.test_manifest]) and not config.multi_dataset:
         data_path = Path(config.data_path)
         if not data_path.exists():
             raise FileNotFoundError(

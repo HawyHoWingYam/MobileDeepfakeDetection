@@ -38,7 +38,7 @@
 
   "training": {
     "batch_size": 32,
-    "epochs": 50,
+    "epochs": 20,
     "learning_rate": 0.001,
     "weight_decay": 0.0001,
     "optimizer": "adamw",
@@ -60,13 +60,21 @@
     "dataset_mode": "balanced",
     "multi_dataset": true,
     "use_dataset_weights": true,
+    "dataset_names": ["celebdf_v2", "faceforensics_plus_plus", "deeperforensics_1_0", "dfdc"],
+    "dataset_weights": {
+      "celebdf_v2": 0.25,
+      "faceforensics_plus_plus": 0.25,
+      "deeperforensics_1_0": 0.25,
+      "dfdc": 0.25
+    },
+    "target_samples_per_epoch": 300000,
     "strict_batch_balance": false,
     "image_size": 256,
     "augmentation": true,
     "subset_ratio": 1.0,
     "spatial_expert_mode": true,
     "resolution_comparison": [224, 256, 288, 320],
-    "comment": "dataset_mode: 'balanced' (50/50 class balance). use_dataset_weights: equal 25% per dataset. spatial_expert_mode: enable spatial artifact-preserving augmentations"
+    "comment": "Multi-dataset training with 4 datasets (25% weight each). target_samples_per_epoch: 300K for 16% data utilization, balanced sampling, no repetition across epochs. spatial_expert_mode: enable spatial artifact-preserving augmentations"
   },
 
   "monitoring": {
