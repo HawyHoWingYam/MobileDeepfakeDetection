@@ -31,6 +31,19 @@ Status: ✅ **COMPLETED - 基础设施与baseline训练已完成，成功进入S
 - 证明：BCE只学dataset-specific shortcuts，无法学习可迁移表示
 - ✅ **验证了异构专家系统的必要性（Stage 02解决方案）**
 
+### **🔍 Stage 00 Baseline状态更新 (2025-10-15)**
+**实际情况说明**：
+- ❌ **原始baseline模型丢失**：计划中的AUC 0.9866模型checkpoint不可用
+- ✅ **Stage 01已提供更强baseline**：AUC 0.99144 (20 epochs完整训练)
+- ✅ **项目目标已超越实现**：Stage 01结果 > Stage 00原定目标
+- ✅ **BCE局限性验证完成**：通过Stage 01的LODO实验证明
+
+**当前baseline状态**：
+- **可用baseline**: Stage 01高性能过滤器 (AUC 0.99144)
+- **学术价值**: 更强的baseline对比组
+- **实验完整性**: 20 epochs训练记录完整
+- **重现性**: 完整的checkpoints和日志可用
+
 ---
 
 ## ✅ **已完成的核心任务 (13/13)**
@@ -58,12 +71,12 @@ Status: ✅ **COMPLETED - 基础设施与baseline训练已完成，成功进入S
 - ✅ Checkpoint管理
 - ✅ Per-dataset metrics breakdown
 
-### **5. 基线模型实现与训练** ✅
+### **5. 基线模型实现与训练** ⚠️ **部分完成**
 - ✅ EfficientNetV2-B0 baseline实现
 - ✅ BCE Loss训练框架
 - ✅ 多数据集训练完成（1.13M samples）
-- ✅ **高性能baseline训练成功：AUC 0.9866, Acc 94.09%**
-- ✅ 模型checkpoint已保存，可用于后续对比
+- ❌ **原始baseline模型丢失**：计划AUC 0.9866 checkpoint不可用
+- ✅ **替代baseline**：Stage 01已提供更强结果 (AUC 0.99144)
 
 ### **6. LODO评估框架** ✅ (已完成，pivot后非重点)
 - ✅ LODO Config 1: CelebDF+FF++ → DF (AUC 0.6584)
@@ -182,7 +195,7 @@ Status: ✅ **COMPLETED - 基础设施与baseline训练已完成，成功进入S
 | Loss策略分析 | 100% | ✅ 完成 |
 | Stage Gate验证 | 100% | ✅ 所有Gate已通过 |
 
-**总体完成度: 100% ✅ Stage 00 全面完成**
+**总体完成度: 95% ⚠️ 基本完成 (baseline丢失但有更强替代)**
 
 ---
 
@@ -234,7 +247,7 @@ Status: ✅ **COMPLETED - 基础设施与baseline训练已完成，成功进入S
 
 **核心价值**：
 1. ✅ 建立了完整的基础设施和工具链
-2. ✅ 完成了高性能baseline模型训练（AUC 0.9866）
+2. ⚠️ **原始baseline丢失，但Stage 01提供了更强结果** (AUC 0.99144 > 0.9866)
 3. ✅ **通过系统性实验证明了BCE范式的根本限制**
 4. ✅ **为异构专家系统（Stage 02）提供了理论依据**
 5. ✅ 明确了整个项目的技术路线和Loss函数策略
@@ -259,5 +272,6 @@ Status: ✅ **COMPLETED - 基础设施与baseline训练已完成，成功进入S
 ---
 
 *报告生成时间: 2025-10-12*
-*Stage 00 完成度: 100% ✅*
-*状态: 已全面完成，成功支撑Stage 01-02开发*
+*最后更新: 2025-10-15*
+*Stage 00 完成度: 95% ⚠️ 基本完成*
+*状态: 基础设施完整，baseline丢失但Stage 01已提供更强替代*

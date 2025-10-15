@@ -1,0 +1,31 @@
+{
+  "experiment_name": "full_training",
+  "model_name": "tf_efficientnetv2_b0",
+  "dataset_name": "celebdf_v2",
+  "version": "1.0",
+  "description": "Stage 01: In-distribution high-performance filter with EfficientNetV2-B0, 4 balanced datasets, optimized for speed and high recall",
+  "tags": [
+    "stage01",
+    "in-distribution",
+    "high-performance",
+    "efficientnet",
+    "multi-dataset",
+    "balanced"
+  ],
+  "batch_size": 128,
+  "learning_rate": 0.003,
+  "num_epochs": 20,
+  "optimizer": "adamw",
+  "scheduler": "cosine",
+  "weight_decay": 0.0001,
+  "model_params": {},
+  "image_size": 256,
+  "augmentation": true,
+  "device": "cuda",
+  "mixed_precision": true,
+  "seed": 42,
+  "deterministic": true,
+  "data_path": "",
+  "output_path": "experiments",
+  "created_at": "2025-10-14T10:02:57.918224"
+}

@@ -8,10 +8,10 @@
       "dataset_paths.json",
       "unified_dataset_config.json"
     ],
-    "total_samples": 119114,
-    "real_samples": 59557,
-    "fake_samples": 59557,
-    "updated_at": "2025-10-05T13:53:17.668767",
+    "total_samples": 1031376,
+    "real_samples": 515688,
+    "fake_samples": 515688,
+    "updated_at": "2025-10-14T09:36:54.968157",
     "balancing_method": "simple_all_real_equal_fake"
   },
   "default_settings": {
@@ -66,8 +66,8 @@
       "type": "deepfake_detection",
       "enabled": true,
       "paths": {
-        "real": "/workspace/MobileDeepfakeDetection/dataset/real/CelebDF-v2/CelebDF-v2",
-        "fake": "/workspace/MobileDeepfakeDetection/dataset/fake/CelebDF-v2/CelebDF-v2"
+        "real": "dataset/real/CelebDF-v2",
+        "fake": "dataset/fake/CelebDF-v2"
       },
       "manifests": {
         "train": "manifests/celebdf_v2_train_balanced.csv",
