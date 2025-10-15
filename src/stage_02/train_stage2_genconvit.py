@@ -910,6 +910,20 @@ def train_epoch(
 
             optimizer.step()
 
+        # Update statistics (only if loss is defined)
+        if loss is not None:
+            total_loss += loss.item()
+            total_classification_loss += class_loss.item()
+            total_reconstruction_loss += recon_loss.item() if isinstance(recon_loss, torch.Tensor) else 0
+
+        # Calculate accuracy (with safety check) - MOVED BEFORE CLEANUP TO PREVENT UnboundLocalError
+        if stage != 'reconstruction_pretraining' and classification_logits is not None:
+            predicted = (torch.sigmoid(classification_logits.squeeze()) > 0.5).float()
+            total += targets_class.size(0)
+            correct += (predicted == targets_class).sum().item()
+        elif stage != 'reconstruction_pretraining' and classification_logits is None:
+            logger.warning(f"Classification logits not available at batch {batch_idx}, skipping accuracy calculation")
+
         # Clean up intermediate tensors to prevent memory buildup
         if device.type == 'cuda':
             # Clear references to intermediate tensors
@@ -952,20 +966,6 @@ def train_epoch(
             logger.error(f"NaN loss detected at batch {batch_idx}! Stopping training.")
             logger.error(f"Loss components: class_loss={class_loss.item()}, recon_loss={recon_loss.item() if isinstance(recon_loss, torch.Tensor) else 0}")
             raise ValueError("NaN loss detected - training stopped to prevent corruption")
-
-        # Update statistics (only if loss is defined)
-        if loss is not None:
-            total_loss += loss.item()
-            total_classification_loss += class_loss.item()
-            total_reconstruction_loss += recon_loss.item() if isinstance(recon_loss, torch.Tensor) else 0
-
-        # Calculate accuracy (with safety check)
-        if stage != 'reconstruction_pretraining' and classification_logits is not None:
-            predicted = (torch.sigmoid(classification_logits.squeeze()) > 0.5).float()
-            total += targets_class.size(0)
-            correct += (predicted == targets_class).sum().item()
-        elif stage != 'reconstruction_pretraining' and classification_logits is None:
-            logger.warning(f"Classification logits not available at batch {batch_idx}, skipping accuracy calculation")
 
         # Update progress bar with current metrics
         accuracy = 100. * correct / total if total > 0 else 0
