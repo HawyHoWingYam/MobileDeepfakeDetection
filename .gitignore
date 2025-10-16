@@ -1,10 +1,79 @@
-dataset/
-experiments/
-*.pyc
-__pycache__/
-*/__pycache__/
-**/__pycache__/
+# Git ignore patterns for large files and sensitive data
 
-# Generated manifest files (too large for GitHub)
+# Dataset files (too large for git)
+dataset/
+!dataset/README.md
+
+# Model checkpoints and large binaries
+*.pth
+*.pt
+*.onnx
+*.pb
+*.h5
+*.pkl
+*.pickle
+
+# Experiment results
+experiments/
+logs/
+results/
+wandb/
+
+# Cache and temporary files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Manifest files (can be regenerated)
 manifests/*.csv
+!manifests/.gitkeep
+
+# Large logs
+*.log
+*.log.*
+
+# Environment files
+.env
+.venv
+venv/
+env/
+
+# Jupyter notebooks
+*.ipynb
+
+# Data files
+*.csv
+*.json
+*.parquet
+*.hdf5
+*.h5
+
+# Keep directories but ignore contents
+!dataset/.gitkeep
+!experiments/.gitkeep
+!logs/.gitkeep
+!results/.gitkeep
 !manifests/.gitkeep

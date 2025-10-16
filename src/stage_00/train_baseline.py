@@ -1482,10 +1482,20 @@ def train_epoch(model: nn.Module,
             data, targets = batch_data
 
         data, targets = data.to(device), targets.to(device)
-        
+
         # Convert targets to float for BCE and reshape to [batch_size, 1]
-        targets = targets.float().unsqueeze(1)
-        
+        # Handle different tensor dimensions robustly
+        if targets.dim() == 0:
+            # Scalar tensor, reshape to [1, 1]
+            targets = targets.float().unsqueeze(0).unsqueeze(1)
+            logger.warning("Encountered scalar target in training, reshaping to [1, 1]")
+        elif targets.dim() == 1:
+            # Batch tensor, reshape to [batch_size, 1]
+            targets = targets.float().unsqueeze(1)
+        else:
+            # Already multi-dimensional, just ensure float type
+            targets = targets.float()
+
         # Forward pass
         optimizer.zero_grad()
         logits = model(data)
@@ -1560,28 +1570,73 @@ def validate_epoch(model: nn.Module,
                 dataset_ids = None
                 has_dataset_id = False
 
+            # Skip empty batches
+            if targets.numel() == 0:
+                logger.warning("Skipping empty batch during validation")
+                continue
+
             data, targets = data.to(device), targets.to(device)
 
             # Convert targets to float for BCE and reshape to [batch_size, 1]
-            targets_bce = targets.float().unsqueeze(1)
+            # Handle different tensor dimensions robustly
+            if targets.dim() == 0:
+                # Scalar tensor, reshape to [1, 1]
+                targets_bce = targets.float().unsqueeze(0).unsqueeze(1)
+                logger.warning("Encountered scalar target, reshaping to [1, 1]")
+            elif targets.dim() == 1:
+                # Batch tensor, reshape to [batch_size, 1]
+                targets_bce = targets.float().unsqueeze(1)
+            else:
+                # Already multi-dimensional, just ensure float type
+                targets_bce = targets.float()
 
-            # Forward pass
-            logits = model(data)
-            loss = criterion(logits, targets_bce)
+            # Forward pass with error handling
+            try:
+                # Ensure data is 4D: [batch_size, channels, height, width]
+                if data.dim() == 3:
+                    # 3D tensor: [channels, height, width] -> [1, channels, height, width]
+                    data = data.unsqueeze(0)
+                    logger.debug(f"Reshaped 3D data tensor from {data.shape} to {data.shape}")
+                elif data.dim() == 2:
+                    # 2D tensor: unlikely but handle gracefully
+                    logger.warning(f"Unexpected 2D data tensor shape: {data.shape}")
+                    continue
+
+                logits = model(data)
+                loss = criterion(logits, targets_bce)
+            except Exception as e:
+                logger.error(f"Forward pass failed: {e}")
+                logger.error(f"Data shape: {data.shape}, Targets shape: {targets_bce.shape}")
+                continue
 
             # Get predictions and probabilities using sigmoid
             probabilities = torch.sigmoid(logits)
             predicted = (probabilities > 0.5).float()
 
-            # Statistics
-            total_loss += loss.item()
-            total += targets.size(0)
-            correct += predicted.eq(targets_bce).sum().item()
+            # Statistics with error handling
+            try:
+                total_loss += loss.item()
+                total += targets.size(0)
+                correct += predicted.eq(targets_bce).sum().item()
 
-            # Store for metrics calculation (flatten for sklearn compatibility)
-            all_predictions.extend(predicted.squeeze().cpu().numpy())
-            all_probabilities.extend(probabilities.squeeze().cpu().numpy())
-            all_targets.extend(targets.cpu().numpy())  # Keep original targets as integers
+                # Store for metrics calculation (flatten for sklearn compatibility)
+                # Handle different tensor shapes safely
+                pred_flat = predicted.squeeze().cpu().numpy()
+                prob_flat = probabilities.squeeze().cpu().numpy()
+                targets_flat = targets.cpu().numpy()  # Keep original targets as integers
+
+                # Ensure we have valid data before extending
+                if pred_flat.size > 0:
+                    all_predictions.extend(pred_flat.tolist() if pred_flat.ndim > 0 else [pred_flat.item()])
+                if prob_flat.size > 0:
+                    all_probabilities.extend(prob_flat.tolist() if prob_flat.ndim > 0 else [prob_flat.item()])
+                if targets_flat.size > 0:
+                    all_targets.extend(targets_flat.tolist() if targets_flat.ndim > 0 else [targets_flat.item()])
+
+            except Exception as e:
+                logger.error(f"Statistics calculation failed: {e}")
+                logger.error(f"Shapes - predicted: {predicted.shape}, targets_bce: {targets_bce.shape}")
+                continue
 
             if has_dataset_id:
                 all_dataset_ids.extend(dataset_ids.cpu().numpy())
@@ -1594,7 +1649,20 @@ def validate_epoch(model: nn.Module,
                 'Acc': f'{accuracy:.2f}%'
             })
 
-    # Convert to numpy arrays
+    # Convert to numpy arrays with error handling
+    if len(all_predictions) == 0 or len(all_targets) == 0:
+        logger.error("No valid predictions or targets collected during validation")
+        result = {
+            'loss': float('inf'),
+            'accuracy': 0.0,
+            'auc': 0.0,
+            'f1': 0.0,
+            'predictions': np.array([]),
+            'probabilities': np.array([]),
+            'targets': np.array([])
+        }
+        return result
+
     all_predictions = np.array(all_predictions)
     all_probabilities = np.array(all_probabilities)
     all_targets = np.array(all_targets)
@@ -1605,13 +1673,18 @@ def validate_epoch(model: nn.Module,
         # For binary classification, use probabilities directly
         auc_score = roc_auc_score(all_targets, all_probabilities)
         f1 = f1_score(all_targets, all_predictions)
-    except:
+    except Exception as e:
+        logger.warning(f"Metrics calculation failed: {e}")
         auc_score = 0.0
         f1 = 0.0
 
+    # Calculate metrics with division safety
+    avg_loss = total_loss / len(val_loader) if len(val_loader) > 0 else float('inf')
+    accuracy = correct / total if total > 0 else 0.0
+
     result = {
-        'loss': total_loss / len(val_loader),
-        'accuracy': correct / total,
+        'loss': avg_loss,
+        'accuracy': accuracy,
         'auc': auc_score,
         'f1': f1,
         'predictions': all_predictions,
@@ -1725,9 +1798,13 @@ def run_evaluation(args):
         use_augmentation=False
     )
 
+    # Ensure batch_size is properly set for evaluation (fixes 3D tensor issue)
+    eval_batch_size = args.batch_size if args.batch_size is not None else 32
+    logger.info("Using evaluation batch size: %d", eval_batch_size)
+
     test_loader = DataLoader(
         test_dataset,
-        batch_size=args.batch_size,
+        batch_size=eval_batch_size,
         shuffle=False,
         num_workers=4,
         pin_memory=device.type == 'cuda'
@@ -1963,8 +2040,28 @@ def main():
     experiment_id = exp_manager.create_experiment(exp_config)
     logger.info("Started experiment: %s", experiment_id)
 
+    # Verify experiment context is properly set
+    if exp_manager.current_experiment != experiment_id:
+        logger.warning("⚠️ Experiment context mismatch detected!")
+        logger.warning("  current_experiment: %s", exp_manager.current_experiment)
+        logger.warning("  expected experiment_id: %s", experiment_id)
+
+        # Fix the experiment context
+        exp_manager.current_experiment = experiment_id
+        logger.info("✅ Fixed experiment context to: %s", experiment_id)
+
     # Store experiment_id for fallback in checkpoint saving
     exp_manager.experiment_id = experiment_id
+
+    # Verify all necessary attributes are set
+    if not hasattr(exp_manager, 'current_result') or exp_manager.current_result is None:
+        logger.error("❌ No current_result found in experiment manager!")
+        raise RuntimeError("Experiment manager initialization failed - no current_result")
+
+    if exp_manager.current_result.experiment_id != experiment_id:
+        logger.warning("⚠️ current_result experiment_id mismatch")
+        exp_manager.current_result.experiment_id = experiment_id
+        logger.info("✅ Fixed current_result experiment_id")
 
     # Setup matplotlib before training
     import matplotlib.pyplot as plt
@@ -2046,6 +2143,12 @@ def main():
                         continue
 
                 try:
+                    # Pre-save verification
+                    logger.info("🔧 Pre-save verification:")
+                    logger.info("  current_experiment: %s", exp_manager.current_experiment)
+                    logger.info("  experiment_id: %s", experiment_id)
+                    logger.info("  current_result exists: %s", hasattr(exp_manager, 'current_result') and exp_manager.current_result is not None)
+
                     # Call save_checkpoint with detailed error tracking
                     checkpoint_path = exp_manager.save_checkpoint(
                         model=model,
@@ -2055,22 +2158,71 @@ def main():
                         is_best=True
                     )
 
-                    # Verify checkpoint was actually saved
+                    # Comprehensive post-save verification
                     if checkpoint_path and Path(checkpoint_path).exists():
                         file_size = Path(checkpoint_path).stat().st_size
                         logger.info("✅ Checkpoint saved successfully!")
                         logger.info("   Path: %s", checkpoint_path)
                         logger.info("   Size: %s bytes", f"{file_size:,}")
+
+                        # Quick integrity check
+                        try:
+                            import torch
+                            test_load = torch.load(checkpoint_path, map_location='cpu')
+                            assert 'epoch' in test_load, "Missing epoch in checkpoint"
+                            assert 'model_state_dict' in test_load, "Missing model_state_dict in checkpoint"
+                            assert test_load['epoch'] == epoch, f"Epoch mismatch: {test_load['epoch']} != {epoch}"
+                            logger.info("✅ Checkpoint integrity verified")
+                        except Exception as integrity_error:
+                            logger.warning("⚠️ Checkpoint integrity check failed: %s", integrity_error)
+                            logger.warning("   This may indicate a corrupted file")
                     else:
-                        logger.error("❌ Checkpoint file verification failed!")
+                        logger.error("❌ CRITICAL: Checkpoint file verification failed!")
                         logger.error("   Returned path: %s", checkpoint_path)
+                        logger.error("   Path exists: %s", Path(checkpoint_path).exists() if checkpoint_path else "None")
+
+                        # Try to diagnose the issue
+                        if checkpoint_path:
+                            parent_dir = Path(checkpoint_path).parent
+                            logger.error("   Parent directory exists: %s", parent_dir.exists())
+                            if parent_dir.exists():
+                                logger.error("   Parent directory contents: %s", list(parent_dir.iterdir()))
+                        else:
+                            logger.error("   Parent directory does not exist!")
+
+                        # Continue training but mark as issue
+                        logger.warning("⚠️ Continuing training despite checkpoint save failure")
 
                 except Exception as e:
-                    logger.error("❌ Failed to save checkpoint: %s", str(e))
+                    logger.error("❌ CRITICAL: Failed to save checkpoint: %s", str(e))
                     logger.error("   Exception type: %s", type(e).__name__)
                     import traceback
                     logger.error("   Traceback: %s", traceback.format_exc())
-                    # Don't raise - continue training
+
+                    # Emergency fallback: try to save to a simple location
+                    try:
+                        emergency_path = Path(f"emergency_checkpoint_epoch_{epoch:03d}.pth")
+                        logger.warning("🔧 Emergency fallback: saving to %s", emergency_path)
+
+                        emergency_checkpoint = {
+                            'epoch': epoch,
+                            'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'metrics': val_metrics,
+                            'experiment_id': experiment_id,
+                            'timestamp': datetime.datetime.now().isoformat(),
+                            'emergency_save': True
+                        }
+
+                        torch.save(emergency_checkpoint, emergency_path)
+                        if emergency_path.exists():
+                            logger.info("✅ Emergency checkpoint saved to: %s", emergency_path)
+                        else:
+                            logger.error("❌ Emergency save also failed!")
+                    except Exception as emergency_error:
+                        logger.error("❌ Emergency fallback failed: %s", emergency_error)
+
+                    # Continue training regardless
             else:
                 patience_counter += 1
                 logger.debug("Not best model - patience increased to %d", patience_counter)

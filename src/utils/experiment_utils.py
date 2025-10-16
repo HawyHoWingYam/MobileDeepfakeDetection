@@ -388,7 +388,7 @@ class ExperimentManager:
                        metrics: Dict[str, float],
                        is_best: bool = False):
         """
-        Save model checkpoint
+        Enhanced save model checkpoint with fallback mechanisms
 
         Args:
             model: PyTorch model
@@ -396,68 +396,230 @@ class ExperimentManager:
             epoch: Current epoch
             metrics: Performance metrics
             is_best: Whether this is the best checkpoint
+
+        Returns:
+            Path to saved checkpoint or None if failed
         """
         print(f"🔧 save_checkpoint called - is_best={is_best}, experiment={self.current_experiment}")
 
         if not self.current_experiment:
-            warnings.warn("No active experiment to save checkpoint to")
             print("❌ ERROR: No active experiment for checkpoint saving!")
-            return
+            print("   Available options:")
+            print("   1. Ensure experiment_context() or create_experiment() was called")
+            print("   2. Check ExperimentManager initialization")
+
+            # Fallback: try to create a default experiment
+            try:
+                print("🔧 Attempting fallback: creating emergency experiment...")
+                from .dataset_config import DatasetConfig
+                exp_config = ExperimentConfig(
+                    experiment_name=f"emergency_fallback_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    model_name="unknown",
+                    dataset_name="unknown",
+                    description="Emergency fallback experiment for checkpoint saving"
+                )
+                self.current_experiment = self.create_experiment(exp_config)
+                print(f"✅ Fallback experiment created: {self.current_experiment}")
+            except Exception as fallback_error:
+                print(f"❌ Fallback experiment creation failed: {fallback_error}")
+                return None
 
         exp_dir = self.base_path / self.current_experiment
         checkpoint_dir = exp_dir / "checkpoints"
 
         print(f"📁 Checkpoint directory: {checkpoint_dir}")
 
-        # Ensure directory exists
-        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        # Enhanced directory creation with detailed error checking
+        try:
+            print("🔧 Creating checkpoint directory...")
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-        checkpoint = {
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'metrics': metrics,
-            'experiment_id': self.current_experiment,
-            'timestamp': datetime.datetime.now().isoformat()
-        }
+            # Verify directory exists and is writable
+            if not checkpoint_dir.exists():
+                raise RuntimeError(f"Directory creation failed: {checkpoint_dir}")
 
-        # Save regular checkpoint
+            # Test write permission
+            test_file = checkpoint_dir / ".write_test"
+            test_file.write_text("test")
+            test_file.unlink()
+            print("✅ Directory permissions verified")
+
+        except Exception as dir_error:
+            print(f"❌ ERROR: Failed to create/access checkpoint directory: {dir_error}")
+            print(f"   Base path: {self.base_path}")
+            print(f"   Experiment dir: {exp_dir}")
+            print(f"   Checkpoint dir: {checkpoint_dir}")
+
+            # Fallback: try alternative locations
+            fallback_paths = [
+                Path("./checkpoints"),
+                Path("./saved_models"),
+                Path.home() / "aware_net_checkpoints",
+                Path("/tmp/aware_net_checkpoints")
+            ]
+
+            for fallback_path in fallback_paths:
+                try:
+                    print(f"🔧 Trying fallback path: {fallback_path}")
+                    fallback_path.mkdir(parents=True, exist_ok=True)
+                    test_file = fallback_path / ".write_test"
+                    test_file.write_text("test")
+                    test_file.unlink()
+
+                    checkpoint_dir = fallback_path
+                    exp_dir = fallback_path.parent
+                    print(f"✅ Fallback directory works: {checkpoint_dir}")
+                    break
+                except Exception as fallback_error:
+                    print(f"❌ Fallback path failed: {fallback_path} - {fallback_error}")
+            else:
+                print("❌ All fallback paths failed!")
+                return None
+
+        # Prepare checkpoint data with error handling
+        try:
+            print("🔧 Preparing checkpoint data...")
+            checkpoint = {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'metrics': metrics,
+                'experiment_id': self.current_experiment,
+                'timestamp': datetime.datetime.now().isoformat(),
+                'pytorch_version': torch.__version__,
+                'save_metadata': {
+                    'save_attempt': 1,
+                    'fallback_used': checkpoint_dir != (self.base_path / self.current_experiment / "checkpoints"),
+                    'original_intended_path': str(self.base_path / self.current_experiment / "checkpoints")
+                }
+            }
+            print("✅ Checkpoint data prepared successfully")
+
+        except Exception as prep_error:
+            print(f"❌ ERROR: Failed to prepare checkpoint data: {prep_error}")
+            return None
+
+        saved_paths = []
+
+        # Save regular checkpoint with enhanced error handling
         checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch:03d}.pth"
         print(f"💾 Saving regular checkpoint: {checkpoint_path}")
-        torch.save(checkpoint, checkpoint_path)
 
-        # Verify regular checkpoint was saved
-        if checkpoint_path.exists():
-            print(f"✅ Regular checkpoint saved successfully ({checkpoint_path.stat().st_size:,} bytes)")
-        else:
-            print(f"❌ ERROR: Regular checkpoint not found after saving!")
+        try:
+            torch.save(checkpoint, checkpoint_path)
 
-        # Save best checkpoint
+            # Verify save was successful
+            if checkpoint_path.exists() and checkpoint_path.stat().st_size > 0:
+                file_size = checkpoint_path.stat().st_size
+                print(f"✅ Regular checkpoint saved successfully ({file_size:,} bytes)")
+                saved_paths.append(checkpoint_path)
+
+                # Quick verification: try to load the checkpoint
+                try:
+                    verification = torch.load(checkpoint_path, map_location='cpu')
+                    assert verification['epoch'] == epoch
+                    assert 'model_state_dict' in verification
+                    print("✅ Checkpoint verification passed")
+                except Exception as verify_error:
+                    print(f"⚠️ Checkpoint verification warning: {verify_error}")
+
+            else:
+                raise RuntimeError("Checkpoint file not created or empty")
+
+        except Exception as save_error:
+            print(f"❌ ERROR: Regular checkpoint save failed: {save_error}")
+
+            # Fallback save attempt with different name
+            fallback_name = f"checkpoint_epoch_{epoch:03d}_fallback.pth"
+            fallback_path = checkpoint_dir / fallback_name
+            print(f"🔧 Attempting fallback save: {fallback_path}")
+
+            try:
+                torch.save(checkpoint, fallback_path)
+                if fallback_path.exists() and fallback_path.stat().st_size > 0:
+                    print(f"✅ Fallback checkpoint saved: {fallback_path}")
+                    saved_paths.append(fallback_path)
+                else:
+                    raise RuntimeError("Fallback save also failed")
+            except Exception as fallback_error:
+                print(f"❌ Fallback save failed: {fallback_error}")
+
+        # Save best checkpoint with enhanced handling
         if is_best:
             best_path = checkpoint_dir / "best_model.pth"
             print(f"🏆 SAVING BEST CHECKPOINT: {best_path}")
-            torch.save(checkpoint, best_path)
-            self.current_result.model_path = str(best_path)
 
-            # Verify best checkpoint was saved
-            if best_path.exists():
-                file_size = best_path.stat().st_size
-                print(f"🎉 BEST CHECKPOINT SAVED SUCCESSFULLY!")
-                print(f"   Path: {best_path}")
-                print(f"   Size: {file_size:,} bytes")
-                print(f"   Epoch: {epoch}")
-                print(f"   AUC: {metrics.get('auc', 'N/A'):.4f}" if 'auc' in metrics else f"   AUC: N/A")
-            else:
-                print(f"❌ ERROR: Best checkpoint not found after saving!")
-                print(f"   Expected path: {best_path}")
+            try:
+                torch.save(checkpoint, best_path)
+
+                if best_path.exists() and best_path.stat().st_size > 0:
+                    file_size = best_path.stat().st_size
+                    print(f"🎉 BEST CHECKPOINT SAVED SUCCESSFULLY!")
+                    print(f"   Path: {best_path}")
+                    print(f"   Size: {file_size:,} bytes")
+                    print(f"   Epoch: {epoch}")
+                    auc_val = metrics.get('auc', 'N/A')
+                    if auc_val != 'N/A':
+                        print(f"   AUC: {auc_val:.4f}")
+                    else:
+                        print(f"   AUC: N/A")
+
+                    # Update current result path
+                    if hasattr(self, 'current_result') and self.current_result:
+                        self.current_result.model_path = str(best_path)
+
+                    saved_paths.append(best_path)
+
+                    # Additional verification for best model
+                    try:
+                        verification = torch.load(best_path, map_location='cpu')
+                        assert verification['epoch'] == epoch
+                        assert 'model_state_dict' in verification
+                        print("✅ Best checkpoint verification passed")
+                    except Exception as verify_error:
+                        print(f"⚠️ Best checkpoint verification warning: {verify_error}")
+
+                else:
+                    raise RuntimeError("Best checkpoint file not created or empty")
+
+            except Exception as best_save_error:
+                print(f"❌ ERROR: Best checkpoint save failed: {best_save_error}")
+
+                # Fallback for best model
+                fallback_best = checkpoint_dir / "best_model_fallback.pth"
+                print(f"🔧 Attempting fallback best save: {fallback_best}")
+
+                try:
+                    torch.save(checkpoint, fallback_best)
+                    if fallback_best.exists() and fallback_best.stat().st_size > 0:
+                        print(f"✅ Fallback best checkpoint saved: {fallback_best}")
+                        saved_paths.append(fallback_best)
+                except Exception as fallback_best_error:
+                    print(f"❌ Fallback best save failed: {fallback_best_error}")
         else:
             print("ℹ️  Not the best checkpoint - skipping best_model.pth save")
 
-        # Return the path of the saved checkpoint
-        if is_best:
-            return best_path
+        # Final summary
+        if saved_paths:
+            print(f"✅ Checkpoint save completed. Saved {len(saved_paths)} file(s):")
+            for path in saved_paths:
+                size = path.stat().st_size if path.exists() else 0
+                print(f"   - {path} ({size:,} bytes)")
+
+            # Return the most important path (best if available, otherwise first regular)
+            if is_best:
+                for path in saved_paths:
+                    if "best_model" in path.name:
+                        return path
+            return saved_paths[0] if saved_paths else None
         else:
-            return checkpoint_path
+            print("❌ CRITICAL: No checkpoint files were successfully saved!")
+            print("   This indicates a serious filesystem or permission issue.")
+            print("   Recommended actions:")
+            print("   1. Check disk space availability")
+            print("   2. Verify directory permissions")
+            print("   3. Check filesystem integrity")
+            return None
     
     def load_checkpoint(self, 
                        experiment_id: str,
