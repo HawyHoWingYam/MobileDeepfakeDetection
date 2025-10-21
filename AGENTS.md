@@ -1,25 +1,40 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-Source code lives in `src/`, split into numbered stages (`stage_00`…`stage_09`) that mirror the research roadmap; new components should sit inside the relevant stage package. Re-usable training and evaluation settings live in `configs/`, while experiment artifacts belong in `experiments/` and dataset manifests in `manifests/`. Utility scripts reside under `tools/` (`tools/setup` for environment automation, `tools/tests` for unit suites). Use the top-level `train.py` for interactive runs or stage-specific trainers such as `src/stage_00/train_baseline.py` when scripting pipelines.
+- Core code: `MobileDeepfakeDetection/src`
+  - Models: `src/models/*` (e.g., `mobilenetv4_model.py`, `efficientnetv2_model.py`)
+  - Training: `src/training/*` (primary entrypoint: `train_mobilenet.py`)
+  - Utilities: `src/utils/*` (experiment logging, evaluation)
+  - Tools: `src/tools/generate_manifests.py` (CSV manifest helper)
+- Data manifests: `MobileDeepfakeDetection/manifests/*.csv` (balanced train/val/test)
+- Dataset config: `MobileDeepfakeDetection/configs/datasets.json`
+- Outputs: `MobileDeepfakeDetection/outputs/<stage>/run_YYYYMMDD_HHMMSS/`
 
 ## Build, Test, and Development Commands
-```bash
-conda env create -f environment.yml  # provision aware_net_rtx50 env
-python tools/setup/setup_environment.py --validate-only  # verify deps & manifests
-python src/stage_00/train_baseline.py --config configs/training.json --training quick_test  # 3-epoch smoke run
-pytest tools/tests/  # execute Stage 0 regression suite
-```
-Execute commands from the repo root; prefer GPU runs when available but confirm CPU fallbacks via the quick test before large jobs.
+- Create venv (example): `python -m venv .venv && source .venv/bin/activate`
+- Install deps (example): `pip install torch timm albumentations opencv-python pandas scikit-learn matplotlib pillow tqdm tensorboard`
+- Train (stage 01, multi‑dataset):
+  `python MobileDeepfakeDetection/src/training/train_mobilenet.py --epochs 5 --batch_size 32 --output_dir MobileDeepfakeDetection/outputs/stage1`
+- View logs: `tensorboard --logdir MobileDeepfakeDetection/outputs/stage1`
+- Update manifests (if datasets change): `python MobileDeepfakeDetection/src/tools/generate_manifests.py`
 
 ## Coding Style & Naming Conventions
-Python 3.10+ with 4-space indentation, type hints, and docstrings for public APIs. Run `black` (default 88-char line width), `flake8`, and `mypy` before submitting. Modules follow snake_case filenames that match their contained class or function groups; stage-level packages should mirror the roadmap naming (`stage_01_supcon`, `stage_02_experts`, etc.). Configuration files use lower-case hyphenated names and live in `configs/`.
+- Python 3.10+; PEP 8; 4‑space indent; max line length ~100.
+- Modules/files: `snake_case.py`; classes: `CamelCase`; functions/vars: `snake_case`.
+- Prefer type hints and docstrings; avoid `print`—use module loggers (`logging.getLogger(__name__)`).
+- Keep imports explicit (no wildcard). Place `src` on path as done in training scripts when needed.
 
 ## Testing Guidelines
-Unit tests sit in `tools/tests` and follow the `test_<module>.py` naming pattern. Run `pytest tools/tests/ --cov=src --cov-report=term-missing` and keep coverage at or above the 90% target noted in Stage 00 docs. Mark expensive suites with `@pytest.mark.slow` and GPU-dependent cases with `@pytest.mark.gpu`; ensure both paths degrade gracefully on CPU-only hardware. Include fixtures for temporary data and manifest mocks to keep tests deterministic.
+- No formal test suite yet. Add lightweight checks:
+  - Dataset smoke test: load first batch from each manifest.
+  - Determinism: set seed via `utils.experiment_framework.setup_reproducible_environment` and run 1–2 epochs.
+  - Evaluation: use `utils.evaluation.ModelEvaluator` on val loader.
 
 ## Commit & Pull Request Guidelines
-Git history uses Conventional Commit prefixes (`feat:`, `fix:`, `docs:`, etc.) plus concise summaries; reference the impacted stage or subsystem when possible (e.g., `feat(stage_00): add sampler weights`). PRs should describe the motivation, list runnable commands and results (tests, training metrics, coverage), and link any related experiment folders or issues. Provide screenshots or table snippets when adding dashboards, and call out configuration changes affecting reproducibility.
+- Follow Conventional Commits: `feat|fix|docs|refactor|chore(scope): short summary` (e.g., `feat(stage_01): balance multi‑dataset sampling`).
+- PRs should include: clear description, rationale, config changes (`configs/datasets.json`), sample command to reproduce, and screenshots/metrics (TensorBoard or AUC/F1) when applicable.
 
-## Environment & Data Notes
-Large datasets are referenced via manifests only—store raw media outside the repository. Keep sensitive keys in your personal environment and use `.env.example` patterns if sharing defaults becomes necessary. When introducing new datasets, update `manifests/` and document balancing requirements inside `configs/` so downstream stages inherit consistent sampling behavior.
+## Security & Configuration Tips
+- Manifests: keep labels in CSV columns; avoid leaking labels in file paths. See `src/training/dataset.py` for leakage checks.
+- Edit datasets via `configs/datasets.json`; paths default to `MobileDeepfakeDetection/` root.
+- Large artifacts: write to `outputs/` only; don’t commit generated checkpoints or event files.
