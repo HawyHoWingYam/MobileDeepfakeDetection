@@ -433,9 +433,9 @@ class MobileNetV4Simple(nn.Module):
 
         # CRITICAL: Use actual dimension, not expected
         if actual_feature_dim != expected_feature_dim:
-            logger.warning(f"⚠️  DIMENSION MISMATCH DETECTED during initialization!")
-            logger.warning(f"   Expected: {expected_feature_dim}, Actual: {actual_feature_dim}")
-            logger.warning(f"   Using actual dimension for classifier initialization")
+            logger.info(f"ℹ️  Dimension mismatch detected during initialization")
+            logger.info(f"   Expected: {expected_feature_dim}, Actual: {actual_feature_dim}")
+            logger.info(f"   Using actual dimension ({actual_feature_dim}) for classifier")
             self.feature_dim = actual_feature_dim
         else:
             logger.info("✅ Feature dimensions match - using backbone.num_features")
@@ -584,9 +584,9 @@ class MobileNetV4Simple(nn.Module):
 
         self._forward_passes_completed = getattr(self, '_forward_passes_completed', 0) + 1
 
-        # Periodic logging (every 1000 forward passes)
+        # Periodic logging (every 1000 forward passes) - DEBUG level to reduce log spam
         if self._forward_passes_completed % 1000 == 1:
-            logger.info(f"📈 Forward pass #{self._forward_passes_completed} - dimensions stable")
+            logger.debug(f"📈 Forward pass #{self._forward_passes_completed} - dimensions stable")
 
         # Classification logits
         logits = self.classifier(features)  # (batch_size, 1)

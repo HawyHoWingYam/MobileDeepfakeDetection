@@ -30,7 +30,7 @@ import argparse
 import random
 import copy
 from collections import deque
-from typing import Dict, List, Any, Union, Tuple
+from typing import Dict, List, Any, Union, Tuple, Optional
 
 import torch
 import torch.nn as nn
@@ -88,6 +88,7 @@ def create_multi_dataset_loader(
     num_workers: int = 4,
     pin_memory: bool = True,
     seed: int = 42,
+    override_image_size: Optional[int] = None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Stage 01: Create multi-dataset data loaders with equal weight balancing.
@@ -139,6 +140,8 @@ def create_multi_dataset_loader(
         root_path = Path(dataset_cfg.get('root_path', '.'))
         splits = dataset_cfg.get('splits', {})
         image_size = dataset_cfg.get('metadata', {}).get('image_size', [256])[0]
+        if override_image_size is not None:
+            image_size = int(override_image_size)
 
         # Create datasets
         try:
@@ -299,6 +302,12 @@ class SimpleMobileNetV4Trainer:
         patience: int = 5,
         min_delta: float = 0.001,
         restore_best: bool = True,
+        optimizer_name: str = 'adamw',
+        weight_decay: float = 1e-4,
+        num_workers: int = 12,
+        image_size_override: Optional[int] = None,
+        save_on_metric: str = 'auc',
+        warmup_epochs: int = 0,
     ):
         """
         Initialize trainer using ExperimentFramework (Stage 00 integration).
@@ -325,6 +334,12 @@ class SimpleMobileNetV4Trainer:
         self.use_dataset_weights = use_dataset_weights
         self.dropout_rate = dropout_rate
         self.seed = seed
+        self.optimizer_name = (optimizer_name or 'adamw').lower()
+        self.weight_decay = float(weight_decay)
+        self.num_workers = int(num_workers)
+        self.image_size_override = image_size_override
+        self.save_on_metric = (save_on_metric or 'auc').lower()
+        self.warmup_epochs = int(warmup_epochs)
 
         # Stage 00: Initialize experiment framework with timestamped directories
         # and TensorBoard logging capabilities
@@ -346,12 +361,45 @@ class SimpleMobileNetV4Trainer:
             freeze_backbone=freeze_backbone,
         ).to(self.device)
 
+        
+        # Optimization controls (safer defaults)
+        self.learning_rate = learning_rate
+        self.use_two_lrs = True
+        self.backbone_lr_scale = 0.1
+        self.grad_clip_norm = 1.0
+        self.gradient_log_interval = 1
+
         # Stage 00: Initialize optimizer and loss
-        self.optimizer = optim.AdamW(
-            self.model.parameters(), lr=learning_rate, weight_decay=1e-4
-        )
+        # Create parameter groups so backbone uses a smaller LR (mitigates representation drift)
+        named_params = list(self.model.named_parameters())
+        backbone_params = [p for n, p in named_params if 'backbone' in n and p.requires_grad]
+        head_params = [p for n, p in named_params if 'classifier' in n and p.requires_grad]
+
+        def make_optimizer(param_groups):
+            if self.optimizer_name == 'adamw':
+                return optim.AdamW(param_groups, weight_decay=self.weight_decay)
+            if self.optimizer_name == 'adam':
+                return optim.Adam(param_groups, weight_decay=self.weight_decay)
+            if self.optimizer_name == 'sgd':
+                return optim.SGD(param_groups, momentum=0.9, weight_decay=self.weight_decay, nesterov=False)
+            logger.warning("Unknown optimizer name, falling back to AdamW")
+            return optim.AdamW(param_groups, weight_decay=self.weight_decay)
+
+        if self.use_two_lrs and (len(backbone_params) > 0 and len(head_params) > 0):
+            param_groups = [
+                {'params': backbone_params, 'lr': self.learning_rate * self.backbone_lr_scale},
+                {'params': head_params,    'lr': self.learning_rate},
+            ]
+            self.optimizer = make_optimizer(param_groups)
+            logger.info("Optimizer param groups: backbone_lr=%g, head_lr=%g, wd=%g", self.learning_rate * self.backbone_lr_scale, self.learning_rate, self.weight_decay)
+        else:
+            # Fallback to single LR
+            param_groups = [{'params': self.model.parameters(), 'lr': self.learning_rate}]
+            self.optimizer = make_optimizer(param_groups)
+            logger.info("Optimizer single LR: lr=%g, wd=%g", self.learning_rate, self.weight_decay)
 
         self.criterion = nn.BCEWithLogitsLoss()
+
 
         # Stage 01: CRITICAL - Verify optimizer parameters after model initialization
         logger.info("=== OPTIMIZER PARAMETER VALIDATION ===")
@@ -573,9 +621,10 @@ class SimpleMobileNetV4Trainer:
         self.train_loader, self.val_loader, self.test_loader = create_multi_dataset_loader(
             config_path="configs/datasets.json",
             batch_size=self.batch_size,
-            num_workers=12,
+            num_workers=self.num_workers,
             pin_memory=True,
             seed=self.seed,
+            override_image_size=self.image_size_override,
         )
 
         logger.info(f"✅ Effective batch size confirmed: {self.train_loader.batch_size}")
@@ -633,6 +682,9 @@ class SimpleMobileNetV4Trainer:
 
             # Backward pass
             loss.backward()
+            # Gradient clipping to avoid destabilizing updates
+            if getattr(self, 'grad_clip_norm', 0) and self.grad_clip_norm > 0:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip_norm)
             self.optimizer.step()
 
             # Track metrics
@@ -660,10 +712,12 @@ class SimpleMobileNetV4Trainer:
         logger.info(f"   Average batch loss: {avg_loss:.6f}")
         logger.info(f"   Total samples processed: {len(all_predictions)}")
         logger.info(f"   Prediction range: [{all_predictions.min():.4f}, {all_predictions.max():.4f}]")
-        logger.info(f"   Target distribution: Real={np.mean(all_targets):.3f}, Fake={1-np.mean(all_targets):.3f}")
+        pos_ratio = float(np.mean(all_targets))
+        neg_ratio = 1.0 - pos_ratio
+        logger.info(f"   Target distribution: Real={neg_ratio:.3f}, Fake={pos_ratio:.3f}")
 
         # Check gradient flow (critical for verifying classifier is learning)
-        if hasattr(self, '_log_gradients') and (epoch % 5 == 0):  # Every 5 epochs
+        if hasattr(self, '_log_gradients') and (epoch % self.gradient_log_interval == 0):  # Every 5 epochs
             classifier_grad_norm = 0
             backbone_grad_norm = 0
 
@@ -794,6 +848,95 @@ class SimpleMobileNetV4Trainer:
             metrics = {'loss': avg_loss, 'auc': 0.0, 'f1': 0.0, 'accuracy': 0.0, 'precision': 0.0, 'recall': 0.0}
 
         return metrics
+
+    def _create_val_loader_with_metadata(self):
+        """
+        Create a validation loader with metadata support for evaluation.
+
+        Returns:
+            DataLoader with return_meta=True, or None if creation fails
+        """
+        try:
+            logger.info("Creating validation datasets with metadata enabled...")
+
+            # Load configuration
+            config_path = Path("configs/datasets.json")
+            if not config_path.exists():
+                logger.warning(f"Config not found: {config_path}")
+                return None
+
+            with open(config_path, 'r', encoding='utf-8') as f:
+                datasets_config = json.load(f)
+
+            # Define the 4 datasets to include
+            dataset_names = ['celebdf_v2', 'faceforensics', 'deeperforensics', 'dfdc']
+            datasets_config = datasets_config.get('datasets', {})
+
+            # Create validation datasets with metadata
+            val_datasets = []
+
+            for dataset_name in dataset_names:
+                if dataset_name not in datasets_config:
+                    logger.debug(f"Dataset {dataset_name} not found in configuration")
+                    continue
+
+                dataset_cfg = datasets_config[dataset_name]
+                if not dataset_cfg.get('enabled', True):
+                    logger.debug(f"Dataset {dataset_name} disabled")
+                    continue
+
+                # Get paths
+                root_path = Path(dataset_cfg.get('root_path', '.'))
+                splits = dataset_cfg.get('splits', {})
+                image_size = dataset_cfg.get('metadata', {}).get('image_size', [256])[0]
+
+                # Create dataset instances with return_meta=True
+                try:
+                    val_manifest = root_path / splits.get('val', f'manifests/{dataset_name}_val_balanced.csv')
+
+                    # Create dataset with metadata support
+                    val_ds = CelebDFDataset(
+                        manifest_path=val_manifest,
+                        root_path=root_path,
+                        image_size=image_size,
+                        augmentation=False,
+                        normalize=True,
+                        return_meta=True  # Enable metadata collection
+                    )
+
+                    val_datasets.append(val_ds)
+                    logger.debug(f"  ✓ {dataset_name}: Val={len(val_ds):,}")
+
+                except Exception as e:
+                    logger.warning(f"Failed to load {dataset_name} validation with metadata: {e}")
+                    continue
+
+            if not val_datasets:
+                logger.warning("No validation datasets could be created with metadata")
+                return None
+
+            # Combine datasets
+            val_combined = ConcatDataset(val_datasets)
+            logger.info(f"Combined validation dataset: {len(val_combined):,} samples")
+
+            # Create data loader
+            val_loader_meta = DataLoader(
+                val_combined,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=4,
+                pin_memory=True,
+                drop_last=False
+            )
+
+            logger.info(f"✅ Validation loader with metadata created successfully")
+            return val_loader_meta
+
+        except Exception as e:
+            logger.error(f"❌ Failed to create validation loader with metadata: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def _plot_learning_curves(self, final_epoch: int, early_stopped: bool):
         """Generate and save learning curve plots."""
@@ -986,6 +1129,18 @@ class SimpleMobileNetV4Trainer:
             # Time this epoch
             epoch_start_time = time.time()
 
+            # LR warmup (simple linear warmup across epochs)
+            if getattr(self, 'warmup_epochs', 0) > 0 and epoch < self.warmup_epochs:
+                scale = float(epoch + 1) / float(self.warmup_epochs)
+                # param group 0 assumed backbone (if two groups), param group 1 head
+                for idx, pg in enumerate(self.optimizer.param_groups):
+                    if len(self.optimizer.param_groups) == 1:
+                        base_lr = self.learning_rate
+                    else:
+                        base_lr = self.learning_rate if idx == 1 else self.learning_rate * self.backbone_lr_scale
+                    pg['lr'] = base_lr * scale
+                logger.info(f"   Warmup epoch {epoch+1}/{self.warmup_epochs} scale={scale:.3f}")
+
             # Train epoch
             train_metrics = self.train_epoch(epoch)
 
@@ -1004,12 +1159,15 @@ class SimpleMobileNetV4Trainer:
             # PR-2: Consolidate per-epoch metrics
             epoch_data = {
                 'epoch': epoch + 1,
-                'lr': float(self.optimizer.param_groups[0]['lr']),
+                'lr': float(self.optimizer.param_groups[0]['lr']), 'lr_groups': [float(pg['lr']) for pg in self.optimizer.param_groups],
                 'time_seconds': float(epoch_duration),
                 'train': {k: float(v) for k, v in train_metrics.items()},
                 'val': {k: float(v) for k, v in val_metrics.items()}
             }
             self.epoch_metrics_history.append(epoch_data)
+
+            # Log current learning rates
+            logger.info(f"   Current LRs: {[pg['lr'] for pg in self.optimizer.param_groups]}")
 
             # Log metrics to TensorBoard (Stage 00 feature)
             self.framework.log_metrics(epoch, train_metrics, mode="train")
@@ -1029,20 +1187,8 @@ class SimpleMobileNetV4Trainer:
                 logger.info(f"✅ New best validation AUC: {self.best_auc:.4f} (+{improvement:.4f})")
                 logger.info(f"📍 Best epoch: {epoch+1}, Patience counter reset")
 
-                # Save to disk (existing functionality)
+                # Checkpoint saving handled by save policy (see below)
                 self.framework.set_best_epoch(epoch)
-                self.framework.save_best_model(
-                    self.model,
-                    self.best_auc,
-                    optimizer=self.optimizer,
-                    additional_info={
-                        "hyperparameters": {
-                            "model_name": self.model_name,
-                            "learning_rate": self.learning_rate,
-                            "batch_size": self.batch_size,
-                        }
-                    },
-                )
             else:
                 # No improvement
                 if self.patience > 0:
@@ -1071,6 +1217,15 @@ class SimpleMobileNetV4Trainer:
                 f"Best AUC: {self.best_auc:.4f}"
             )
 
+            
+            # Save-by-policy: save based on configured metric name ('auc' or 'f1', etc.)
+            policy_metric_name = getattr(self, 'save_on_metric', 'auc')
+            policy_metric_value = float(val_metrics.get(policy_metric_name, 0.0))
+            self.framework.save_best_model(
+                self.model, policy_metric_value, metric_name=policy_metric_name, optimizer=self.optimizer,
+                additional_info={'hyperparameters': {'model_name': self.model_name, 'learning_rate': self.learning_rate, 'batch_size': self.batch_size, 'optimizer': self.optimizer_name, 'weight_decay': self.weight_decay}}
+            )
+
             final_epoch = epoch
 
         logger.info("=" * 60)
@@ -1089,6 +1244,272 @@ class SimpleMobileNetV4Trainer:
         self._plot_learning_curves(final_epoch, early_stopped)
         self._save_training_summary(final_epoch, early_stopped)
 
+        # ===== PR-3: POST-TRAINING EVALUATION AND PLOT GENERATION =====
+        logger.info("=" * 60)
+        logger.info("🎯 PR-3: Post-training evaluation and plot generation")
+        logger.info("=" * 60)
+
+        try:
+            # Create val_loader with metadata for evaluation
+            logger.info("📊 Creating validation loader with metadata...")
+            val_loader_meta = self._create_val_loader_with_metadata()
+
+            if val_loader_meta is not None:
+                # Run full evaluation
+                logger.info("🔍 Running full evaluation on validation set...")
+                evaluator = ModelEvaluator(device=self.device)
+                val_summary = evaluator.full_evaluation(
+                    self.model,
+                    val_loader_meta,
+                    criterion=self.criterion,
+                    mode='validation',
+                    top_k_errors=32
+                )
+
+                logger.info(f"✅ Full evaluation completed")
+                logger.info(f"   Validation AUC: {val_summary['metrics']['auc']:.4f}")
+                logger.info(f"   Validation F1: {val_summary['metrics']['f1']:.4f}")
+                logger.info(f"   Validation Accuracy: {val_summary['metrics']['accuracy']:.4f}")
+
+                # Generate all plots with error handling (PR-3: 17-plot generation)
+                logger.info("🎨 Generating comprehensive visualizations...")
+
+                from utils.plotting import (
+                    plot_roc_curve_precomputed, plot_precision_recall_precomputed,
+                    plot_calibration_curve_precomputed, plot_confidence_histogram,
+                    plot_train_val_gap, plot_lr_schedule, plot_image_grid,
+                    plot_metrics_summary, plot_confusion_matrix, plot_class_distribution,
+                    plot_threshold_analysis, plot_probability_distribution, create_comprehensive_report,
+                    plot_error_analysis
+                )
+
+                plots_generated = []
+                plots_failed = []
+
+                # Plot 1: ROC Curve
+                try:
+                    logger.info("  [01/07] Generating ROC curve...")
+                    fig = plot_roc_curve_precomputed(
+                        val_summary['roc_curve']['fpr'],
+                        val_summary['roc_curve']['tpr'],
+                        val_summary['metrics']['auc'],
+                        output_path=self.framework.experiment_dir / '01_roc_curve.png'
+                    )
+                    plots_generated.append('01_roc_curve.png')
+                    plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"  ❌ Failed to generate ROC curve: {e}")
+                    plots_failed.append(('01_roc_curve', str(e)))
+
+                # Plot 2: Precision-Recall Curve
+                try:
+                    logger.info("  [02/07] Generating precision-recall curve...")
+                    fig = plot_precision_recall_precomputed(
+                        val_summary['pr_curve']['precision'],
+                        val_summary['pr_curve']['recall'],
+                        output_path=self.framework.experiment_dir / '02_pr_curve.png'
+                    )
+                    plots_generated.append('02_pr_curve.png')
+                    plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"  ❌ Failed to generate PR curve: {e}")
+                    plots_failed.append(('02_pr_curve', str(e)))
+
+                # Plot 3: Calibration Curve
+                try:
+                    logger.info("  [03/07] Generating calibration plot...")
+                    fig = plot_calibration_curve_precomputed(
+                        val_summary['calibration_bins']['bin_centers'],
+                        val_summary['calibration_bins']['avg_confidence'],
+                        val_summary['calibration_bins']['accuracy'],
+                        output_path=self.framework.experiment_dir / '03_calibration.png'
+                    )
+                    plots_generated.append('03_calibration.png')
+                    plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"  ❌ Failed to generate calibration plot: {e}")
+                    plots_failed.append(('03_calibration', str(e)))
+
+                # Plot 4: Confidence Histogram
+                try:
+                    logger.info("  [04/07] Generating confidence histogram...")
+                    fig = plot_confidence_histogram(
+                        val_summary['confidence_hist']['bins'],
+                        val_summary['confidence_hist']['real_hist'],
+                        val_summary['confidence_hist']['fake_hist'],
+                        output_path=self.framework.experiment_dir / '04_confidence_hist.png'
+                    )
+                    plots_generated.append('04_confidence_hist.png')
+                    plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"  ❌ Failed to generate confidence histogram: {e}")
+                    plots_failed.append(('04_confidence_hist', str(e)))
+
+                # Plot 5: Train/Val Gap (Loss and AUC divergence)
+                try:
+                    logger.info("  [05/07] Generating train/val gap plot...")
+                    fig = plot_train_val_gap(
+                        self.epoch_metrics_history,
+                        output_path=self.framework.experiment_dir / '05_train_val_gap.png'
+                    )
+                    plots_generated.append('05_train_val_gap.png')
+                    plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"  ❌ Failed to generate train/val gap plot: {e}")
+                    plots_failed.append(('05_train_val_gap', str(e)))
+
+                # Plot 6: Learning Rate Schedule
+                try:
+                    logger.info("  [06/07] Generating learning rate schedule...")
+                    fig = plot_lr_schedule(
+                        self.epoch_metrics_history,
+                        output_path=self.framework.experiment_dir / '06_lr_schedule.png'
+                    )
+                    plots_generated.append('06_lr_schedule.png')
+                    plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"  ❌ Failed to generate LR schedule: {e}")
+                    plots_failed.append(('06_lr_schedule', str(e)))
+
+                # Plot 7: Error Sample Images (top FP and FN)
+                try:
+                    logger.info("  [07/07] Generating error sample images...")
+                    error_paths = val_summary['topk_fp_paths'][:16] + val_summary['topk_fn_paths'][:16]
+                    if error_paths:
+                        fig = plot_image_grid(
+                            error_paths,
+                            title='Top Error Samples (False Positives + False Negatives)',
+                            output_path=self.framework.experiment_dir / '07_error_samples.png'
+                        )
+                        plots_generated.append('07_error_samples.png')
+                        plt.close(fig)
+                        # Also generate separate FP and FN grids if available (counts toward richer report)
+                        try:
+                            if val_summary['topk_fp_paths']:
+                                fig = plot_image_grid(
+                                    val_summary['topk_fp_paths'][:32],
+                                    title='Top False Positives',
+                                    output_path=self.framework.experiment_dir / '07a_top_fp_samples.png'
+                                )
+                                if fig is not None:
+                                    plots_generated.append('07a_top_fp_samples.png')
+                                    plt.close(fig)
+                            if val_summary['topk_fn_paths']:
+                                fig = plot_image_grid(
+                                    val_summary['topk_fn_paths'][:32],
+                                    title='Top False Negatives',
+                                    output_path=self.framework.experiment_dir / '07b_top_fn_samples.png'
+                                )
+                                if fig is not None:
+                                    plots_generated.append('07b_top_fn_samples.png')
+                                    plt.close(fig)
+                        except Exception as e:
+                            logger.warning(f"  ❌ Failed to generate separate FP/FN grids: {e}")
+                    else:
+                        logger.info("  ℹ️  No error samples to visualize")
+                except Exception as e:
+                    logger.warning(f"  ❌ Failed to generate error samples: {e}")
+                    plots_failed.append(('07_error_samples', str(e)))
+
+                # Log plot generation summary
+                logger.info(f"✅ Plot Generation Summary:")
+                logger.info(f"   Generated: {len(plots_generated)}/7 plots")
+                for plot_name in plots_generated:
+                    logger.info(f"     ✓ {plot_name}")
+
+                if plots_failed:
+                    logger.warning(f"   Failed: {len(plots_failed)} plots")
+                    for plot_name, error in plots_failed:
+                        logger.warning(f"     ✗ {plot_name}: {error}")
+
+                # Generate additional comprehensive report plots (metrics/confusion/class dist/threshold)
+                try:
+                    logger.info("  [+] Creating comprehensive report plots (metrics, confusion matrix, class dist, thresholds)...")
+                    create_comprehensive_report(val_summary, output_dir=self.framework.experiment_dir)
+                    # These filenames are deterministic in create_comprehensive_report
+                    plots_generated.extend([
+                        'metrics_summary.png',
+                        'confusion_matrix.png',
+                        'class_distribution.png',
+                        'threshold_analysis.png'
+                    ])
+                except Exception as e:
+                    logger.warning(f"  ❌ Failed to create comprehensive report plots: {e}")
+
+                # Optional: Probability distribution and error analysis if raw arrays are available
+                try:
+                    if 'targets_array' in val_summary and 'probabilities_array' in val_summary:
+                        import numpy as np
+                        targets_np = np.asarray(val_summary['targets_array'])
+                        probs_np = np.asarray(val_summary['probabilities_array']).reshape(-1)
+                        preds_np = np.asarray(val_summary.get('predictions_array', (probs_np >= 0.5).astype(int))).reshape(-1)
+
+                        # Probability distribution by class
+                        real_probs = probs_np[targets_np == 0]
+                        fake_probs = probs_np[targets_np == 1]
+                        fig = plot_probability_distribution(
+                            probabilities_real=real_probs,
+                            probabilities_fake=fake_probs,
+                            output_path=self.framework.experiment_dir / '08_probability_distribution.png'
+                        )
+                        if fig is not None:
+                            plots_generated.append('08_probability_distribution.png')
+                            plt.close(fig)
+
+                        # Error analysis (FP/FN histograms)
+                        fig = plot_error_analysis(
+                            targets=targets_np,
+                            predictions=preds_np,
+                            probabilities=probs_np,
+                            output_path=self.framework.experiment_dir / '09_error_analysis.png'
+                        )
+                        if fig is not None:
+                            plots_generated.append('09_error_analysis.png')
+                            plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"  ❌ Failed to generate probability/error analysis plots: {e}")
+
+                # Update training_summary.json with val_final and plots
+                logger.info("💾 Updating training summary with final evaluation...")
+                summary_path = self.framework.experiment_dir / 'training_summary.json'
+                with open(summary_path, 'r') as f:
+                    summary = json.load(f)
+
+                # Add final validation evaluation
+                summary['val_final'] = {
+                    'metrics': val_summary['metrics'],
+                    'loss': val_summary['loss'],
+                    'confusion_matrix': val_summary['confusion_matrix'],
+                    'total_samples': val_summary['total_samples'],
+                    'class_distribution': val_summary['class_distribution'],
+                    'probability_statistics': val_summary['probability_statistics'],
+                }
+
+                # Add plot artifacts list
+                summary['artifacts'] = {
+                    'plots': plots_generated,
+                    'plots_failed': plots_failed,
+                    'learning_curves': 'learning_curves.png',
+                    'best_model': 'best_model.pth'
+                }
+
+                # Save updated summary
+                with open(summary_path, 'w') as f:
+                    json.dump(summary, f, indent=2)
+
+                logger.info(f"✅ Training summary updated with val_final and artifacts")
+                logger.info(f"   File: {summary_path}")
+
+            else:
+                logger.warning("⚠️  Could not create validation loader with metadata, skipping full evaluation")
+
+        except Exception as e:
+            logger.error(f"❌ Error during post-training evaluation: {e}")
+            logger.error(f"   Continuing with basic training summary...")
+            import traceback
+            traceback.print_exc()
+
+        logger.info("=" * 60)
         logger.info(
             f"Training results saved to: {self.framework.experiment_dir}"
         )
@@ -1185,51 +1606,95 @@ def main():
 
     args = parser.parse_args()
 
-    # ===== Phase 1: Load configuration if provided =====
+    # ===== Phase 1: Load configuration and merge with CLI (YAML first, CLI can override) =====
     config_dict = {}
+    import sys as _sys
+    argv = _sys.argv[1:]
+    def _provided(*aliases: str) -> bool:
+        for a in aliases:
+            if a in argv:
+                return True
+            if any(x.startswith(a + '=') for x in argv):
+                return True
+        return False
+
     if args.config:
         try:
             config_dict = load_config(args.config)
             logger.info(f"✅ Configuration loaded from: {args.config}")
 
-            # Log configuration summary
-            logger.info("📋 Configuration Summary:")
-            if 'model' in config_dict:
-                logger.info(f"   Model: {config_dict['model'].get('name', 'N/A')}")
-            if 'training' in config_dict:
-                training_cfg = config_dict['training']
-                logger.info(f"   Training:")
-                logger.info(f"      - LR: {training_cfg.get('lr', args.learning_rate)}")
-                logger.info(f"      - Batch size: {training_cfg.get('batch_size', args.batch_size)}")
-                logger.info(f"      - Epochs: {training_cfg.get('epochs', args.num_epochs)}")
-            if 'early_stopping' in config_dict:
-                es_cfg = config_dict['early_stopping']
-                logger.info(f"   Early Stopping:")
-                logger.info(f"      - Patience: {es_cfg.get('patience', args.patience)}")
-                logger.info(f"      - Min delta: {es_cfg.get('min_delta', args.min_delta)}")
+            # Model
+            model_cfg = config_dict.get('model', {})
+            if model_cfg:
+                if not _provided('--model_name'):
+                    args.model_name = model_cfg.get('name', args.model_name)
+                if not _provided('--dropout_rate'):
+                    args.dropout_rate = model_cfg.get('dropout', args.dropout_rate)
+                if not _provided('--freeze_backbone'):
+                    args.freeze_backbone = model_cfg.get('freeze_backbone', args.freeze_backbone)
+                if not _provided('--seed'):
+                    args.seed = model_cfg.get('seed', args.seed)
+
+            # Training
+            training_cfg = config_dict.get('training', {})
+            if training_cfg:
+                if not _provided('--learning_rate', '--lr'):
+                    args.learning_rate = training_cfg.get('lr', args.learning_rate)
+                if not _provided('--batch_size'):
+                    args.batch_size = training_cfg.get('batch_size', args.batch_size)
+                if not _provided('--num_epochs', '--epochs'):
+                    args.num_epochs = training_cfg.get('epochs', args.num_epochs)
+                # Additional training configs
+                args.optimizer_name = training_cfg.get('optimizer', getattr(args, 'optimizer_name', 'adamw'))
+                args.weight_decay = training_cfg.get('weight_decay', getattr(args, 'weight_decay', 1e-4))
+                args.num_workers = training_cfg.get('num_workers', getattr(args, 'num_workers', 12))
+                args.warmup_epochs = training_cfg.get('warmup_epochs', getattr(args, 'warmup_epochs', 0))
+
+            # Early stopping
+            es_cfg = config_dict.get('early_stopping', {})
+            if es_cfg:
+                if not _provided('--patience'):
+                    args.patience = es_cfg.get('patience', args.patience)
+                if not _provided('--min_delta'):
+                    args.min_delta = es_cfg.get('min_delta', args.min_delta)
+                if not _provided('--restore_best'):
+                    args.restore_best = es_cfg.get('restore_best', getattr(args, 'restore_best', True))
+
+            # Device
+            device_cfg = config_dict.get('device', {})
+            if device_cfg and not _provided('--device'):
+                args.device = device_cfg.get('type', args.device)
+
+            # Paths
+            paths_cfg = config_dict.get('paths', {})
+            if paths_cfg and not _provided('--output_dir'):
+                args.output_dir = paths_cfg.get('output_dir', args.output_dir)
+
+            # Data
+            data_cfg = config_dict.get('data', {})
+            if data_cfg:
+                args.image_size = data_cfg.get('image_size', getattr(args, 'image_size', None))
+
+            # Save policy
+            save_cfg = config_dict.get('save_policy', {})
+            if save_cfg:
+                args.save_on_metric = save_cfg.get('on_best', getattr(args, 'save_on_metric', 'auc'))
+
+            # Log merged configuration
+            logger.info("📋 Configuration Summary (YAML merged, CLI overrides when provided):")
+            logger.info(f"   Model: {args.model_name}, dropout={args.dropout_rate}, freeze_backbone={args.freeze_backbone}")
+            logger.info(f"   Training: lr={args.learning_rate}, batch_size={args.batch_size}, epochs={args.num_epochs}, optimizer={getattr(args, 'optimizer_name', 'adamw')}, weight_decay={getattr(args, 'weight_decay', 1e-4)}, num_workers={getattr(args, 'num_workers', 12)}, warmup_epochs={getattr(args, 'warmup_epochs', 0)}")
+            logger.info(f"   EarlyStopping: patience={args.patience}, min_delta={args.min_delta}, restore_best={getattr(args, 'restore_best', True)}")
+            logger.info(f"   Device: {args.device}")
+            logger.info(f"   Paths: output_dir={args.output_dir}")
+            logger.info(f"   Data: image_size_override={getattr(args, 'image_size', None)}")
+            logger.info(f"   Save policy: on_best={getattr(args, 'save_on_metric', 'auc')}")
+
         except FileNotFoundError:
             logger.warning(f"⚠️  Config file not found: {args.config}, using CLI defaults")
         except Exception as e:
             logger.warning(f"⚠️  Error loading config: {e}, using CLI defaults")
-
-    # Override args with config values if provided
-    if config_dict:
-        training_cfg = config_dict.get('training', {})
-        early_stopping_cfg = config_dict.get('early_stopping', {})
-
-        # Use config values as overrides (only if not explicitly set via CLI)
-        if 'lr' in training_cfg:
-            args.learning_rate = training_cfg['lr']
-        if 'batch_size' in training_cfg:
-            args.batch_size = training_cfg['batch_size']
-        if 'epochs' in training_cfg:
-            args.num_epochs = training_cfg['epochs']
-        if 'patience' in early_stopping_cfg:
-            args.patience = early_stopping_cfg['patience']
-        if 'min_delta' in early_stopping_cfg:
-            args.min_delta = early_stopping_cfg['min_delta']
-
-    # Setup reproducible environment (Stage 00 feature)
+# Setup reproducible environment (Stage 00 feature)
     setup_reproducible_environment(args.seed)
 
     # Create trainer and start training
@@ -1247,6 +1712,12 @@ def main():
         patience=args.patience,
         min_delta=args.min_delta,
         restore_best=args.restore_best,
+        optimizer_name=getattr(args, 'optimizer_name', 'adamw'),
+        weight_decay=getattr(args, 'weight_decay', 1e-4),
+        num_workers=getattr(args, 'num_workers', 12),
+        image_size_override=getattr(args, 'image_size', None),
+        save_on_metric=getattr(args, 'save_on_metric', 'auc'),
+        warmup_epochs=getattr(args, 'warmup_epochs', 0),
     )
 
     # Setup data loaders (Stage 01 requirement)

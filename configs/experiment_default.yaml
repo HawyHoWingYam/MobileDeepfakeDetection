@@ -1,0 +1,125 @@
+# AWARE-NET: Default Experiment Configuration (Phase 1)
+#
+# This configuration defines all default parameters for training.
+# Priority: defaults → this file → CLI overrides
+#
+# Usage in code:
+#   config = load_config("configs/experiment_default.yaml")
+#   config = ExperimentManager(config, cli_args)
+#
+# CLI override example:
+#   python train_mobilenet.py --lr 0.0001 --batch_size 64
+
+# ==============================================================================
+# MODEL CONFIGURATION
+# ==============================================================================
+model:
+  name: mobilenetv4_hybrid_medium
+  dropout: 0.2
+  freeze_backbone: false
+  seed: 42
+
+# ==============================================================================
+# TRAINING CONFIGURATION
+# ==============================================================================
+training:
+  lr: 0.0001                          # Learning rate
+  batch_size: 256                     # Batch size (adjust based on GPU memory)
+  epochs: 15                         # Number of epochs
+  optimizer: adamw                    # Optimizer: adam or sgd
+  weight_decay: 0.0001               # L2 regularization
+  warmup_epochs: 1                   # Linear warmup epochs (optional)
+  num_workers: 12                     # DataLoader workers
+
+# ==============================================================================
+# DATA CONFIGURATION
+# ==============================================================================
+data:
+  datasets:
+    - celeb-df
+    - faceforensics
+    - deeperforensics
+    - dfdc
+  dataset_weights:                   # Balance training batches across datasets
+    celeb-df: 0.25
+    faceforensics: 0.25
+    deeperforensics: 0.25
+    dfdc: 0.25
+  image_size: 256                    # Input image size
+  num_workers: 4                     # Parallel data loading
+
+# ==============================================================================
+# ARTIFACT SAVING POLICY
+# ==============================================================================
+save_policy:
+  on_best: f1                        # Save when this metric improves
+  every_n_epochs: 0                  # Periodic save every N epochs (0=disabled)
+  last_n_epochs: 2                   # Keep artifacts only for last N epochs
+
+# ==============================================================================
+# EARLY STOPPING CONFIGURATION
+# ==============================================================================
+early_stopping:
+  patience: 5                        # Stop if no improvement for N epochs
+  min_delta: 0.001                   # Minimum improvement threshold
+  restore_best: true                 # Restore best weights at end
+
+# ==============================================================================
+# GRADIENT MONITORING
+# ==============================================================================
+gradient_monitoring:
+  log_layers:                        # Regex patterns for per-layer logging
+    - backbone                       # Log backbone gradients
+    - head                           # Log classifier head gradients
+  log_every_n_steps: 1               # Log frequency
+
+# ==============================================================================
+# TRACKER CONFIGURATION
+# ==============================================================================
+tracker:
+  type: local                        # Options: "local" or "wandb"
+  project: aware-net-stage1          # WandB project name (if wandb)
+  entity: null                       # WandB entity/team (if wandb)
+
+# ==============================================================================
+# PLOTTING & VISUALIZATION CONFIGURATION
+# ==============================================================================
+plotting:
+  dpi: 160                           # Figure DPI (higher = better quality)
+  style: default                     # Matplotlib style
+  figsize:
+    width: 12
+    height: 8
+  save_format: png                   # Figure format
+
+# ==============================================================================
+# DEVICE & REPRODUCIBILITY
+# ==============================================================================
+device:
+  type: cuda                         # cuda or cpu
+  seed: 42                           # Random seed for reproducibility
+
+# ==============================================================================
+# PATHS & DIRECTORIES
+# ==============================================================================
+paths:
+  output_dir: outputs/stage1         # Base output directory
+  data_dir: /path/to/deepfake/data   # Dataset directory (override as needed)
+
+# ==============================================================================
+# EXPERIMENT METADATA
+# ==============================================================================
+experiment:
+  name: mobilenetv4_simple           # Experiment name
+  description: >                     # Optional description
+    Stage 1: Simple MobileNetV4 with BCE loss.
+    Baseline for AWARE-NET framework.
+
+# ==============================================================================
+# ADVANCED OPTIONS (Optional)
+# ==============================================================================
+advanced:
+  use_mixed_precision: false         # Automatic Mixed Precision (AMP)
+  gradient_accumulation_steps: 1     # Gradient accumulation (for effective batch size)
+  log_interval: 10                   # Log metrics every N batches
+  save_best_only: true               # Only save best model checkpoint
