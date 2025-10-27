@@ -102,6 +102,8 @@ class ModelEvaluator:
                 # Calculate loss if criterion provided
                 if criterion is not None:
                     loss = criterion(outputs, targets)
+                    if isinstance(loss, torch.Tensor) and loss.dim() > 0:
+                        loss = loss.mean()
                     total_loss += loss.item()
                     num_batches += 1
 
@@ -409,6 +411,8 @@ class ModelEvaluator:
                 # Calculate loss if criterion provided
                 if criterion is not None:
                     loss = criterion(outputs, targets)
+                    if isinstance(loss, torch.Tensor) and loss.dim() > 0:
+                        loss = loss.mean()
                     total_loss += loss.item()
                     num_batches += 1
 
