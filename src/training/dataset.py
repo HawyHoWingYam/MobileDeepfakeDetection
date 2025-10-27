@@ -55,7 +55,7 @@ class CelebDFDataset(Dataset):
             return_meta: Whether to return metadata (path) in __getitem__ (PR-3: Milestone 4)
         """
         self.manifest_path = Path(manifest_path)
-        self.root_path = Path(root_path)
+        self.root_path = Path(os.getenv("AWARE_DATA_ROOT", root_path)).expanduser()
         self.image_size = image_size
         self.augmentation = augmentation
         self.path_leakage_check = path_leakage_check
@@ -78,8 +78,9 @@ class CelebDFDataset(Dataset):
         self.df = self.df[self.df.get('valid', True) == True]
         
         logger.info(
-            "Loaded manifest %s: total=%d real=%d fake=%d",
+            "Loaded manifest %s (root=%s): total=%d real=%d fake=%d",
             self.manifest_path,
+            self.root_path,
             len(self.df),
             (self.df['label'] == 0).sum(),
             (self.df['label'] == 1).sum()
@@ -145,7 +146,7 @@ class CelebDFDataset(Dataset):
         
         # Normalization
         if self.normalize:
-            # ImageNet normalization
+            # ImageNet normalization (TorchVision v2 transforms guidance /pytorch/vision)
             base_transforms.append(
                 A.Normalize(
                     mean=[0.485, 0.456, 0.406],
@@ -183,9 +184,14 @@ class CelebDFDataset(Dataset):
 
         # Load image
         try:
+            if not image_path.exists():
+                raise FileNotFoundError(
+                    f"Image not found: {image_path}. Set AWARE_DATA_ROOT to override the dataset root if needed."
+                )
+
             image = cv2.imread(str(image_path))
             if image is None:
-                raise ValueError(f"Could not load image: {image_path}")
+                raise ValueError(f"Could not load image data: {image_path}")
 
             # Convert BGR to RGB
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -206,12 +212,7 @@ class CelebDFDataset(Dataset):
 
         except Exception as e:
             logger.error("Error loading image %s: %s", image_path, e)
-            # Return a blank image and label
-            blank_image = torch.zeros(3, self.image_size, self.image_size)
-            if self.return_meta:
-                return blank_image, torch.tensor(0, dtype=torch.float), {'path': str(image_path)}
-            else:
-                return blank_image, torch.tensor(0, dtype=torch.float)
+            raise
     
     def get_class_weights(self) -> torch.Tensor:
         """
@@ -291,17 +292,26 @@ def create_data_loaders(config_path: str,
     if not dataset_config:
         raise ValueError(f"Dataset '{dataset_name}' not found in configuration")
 
-    # Get manifest paths from configuration
-    root_path = Path(dataset_config.get('root_path', 'data'))
+    # Get manifest paths from configuration with optional override
+    data_root_override = os.getenv("AWARE_DATA_ROOT")
+    if data_root_override:
+        root_path = Path(data_root_override).expanduser()
+        logger.info("AWARE_DATA_ROOT override detected: using %s", root_path)
+    else:
+        root_path = Path(dataset_config.get('root_path', 'data')).expanduser()
+
     splits = dataset_config.get('splits', {})
 
-    train_manifest = root_path / splits.get('train', 'manifests/train.csv')
-    val_manifest = root_path / splits.get('val', 'manifests/val.csv')
-    test_manifest = root_path / splits.get('test', 'manifests/test.csv')
+    train_manifest = (root_path / splits.get('train', 'manifests/train.csv')).expanduser()
+    val_manifest = (root_path / splits.get('val', 'manifests/val.csv')).expanduser()
+    test_manifest = (root_path / splits.get('test', 'manifests/test.csv')).expanduser()
 
     for manifest in (train_manifest, val_manifest, test_manifest):
         if not manifest.exists():
-            logger.warning(f"Manifest file missing: {manifest}")
+            raise FileNotFoundError(
+                f"Manifest file not found: {manifest}. "
+                "Set AWARE_DATA_ROOT if your dataset is stored elsewhere."
+            )
 
     logger.info("Loading dataset %s from %s", dataset_name, config_path)
     logger.info("  Train manifest: %s", train_manifest)
@@ -324,7 +334,7 @@ def create_data_loaders(config_path: str,
         manifest_path=val_manifest,
         root_path=root_path,
         image_size=image_size,
-        augmentation=False,  # No augmentation for validation
+        augmentation=False,  # Deterministic validation (TorchVision v2 guidance)
         normalize=True
     )
 
@@ -332,7 +342,7 @@ def create_data_loaders(config_path: str,
         manifest_path=test_manifest,
         root_path=root_path,
         image_size=image_size,
-        augmentation=False,  # No augmentation for testing
+        augmentation=False,  # Deterministic testing (TorchVision v2 guidance)
         normalize=True
     )
     

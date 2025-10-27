@@ -8,7 +8,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, Tuple, Optional
 import timm
-from torchmetrics import Accuracy, AUROC, F1Score, Precision, Recall
+
+try:
+    from torchmetrics import Accuracy, AUROC, F1Score, Precision, Recall
+    _TORCHMETRICS_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency
+    Accuracy = AUROC = F1Score = Precision = Recall = None
+    _TORCHMETRICS_AVAILABLE = False
 
 class EfficientNetV2B3Baseline(nn.Module):
     """
@@ -190,6 +196,11 @@ class BaselineTrainer:
         """
         self.model = model.to(device)
         self.device = device
+
+        if not _TORCHMETRICS_AVAILABLE:
+            raise ImportError(
+                "torchmetrics is required for BaselineTrainer; please install it to use this class."
+            )
         
         # Metrics
         self.train_metrics = self._create_metrics()

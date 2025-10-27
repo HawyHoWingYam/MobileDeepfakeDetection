@@ -29,6 +29,7 @@ from tqdm import tqdm
 sys.path.append(str(Path(__file__).parent.parent))
 
 from models.mobilenetv4_model import create_mobilenetv4_simple
+from models.efficientnetv2_model import create_baseline_model
 from training.dataset import CelebDFDataset
 from utils.evaluation import ModelEvaluator
 from utils.experiment_framework import ExperimentFramework, setup_reproducible_environment
@@ -146,22 +147,24 @@ class CascadeDetector:
         try:
             checkpoint = torch.load(model_path, map_location=self.device)
 
-            # Create EfficientNetV2 model (placeholder for Stage 03)
-            model = nn.Sequential(
-                nn.Linear(in_features=1280, out_features=2),  # Simplified placeholder
-                nn.Sigmoid()
+            # Determine model configuration from checkpoint metadata
+            metadata = checkpoint.get('additional_info', {}).get('hyperparameters', {})
+            model_name = metadata.get('model_name', 'tf_efficientnetv2_b0')
+
+            model = create_baseline_model(
+                pretrained=False,
+                dropout_rate=0.2,
+                model_name=model_name
             ).to(self.device)
 
-            # Load weights if available
-            if 'model_state_dict' in checkpoint:
-                try:
-                    model.load_state_dict(checkpoint['model_state_dict'])
-                except:
-                    logger.warning("Could not load Stage 2 model weights, using random initialization")
+            state_dict = checkpoint.get('model_state_dict')
+            if state_dict is None:
+                raise KeyError("Checkpoint is missing 'model_state_dict'; cannot restore EfficientNetV2 weights.")
 
+            model.load_state_dict(state_dict, strict=True)
             model.eval()
 
-            logger.info(f"Loaded Stage 2 model: EfficientNetV2")
+            logger.info(f"Loaded Stage 2 model: {model_name}")
             return model
 
         except Exception as e:
@@ -209,23 +212,24 @@ class CascadeDetector:
         # Stage 1 prediction (MobileNetV4)
         with torch.no_grad():
             stage1_logits = self.stage1_model(images)
-            stage1_probs = torch.sigmoid(stage1_logits)
+            stage1_probs = torch.sigmoid(stage1_logits).view(-1)
             stage1_predictions = (stage1_probs >= high_thresh).float()
 
         # Stage 2 prediction (EfficientNetV2) - only for uncertain cases
         stage2_predictions = None
-        stage2_used = False
+        stage2_invocations = 0
 
         # Cascade logic
         final_predictions = []
         stage2_logits = None
 
         for i, stage1_conf in enumerate(stage1_probs):
+            stage1_conf_val = float(stage1_conf)
             # Quick decision rules
-            if stage1_conf < low_thresh:
+            if stage1_conf_val < low_thresh:
                 # Very confident fake - use Stage 1 decision
                 final_predictions.append(1)  # fake
-            elif stage1_conf > high_thresh:
+            elif stage1_conf_val > high_thresh:
                 # Very confident real - use Stage 1 decision
                 final_predictions.append(0)  # real
             else:
@@ -233,22 +237,24 @@ class CascadeDetector:
                 if stage2_predictions is None:
                     # Run Stage 2 model once for all uncertain images
                     with torch.no_grad():
-                        stage2_logits = self.stage2_model(images)
+                        stage2_logits = self.stage2_model(images).view(-1)
 
-                    stage2_probs = torch.sigmoid(stage2_logits) if stage2_logits is not None else stage1_conf
+                    stage2_probs = torch.sigmoid(stage2_logits)
                     stage2_pred = (stage2_probs >= 0.5).float()
-                    stage2_predictions = stage2_pred.cpu().numpy() if stage2_logits is not None else stage1_conf.cpu().numpy()
+                    stage2_predictions = stage2_pred.cpu().numpy()
 
                 final_predictions.append(int(stage2_predictions[i]))
-                stage2_used = True
+                stage2_invocations += 1
 
         return {
             'final_predictions': torch.tensor(final_predictions),
             'stage1_confidences': stage1_probs,
             'stage1_predictions': stage1_predictions,
-            'stage2_used': stage2_used,
+            'stage2_used': stage2_invocations > 0,
             'stage2_predictions': torch.tensor(stage2_predictions) if stage2_predictions is not None else None,
-            'cascade_efficiency': 1.0 - (stage2_used / len(final_predictions)) if len(final_predictions) > 0 else 1.0,
+            'stage2_invocations': stage2_invocations,
+            'stage2_intervention_rate': stage2_invocations / len(final_predictions) if final_predictions else 0.0,
+            'cascade_efficiency': 1.0 - (stage2_invocations / len(final_predictions)) if final_predictions else 1.0,
             'thresholds_used': (low_thresh, high_thresh)
         }
 
@@ -327,9 +333,22 @@ class CascadeDetector:
         with open(results_file, 'w') as f:
             json.dump(optimization_results, f, indent=2, default=str)
 
-        logger.info(f"Threshold optimization completed!")
-        logger.info(f"Best FNR: {best_fnr:.4f} at thresholds: [{best_config['low_thresh']:.2f}, {best_config['high_thresh']:.2f}]")
-        logger.info(f"Results saved to: {results_file}")
+        logger.info("Threshold optimization completed!")
+        if best_config:
+            logger.info(
+                "Best FNR: %.4f at thresholds: [%.2f, %.2f]",
+                best_fnr,
+                best_config['low_thresh'],
+                best_config['high_thresh']
+            )
+            self.save_optimized_thresholds(
+                best_config['low_thresh'],
+                best_config['high_thresh'],
+                best_config['metrics']
+            )
+        else:
+            logger.warning("No valid threshold configuration identified during optimization.")
+        logger.info("Results saved to: %s", results_file)
 
         return optimization_results
 
@@ -337,6 +356,8 @@ class CascadeDetector:
         """Evaluate cascade system with current threshold settings."""
         predictions = []
         targets = []
+        stage2_invocations = 0
+        total_samples = 0
 
         with torch.no_grad():
             for images, labels, _ in self.validation_loader:
@@ -349,6 +370,8 @@ class CascadeDetector:
 
                 predictions.extend(final_preds.cpu().numpy())
                 targets.extend(labels.cpu().numpy())
+                stage2_invocations += results.get('stage2_invocations', 0)
+                total_samples += len(final_preds)
 
         # Calculate comprehensive metrics
         predictions = np.array(predictions)
@@ -357,7 +380,9 @@ class CascadeDetector:
         # Convert predictions to float for compatibility
         predictions = predictions.astype(float)
 
-        return self.evaluator._calculate_all_metrics()
+        metrics = self.evaluator._calculate_all_metrics()
+        metrics['stage2_intervention_rate'] = stage2_invocations / total_samples if total_samples else 0.0
+        return metrics
 
     def save_optimized_thresholds(
         self,
