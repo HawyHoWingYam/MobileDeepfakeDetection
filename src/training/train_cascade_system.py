@@ -101,11 +101,11 @@ class CascadeDetector:
         )
 
         # Initialize evaluator
-        self.evaluator = ModelEvaluator(self.device, threshold=0.5)
+        self.evaluator = ModelEvaluator(self.device, threshold=0.7)
 
         # Optimized thresholds (from grid search)
-        self.optimal_low_thresh = 0.15
-        self.optimal_high_thresh = 0.85
+        self.optimal_low_thresh = 0.20
+        self.optimal_high_thresh = 0.70
 
         if self.use_optimized_thresholds:
             self._load_optimized_thresholds()
@@ -178,8 +178,8 @@ class CascadeDetector:
             if threshold_file.exists():
                 with open(threshold_file, 'r') as f:
                     thresholds = json.load(f)
-                    self.optimal_low_thresh = thresholds.get('optimal_low_thresh', 0.15)
-                    self.optimal_high_thresh = thresholds.get('optimal_high_thresh', 0.85)
+                    self.optimal_low_thresh = thresholds.get('optimal_low_thresh', 0.20)
+                    self.optimal_high_thresh = thresholds.get('optimal_high_thresh', 0.70)
                     logger.info(f"Loaded optimized thresholds: [{self.optimal_low_thresh:.2f}, {self.optimal_high_thresh:.2f}]")
                     return
         except Exception as e:

@@ -9,8 +9,9 @@ import cv2
 import pandas as pd
 import numpy as np
 import json
+import random
 from pathlib import Path
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, Dict, Any, List
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -41,7 +42,8 @@ class CelebDFDataset(Dataset):
                  augmentation: bool = True,
                  normalize: bool = True,
                  path_leakage_check: bool = True,
-                 return_meta: bool = False):
+                 return_meta: bool = False,
+                 real_aug_prob: float = 0.0):
         """
         Initialize dataset
 
@@ -61,6 +63,7 @@ class CelebDFDataset(Dataset):
         self.path_leakage_check = path_leakage_check
         self.normalize = normalize
         self.return_meta = return_meta
+        self.real_aug_prob = max(0.0, float(real_aug_prob))
         
         if not self.manifest_path.exists():
             raise FileNotFoundError(f"Manifest file not found: {self.manifest_path}")
@@ -162,6 +165,13 @@ class CelebDFDataset(Dataset):
         base_transforms.append(ToTensorV2())
         
         self.transform = A.Compose(base_transforms)
+        self.real_only_transform = None
+        if self.real_aug_prob > 0.0 and self.augmentation:
+            self.real_only_transform = A.Compose([
+                A.RandomBrightnessContrast(brightness_limit=0.08, contrast_limit=0.08, p=0.5),
+                A.ColorJitter(brightness=0.08, contrast=0.08, saturation=0.08, hue=0.03, p=0.4),
+                A.GaussianBlur(blur_limit=(3, 5), p=0.25),
+            ])
     
     def __len__(self) -> int:
         """Return dataset size"""
@@ -195,6 +205,10 @@ class CelebDFDataset(Dataset):
 
             # Convert BGR to RGB
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+            # Optional real-only augmentation
+            if self.real_only_transform is not None and label == 0 and random.random() < self.real_aug_prob:
+                image = self.real_only_transform(image=image)['image']
 
             # Apply transforms
             transformed = self.transform(image=image)

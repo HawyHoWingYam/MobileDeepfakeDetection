@@ -34,6 +34,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, WeightedRandomSampler, ConcatDataset
+from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
@@ -97,6 +98,14 @@ class TrainConfig:
     num_workers: int = 12
     image_size: Optional[int] = 256
     dataset_balance: str = "equal_by_dataset"  # none|equal_by_dataset
+    balance_exponent: float = 0.75
+    dropout_rate: float = 0.3
+    freeze_backbone_epochs: int = 3
+    backbone_lr_scale: float = 0.5
+    neg_class_weight: float = 1.25
+    pos_class_weight: float = 1.0
+    real_aug_prob: float = 0.2
+    grad_clip_norm: float = 1.0
 
 
 def resolve_device(s: str) -> torch.device:
@@ -105,12 +114,12 @@ def resolve_device(s: str) -> torch.device:
     return torch.device(s)
 
 
-def make_train_loader(cfg: TrainConfig) -> Tuple[DataLoader, Optional[np.ndarray]]:
+def make_train_loader(cfg: TrainConfig) -> Tuple[DataLoader, Optional[np.ndarray], Dict[str, int]]:
     """Create a training loader from the difficult subset manifest.
 
     If dataset_balance == equal_by_dataset and the manifest has a 'dataset' column,
     use a WeightedRandomSampler to equalize dataset contributions per epoch.
-    Returns (loader, weights_used or None).
+    Returns (loader, weights_used or None, class_counts).
     """
     # Read manifest for weighting decisions
     df = pd.read_csv(cfg.train_manifest)
@@ -123,19 +132,23 @@ def make_train_loader(cfg: TrainConfig) -> Tuple[DataLoader, Optional[np.ndarray
         augmentation=True,
         normalize=True,
         return_meta=False,
+        real_aug_prob=cfg.real_aug_prob,
     )
 
     sampler = None
     weights = None
+    class_counts = df["label"].value_counts().to_dict()
+    logger.info("Training manifest class distribution: %s", class_counts)
     if cfg.dataset_balance == "equal_by_dataset" and "dataset" in df.columns:
         counts = df["dataset"].value_counts().to_dict()
         # Equalize datasets: each dataset shares 1/K of samples; per-sample weight inversely proportional to its dataset count
-        inv = df["dataset"].map(lambda x: 1.0 / counts.get(x, 1))
-        # Normalize weights to mean 1.0 (not necessary but stable)
+        inv = df["dataset"].map(lambda x: 1.0 / counts.get(x, 1)).astype(float)
         inv = inv / inv.mean()
-        weights = inv.astype(float).values
+        if abs(cfg.balance_exponent - 1.0) > 1e-6:
+            inv = np.power(inv, cfg.balance_exponent)
+        weights = inv.values
         sampler = WeightedRandomSampler(weights=weights, num_samples=len(weights), replacement=True)
-        logger.info("Using WeightedRandomSampler to equalize datasets: %s", counts)
+        logger.info("Using WeightedRandomSampler to equalize datasets: %s (exponent=%.2f)", counts, cfg.balance_exponent)
 
     loader = DataLoader(
         ds,
@@ -146,7 +159,7 @@ def make_train_loader(cfg: TrainConfig) -> Tuple[DataLoader, Optional[np.ndarray
         pin_memory=True,
         drop_last=True,
     )
-    return loader, weights
+    return loader, weights, class_counts
 
 
 def sanitize_evaluation_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
@@ -243,6 +256,14 @@ def main() -> int:
     parser.add_argument("--num_workers", type=int, default=12)
     parser.add_argument("--image_size", type=int, default=256)
     parser.add_argument("--dataset_balance", type=str, default="equal_by_dataset", choices=["none","equal_by_dataset"])
+    parser.add_argument("--balance_exponent", type=float, default=0.75)
+    parser.add_argument("--dropout_rate", type=float, default=0.3)
+    parser.add_argument("--freeze_backbone_epochs", type=int, default=3)
+    parser.add_argument("--backbone_lr_scale", type=float, default=0.5)
+    parser.add_argument("--neg_class_weight", type=float, default=1.25)
+    parser.add_argument("--pos_class_weight", type=float, default=1.0)
+    parser.add_argument("--real_aug_prob", type=float, default=0.2)
+    parser.add_argument("--grad_clip_norm", type=float, default=1.0)
 
     args = parser.parse_args()
 
@@ -271,6 +292,14 @@ def main() -> int:
         num_workers=args.num_workers,
         image_size=args.image_size,
         dataset_balance=args.dataset_balance,
+        balance_exponent=args.balance_exponent,
+        dropout_rate=args.dropout_rate,
+        freeze_backbone_epochs=args.freeze_backbone_epochs,
+        backbone_lr_scale=args.backbone_lr_scale,
+        neg_class_weight=args.neg_class_weight,
+        pos_class_weight=args.pos_class_weight,
+        real_aug_prob=args.real_aug_prob,
+        grad_clip_norm=args.grad_clip_norm,
     )
 
     # Experiment directory
@@ -278,14 +307,49 @@ def main() -> int:
     logger.info("Stage 03 outputs: %s", framework.experiment_dir)
 
     # Model
-    model = create_baseline_model(pretrained=True, dropout_rate=0.2, model_name=cfg.model_name).to(device)
-    criterion = nn.BCEWithLogitsLoss()
+    model = create_baseline_model(
+        pretrained=True,
+        dropout_rate=cfg.dropout_rate,
+        model_name=cfg.model_name
+    ).to(device)
 
-    # Optimizer
-    optimizer = optim.AdamW(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
+    if cfg.freeze_backbone_epochs > 0:
+        for param in model.backbone.parameters():
+            param.requires_grad = False
+        logger.info("Backbone frozen for first %d epochs", cfg.freeze_backbone_epochs)
+
+    # Optimizer with differential learning rates
+    backbone_params: List[nn.Parameter] = []
+    head_params: List[nn.Parameter] = []
+    for name, param in model.named_parameters():
+        if "backbone" in name:
+            backbone_params.append(param)
+        else:
+            head_params.append(param)
+
+    if not head_params or not backbone_params:
+        logger.warning("Could not separate backbone/head parameters cleanly; using single parameter group.")
+        optimizer = optim.AdamW(
+            model.parameters(),
+            lr=cfg.learning_rate,
+            weight_decay=cfg.weight_decay,
+        )
+    else:
+        optimizer = optim.AdamW(
+            [
+                {"params": head_params, "lr": cfg.learning_rate},
+                {"params": backbone_params, "lr": cfg.learning_rate * cfg.backbone_lr_scale},
+            ],
+            lr=cfg.learning_rate,
+            weight_decay=cfg.weight_decay,
+        )
+
+    pos_weight_tensor = torch.tensor([cfg.pos_class_weight], device=device)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor, reduction="none")
 
     # Data
-    train_loader, _ = make_train_loader(cfg)
+    train_loader, _, class_counts = make_train_loader(cfg)
+    logger.info("Initial class counts: %s", class_counts)
 
     # Validation loader (reuse Stage 01 loaders, but we only need val)
     _, val_loader, _ = create_multi_dataset_loader(
@@ -297,13 +361,15 @@ def main() -> int:
         override_image_size=cfg.image_size,
     )
 
-    evaluator = ModelEvaluator(device=device)
+    evaluator = ModelEvaluator(device=device, threshold=0.7)
 
     best_metric = 0.0
     best_state = None
     best_epoch = 0
     patience_counter = 0
     early_stopped = False
+    backbone_frozen = cfg.freeze_backbone_epochs > 0
+    neg_class_weight_active = abs(cfg.neg_class_weight - 1.0) > 1e-6
 
     train_loss_history: List[float] = []
     train_auc_history: List[float] = []
@@ -314,6 +380,12 @@ def main() -> int:
     epoch_metrics_history: List[Dict[str, Any]] = []
 
     for epoch in range(cfg.epochs):
+        if backbone_frozen and epoch >= cfg.freeze_backbone_epochs:
+            for param in model.backbone.parameters():
+                param.requires_grad = True
+            backbone_frozen = False
+            logger.info("Unfroze EfficientNet backbone at epoch %d", epoch + 1)
+
         model.train()
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.epochs}")
         epoch_loss = 0.0
@@ -325,10 +397,21 @@ def main() -> int:
             images = images.to(device)
             targets = targets.to(device)
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             logits = model(images).squeeze(1)
-            loss = criterion(logits, targets)
+            loss_values = criterion(logits, targets).view(-1)
+            if neg_class_weight_active:
+                sample_weights = torch.where(
+                    targets < 0.5,
+                    torch.full_like(loss_values, cfg.neg_class_weight),
+                    torch.ones_like(loss_values)
+                )
+                loss = (loss_values * sample_weights).mean()
+            else:
+                loss = loss_values.mean()
             loss.backward()
+            if cfg.grad_clip_norm > 0:
+                clip_grad_norm_(model.parameters(), cfg.grad_clip_norm)
             optimizer.step()
 
             epoch_loss += loss.item()
@@ -346,7 +429,7 @@ def main() -> int:
         try:
             train_probs_np = np.asarray(train_prob_buffer, dtype=np.float32)
             train_targets_np = np.asarray(train_target_buffer, dtype=np.float32)
-            train_preds_np = (train_probs_np >= 0.5).astype(np.float32)
+            train_preds_np = (train_probs_np >= 0.7).astype(np.float32)
             train_auc = roc_auc_score(train_targets_np, train_probs_np) if train_targets_np.size and len(np.unique(train_targets_np)) > 1 else 0.5
             train_f1 = f1_score(train_targets_np, train_preds_np, zero_division=0)
             train_accuracy = accuracy_score(train_targets_np, train_preds_np)
@@ -366,6 +449,11 @@ def main() -> int:
                                       "learning_rate": cfg.learning_rate,
                                       "batch_size": cfg.batch_size,
                                       "weight_decay": cfg.weight_decay,
+                                      "dropout_rate": cfg.dropout_rate,
+                                      "neg_class_weight": cfg.neg_class_weight,
+                                      "pos_class_weight": cfg.pos_class_weight,
+                                      "freeze_backbone_epochs": cfg.freeze_backbone_epochs,
+                                      "real_aug_prob": cfg.real_aug_prob,
                                   }})
 
         train_loss_history.append(float(avg_train_loss))
@@ -374,9 +462,11 @@ def main() -> int:
         val_loss_history.append(float(val_metrics.get("loss", 0.0)))
         val_auc_history.append(float(val_metrics.get("auc", 0.0)))
         val_f1_history.append(float(val_metrics.get("f1", 0.0)))
+        current_lrs = [float(pg["lr"]) for pg in optimizer.param_groups]
         epoch_metrics_history.append({
             "epoch": int(epoch + 1),
-            "lr": float(optimizer.param_groups[0]["lr"]),
+            "lr": current_lrs[0],
+            "lr_groups": current_lrs,
             "train": {
                 "loss": float(avg_train_loss),
                 "auc": float(train_auc),
@@ -417,6 +507,7 @@ def main() -> int:
         "best_val_auc": float(best_metric),
         "train_manifest": str(cfg.train_manifest),
         "model_name": cfg.model_name,
+        "class_counts": class_counts,
         "training_history": {
             "train_loss": to_float_list(train_loss_history),
             "train_auc": to_float_list(train_auc_history),
@@ -435,6 +526,15 @@ def main() -> int:
             "patience": cfg.patience,
             "min_delta": cfg.min_delta,
             "dataset_balance": cfg.dataset_balance,
+            "balance_exponent": cfg.balance_exponent,
+            "dropout_rate": cfg.dropout_rate,
+            "freeze_backbone_epochs": cfg.freeze_backbone_epochs,
+            "backbone_lr_scale": cfg.backbone_lr_scale,
+            "neg_class_weight": cfg.neg_class_weight,
+            "pos_class_weight": cfg.pos_class_weight,
+            "real_aug_prob": cfg.real_aug_prob,
+            "grad_clip_norm": cfg.grad_clip_norm,
+            "evaluation_threshold": evaluator.threshold,
         },
     }
 
@@ -466,7 +566,7 @@ def main() -> int:
     evaluation_summary_path = Path(framework.experiment_dir) / "evaluation_summary.json"
 
     try:
-        final_evaluator = ModelEvaluator(device=device)
+        final_evaluator = ModelEvaluator(device=device, threshold=0.7)
         val_loader_with_meta = create_validation_loader_with_metadata(
             config_path="configs/datasets.json",
             batch_size=cfg.batch_size,
