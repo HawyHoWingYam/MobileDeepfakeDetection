@@ -77,7 +77,9 @@ def plot_learning_curves(
         Matplotlib figure object
     """
     epochs = np.arange(1, len(train_loss) + 1)
-    num_plots = sum([1, 1, train_auc is not None, train_f1 is not None])
+    has_auc_panel = (train_auc is not None and len(train_auc) > 0) or (val_auc is not None and len(val_auc) > 0)
+    has_f1_panel = (train_f1 is not None and len(train_f1) > 0) or (val_f1 is not None and len(val_f1) > 0)
+    num_plots = 2 + int(has_auc_panel) + int(has_f1_panel)
     num_cols = min(3, num_plots)
     num_rows = (num_plots + num_cols - 1) // num_cols
 
@@ -103,10 +105,12 @@ def plot_learning_curves(
     plot_idx += 1
 
     # Plot AUC
-    if train_auc is not None and val_auc is not None:
+    if has_auc_panel:
         ax = axes.flat[plot_idx]
-        ax.plot(epochs, train_auc, 'b-', label='Train AUC', linewidth=2, marker='o', markersize=4)
-        ax.plot(epochs, val_auc, 'r-', label='Val AUC', linewidth=2, marker='s', markersize=4)
+        if train_auc is not None and len(train_auc) > 0:
+            ax.plot(epochs, train_auc, 'b-', label='Train AUC', linewidth=2, marker='o', markersize=4)
+        if val_auc is not None and len(val_auc) > 0:
+            ax.plot(epochs, val_auc, 'r-', label='Val AUC', linewidth=2, marker='s', markersize=4)
         if best_epoch is not None:
             ax.axvline(best_epoch + 1, color='g', linestyle='--', alpha=0.7)
         ax.set_xlabel('Epoch', fontsize=11, fontweight='bold')
@@ -118,10 +122,12 @@ def plot_learning_curves(
         plot_idx += 1
 
     # Plot F1
-    if train_f1 is not None and val_f1 is not None:
+    if has_f1_panel:
         ax = axes.flat[plot_idx]
-        ax.plot(epochs, train_f1, 'b-', label='Train F1', linewidth=2, marker='o', markersize=4)
-        ax.plot(epochs, val_f1, 'r-', label='Val F1', linewidth=2, marker='s', markersize=4)
+        if train_f1 is not None and len(train_f1) > 0:
+            ax.plot(epochs, train_f1, 'b-', label='Train F1', linewidth=2, marker='o', markersize=4)
+        if val_f1 is not None and len(val_f1) > 0:
+            ax.plot(epochs, val_f1, 'r-', label='Val F1', linewidth=2, marker='s', markersize=4)
         if best_epoch is not None:
             ax.axvline(best_epoch + 1, color='g', linestyle='--', alpha=0.7)
         ax.set_xlabel('Epoch', fontsize=11, fontweight='bold')

@@ -26,15 +26,16 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Any, List
 
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader, WeightedRandomSampler, ConcatDataset
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 # Ensure 'src' on path
 import sys as _sys
@@ -50,7 +51,21 @@ from utils.experiment_framework import (  # noqa: E402
     setup_reproducible_environment,
 )
 from utils.evaluation import ModelEvaluator  # noqa: E402
+from utils.plotting import (  # noqa: E402
+    plot_learning_curves,
+    plot_roc_curve_precomputed,
+    plot_precision_recall_precomputed,
+    plot_calibration_curve_precomputed,
+    plot_confidence_histogram,
+    plot_train_val_gap,
+    plot_lr_schedule,
+    plot_image_grid,
+    plot_probability_distribution,
+    plot_error_analysis,
+    create_comprehensive_report,
+)
 from training.train_mobilenet import create_multi_dataset_loader  # reuse val loader
+from sklearn.metrics import roc_auc_score, f1_score, accuracy_score, precision_score, recall_score
 
 
 logger = logging.getLogger("train_efficientnet")
@@ -134,6 +149,83 @@ def make_train_loader(cfg: TrainConfig) -> Tuple[DataLoader, Optional[np.ndarray
     return loader, weights
 
 
+def sanitize_evaluation_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove non-serializable objects (numpy arrays) from evaluation summary."""
+    sanitized = dict(summary)
+    for key in ("targets_array", "probabilities_array", "predictions_array"):
+        sanitized.pop(key, None)
+    return sanitized
+
+
+def to_float_list(values: List[float]) -> List[float]:
+    """Ensure all values are plain Python floats for JSON serialization."""
+    return [float(x) for x in values]
+
+
+def create_validation_loader_with_metadata(
+    config_path: str,
+    batch_size: int,
+    num_workers: int,
+    image_size: Optional[int] = None,
+) -> Optional[DataLoader]:
+    """Build validation loader that yields metadata for error visualization."""
+    cfg_path = Path(config_path)
+    if not cfg_path.exists():
+        logger.warning("Validation config not found for metadata loader: %s", cfg_path)
+        return None
+
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            datasets_cfg = json.load(f)
+    except Exception as exc:
+        logger.error("Failed to read dataset config %s: %s", cfg_path, exc)
+        return None
+
+    dataset_names = ["celebdf_v2", "faceforensics", "deeperforensics", "dfdc"]
+    datasets_cfg = datasets_cfg.get("datasets", {})
+
+    val_datasets: List[CelebDFDataset] = []
+    for dataset_name in dataset_names:
+        dataset_cfg = datasets_cfg.get(dataset_name)
+        if not dataset_cfg or not dataset_cfg.get("enabled", True):
+            continue
+
+        root_path = Path(dataset_cfg.get("root_path", "."))
+        splits = dataset_cfg.get("splits", {})
+        ds_image_size = dataset_cfg.get("metadata", {}).get("image_size", [256])[0]
+        if image_size is not None:
+            ds_image_size = int(image_size)
+        val_manifest = root_path / splits.get("val", f"manifests/{dataset_name}_val_balanced.csv")
+
+        try:
+            val_ds = CelebDFDataset(
+                manifest_path=val_manifest,
+                root_path=root_path,
+                image_size=ds_image_size,
+                augmentation=False,
+                normalize=True,
+                return_meta=True,
+            )
+            val_datasets.append(val_ds)
+        except Exception as exc:
+            logger.warning("Failed to prepare metadata dataset for %s: %s", dataset_name, exc)
+
+    if not val_datasets:
+        logger.warning("No validation datasets available for metadata-enabled loader")
+        return None
+
+    combined = ConcatDataset(val_datasets)
+    logger.info("Metadata validation loader size: %s samples", len(combined))
+    return DataLoader(
+        combined,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=max(1, num_workers // 2),
+        pin_memory=True,
+        drop_last=False,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Stage 03: Train EfficientNetV2 expert on difficult subset")
     parser.add_argument("--train_manifest", type=str, default="manifests/train_difficult_subset.csv")
@@ -211,12 +303,23 @@ def main() -> int:
     best_state = None
     best_epoch = 0
     patience_counter = 0
+    early_stopped = False
+
+    train_loss_history: List[float] = []
+    train_auc_history: List[float] = []
+    train_f1_history: List[float] = []
+    val_loss_history: List[float] = []
+    val_auc_history: List[float] = []
+    val_f1_history: List[float] = []
+    epoch_metrics_history: List[Dict[str, Any]] = []
 
     for epoch in range(cfg.epochs):
         model.train()
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{cfg.epochs}")
         epoch_loss = 0.0
         n_batches = 0
+        train_prob_buffer: List[float] = []
+        train_target_buffer: List[float] = []
 
         for images, targets in pbar:
             images = images.to(device)
@@ -230,13 +333,32 @@ def main() -> int:
 
             epoch_loss += loss.item()
             n_batches += 1
-            pbar.set_postfix({"loss": f"{(epoch_loss/max(n_batches,1)):.4f}"})
+            current_loss = epoch_loss / max(n_batches, 1)
+            pbar.set_postfix({"loss": f"{current_loss:.4f}"})
+
+            probs = torch.sigmoid(logits)
+            train_prob_buffer.extend(probs.detach().cpu().tolist())
+            train_target_buffer.extend(targets.detach().cpu().tolist())
 
         # Validation
         val_metrics = evaluator.evaluate_model(model, val_loader, criterion=criterion, mode="validation")
+        avg_train_loss = epoch_loss / max(n_batches, 1)
+        try:
+            train_probs_np = np.asarray(train_prob_buffer, dtype=np.float32)
+            train_targets_np = np.asarray(train_target_buffer, dtype=np.float32)
+            train_preds_np = (train_probs_np >= 0.5).astype(np.float32)
+            train_auc = roc_auc_score(train_targets_np, train_probs_np) if train_targets_np.size and len(np.unique(train_targets_np)) > 1 else 0.5
+            train_f1 = f1_score(train_targets_np, train_preds_np, zero_division=0)
+            train_accuracy = accuracy_score(train_targets_np, train_preds_np)
+        except Exception as exc:
+            logger.warning("Failed to compute training metrics: %s", exc)
+            train_auc = 0.5
+            train_f1 = 0.0
+            train_accuracy = 0.0
+
         metric_name = cfg.save_on_metric
         metric_value = float(val_metrics.get(metric_name, 0.0))
-        framework.log_metrics(epoch, {"train_loss": epoch_loss / max(n_batches,1)})
+        framework.log_metrics(epoch, {"train_loss": avg_train_loss})
         framework.log_metrics(epoch, val_metrics, mode="validation")
         framework.save_best_model(model, metric_value, metric_name=metric_name, optimizer=optimizer,
                                   additional_info={"hyperparameters": {
@@ -245,6 +367,24 @@ def main() -> int:
                                       "batch_size": cfg.batch_size,
                                       "weight_decay": cfg.weight_decay,
                                   }})
+
+        train_loss_history.append(float(avg_train_loss))
+        train_auc_history.append(float(train_auc))
+        train_f1_history.append(float(train_f1))
+        val_loss_history.append(float(val_metrics.get("loss", 0.0)))
+        val_auc_history.append(float(val_metrics.get("auc", 0.0)))
+        val_f1_history.append(float(val_metrics.get("f1", 0.0)))
+        epoch_metrics_history.append({
+            "epoch": int(epoch + 1),
+            "lr": float(optimizer.param_groups[0]["lr"]),
+            "train": {
+                "loss": float(avg_train_loss),
+                "auc": float(train_auc),
+                "f1": float(train_f1),
+                "accuracy": float(train_accuracy),
+            },
+            "val": {k: float(v) for k, v in val_metrics.items()},
+        })
 
         # Early stopping (use AUC by default for stability)
         monitor = float(val_metrics.get("auc", 0.0))
@@ -259,6 +399,7 @@ def main() -> int:
             logger.info("No AUC improvement. Patience %d/%d", patience_counter, cfg.patience)
             if cfg.patience > 0 and patience_counter >= cfg.patience:
                 logger.info("Early stopping triggered at epoch %d", epoch+1)
+                early_stopped = True
                 break
 
     # Restore best
@@ -266,18 +407,276 @@ def main() -> int:
         model.load_state_dict(best_state)
         logger.info("Restored best weights from epoch %d (AUC=%.4f)", best_epoch+1, best_metric)
 
-    # Save simple summary
+    epochs_ran = len(train_loss_history)
     summary = {
         "training_completed": True,
-        "best_val_auc": float(best_metric),
-        "best_epoch": int(best_epoch+1),
+        "early_stopped": bool(early_stopped),
         "epochs_configured": int(cfg.epochs),
+        "epochs_ran": int(epochs_ran),
+        "best_epoch": int(best_epoch + 1),
+        "best_val_auc": float(best_metric),
         "train_manifest": str(cfg.train_manifest),
         "model_name": cfg.model_name,
+        "training_history": {
+            "train_loss": to_float_list(train_loss_history),
+            "train_auc": to_float_list(train_auc_history),
+            "train_f1": to_float_list(train_f1_history),
+            "val_loss": to_float_list(val_loss_history),
+            "val_auc": to_float_list(val_auc_history),
+            "val_f1": to_float_list(val_f1_history),
+        },
+        "epoch_metrics": epoch_metrics_history,
+        "hyperparameters": {
+            "model_name": cfg.model_name,
+            "epochs": cfg.epochs,
+            "batch_size": cfg.batch_size,
+            "learning_rate": cfg.learning_rate,
+            "weight_decay": cfg.weight_decay,
+            "patience": cfg.patience,
+            "min_delta": cfg.min_delta,
+            "dataset_balance": cfg.dataset_balance,
+        },
     }
-    with open(Path(framework.experiment_dir) / "training_summary.json", "w") as f:
+
+    summary_path = Path(framework.experiment_dir) / "training_summary.json"
+    with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
-    logger.info("Summary saved: %s", Path(framework.experiment_dir)/"training_summary.json")
+    logger.info("Summary saved: %s", summary_path)
+
+    plots_generated: List[str] = []
+    plots_failed: List[Dict[str, str]] = []
+
+    learning_curve_path = Path(framework.experiment_dir) / "learning_curves.png"
+    try:
+        plot_learning_curves(
+            train_loss=train_loss_history,
+            val_loss=val_loss_history,
+            train_auc=train_auc_history if len(train_auc_history) > 0 else None,
+            val_auc=val_auc_history if len(val_auc_history) > 0 else None,
+            train_f1=train_f1_history if len(train_f1_history) > 0 else None,
+            val_f1=val_f1_history if len(val_f1_history) > 0 else None,
+            output_path=str(learning_curve_path),
+            best_epoch=best_epoch if epochs_ran else None,
+        )
+        plots_generated.append(learning_curve_path.name)
+    except Exception as exc:
+        logger.warning("Could not generate learning curves: %s", exc)
+        plots_failed.append({"plot": learning_curve_path.name, "error": str(exc)})
+
+    evaluation_summary_path = Path(framework.experiment_dir) / "evaluation_summary.json"
+
+    try:
+        final_evaluator = ModelEvaluator(device=device)
+        val_loader_with_meta = create_validation_loader_with_metadata(
+            config_path="configs/datasets.json",
+            batch_size=cfg.batch_size,
+            num_workers=cfg.num_workers,
+            image_size=cfg.image_size,
+        )
+        eval_loader = val_loader_with_meta or val_loader
+        val_summary = final_evaluator.full_evaluation(
+            model, eval_loader, criterion=criterion, mode="validation"
+        )
+
+        with open(evaluation_summary_path, "w") as f:
+            json.dump(sanitize_evaluation_summary(val_summary), f, indent=2)
+        logger.info("Evaluation summary saved: %s", evaluation_summary_path)
+
+        roc_data = val_summary.get("roc_curve", {})
+        if roc_data.get("fpr") and roc_data.get("tpr"):
+            try:
+                fig = plot_roc_curve_precomputed(
+                    roc_data["fpr"],
+                    roc_data["tpr"],
+                    val_summary.get("metrics", {}).get("auc", 0.0),
+                    output_path=framework.experiment_dir / "01_roc_curve.png",
+                )
+                if fig is not None:
+                    plt.close(fig)
+                plots_generated.append("01_roc_curve.png")
+            except Exception as exc:  # pragma: no cover - plotting safety
+                logger.warning("Failed to generate ROC curve: %s", exc)
+                plots_failed.append({"plot": "01_roc_curve.png", "error": str(exc)})
+
+        pr_data = val_summary.get("pr_curve", {})
+        if pr_data.get("precision") and pr_data.get("recall"):
+            try:
+                fig = plot_precision_recall_precomputed(
+                    pr_data["precision"],
+                    pr_data["recall"],
+                    output_path=framework.experiment_dir / "02_pr_curve.png",
+                )
+                if fig is not None:
+                    plt.close(fig)
+                plots_generated.append("02_pr_curve.png")
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Failed to generate precision-recall curve: %s", exc)
+                plots_failed.append({"plot": "02_pr_curve.png", "error": str(exc)})
+
+        calibration = val_summary.get("calibration_bins", {})
+        if calibration.get("bin_centers") and calibration.get("avg_confidence"):
+            try:
+                fig = plot_calibration_curve_precomputed(
+                    calibration["bin_centers"],
+                    calibration["avg_confidence"],
+                    calibration.get("accuracy", []),
+                    output_path=framework.experiment_dir / "03_calibration.png",
+                )
+                if fig is not None:
+                    plt.close(fig)
+                plots_generated.append("03_calibration.png")
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Failed to generate calibration plot: %s", exc)
+                plots_failed.append({"plot": "03_calibration.png", "error": str(exc)})
+
+        confidence_hist = val_summary.get("confidence_hist", {})
+        if confidence_hist.get("bins"):
+            try:
+                fig = plot_confidence_histogram(
+                    confidence_hist["bins"],
+                    confidence_hist.get("real_hist", []),
+                    confidence_hist.get("fake_hist", []),
+                    output_path=framework.experiment_dir / "04_confidence_hist.png",
+                )
+                if fig is not None:
+                    plt.close(fig)
+                plots_generated.append("04_confidence_hist.png")
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Failed to generate confidence histogram: %s", exc)
+                plots_failed.append({"plot": "04_confidence_hist.png", "error": str(exc)})
+
+        try:
+            fig = plot_train_val_gap(
+                epoch_metrics_history,
+                output_path=framework.experiment_dir / "05_train_val_gap.png",
+            )
+            if fig is not None:
+                plt.close(fig)
+            plots_generated.append("05_train_val_gap.png")
+        except Exception as exc:
+            logger.warning("Failed to generate train/val gap plot: %s", exc)
+            plots_failed.append({"plot": "05_train_val_gap.png", "error": str(exc)})
+
+        try:
+            fig = plot_lr_schedule(
+                epoch_metrics_history,
+                output_path=framework.experiment_dir / "06_lr_schedule.png",
+            )
+            if fig is not None:
+                plt.close(fig)
+            plots_generated.append("06_lr_schedule.png")
+        except Exception as exc:
+            logger.warning("Failed to generate LR schedule plot: %s", exc)
+            plots_failed.append({"plot": "06_lr_schedule.png", "error": str(exc)})
+
+        try:
+            if val_summary.get("topk_fp_paths") or val_summary.get("topk_fn_paths"):
+                fig = plot_image_grid(
+                    val_summary.get("topk_fp_paths", [])[:32] + val_summary.get("topk_fn_paths", [])[:32],
+                    title="Error Samples (FP & FN)",
+                    output_path=framework.experiment_dir / "07_error_samples.png",
+                )
+                if fig is not None:
+                    plt.close(fig)
+                    plots_generated.append("07_error_samples.png")
+
+                if val_summary.get("topk_fp_paths"):
+                    fig = plot_image_grid(
+                        val_summary["topk_fp_paths"][:32],
+                        title="Top False Positives",
+                        output_path=framework.experiment_dir / "07a_top_fp_samples.png",
+                    )
+                    if fig is not None:
+                        plt.close(fig)
+                        plots_generated.append("07a_top_fp_samples.png")
+
+                if val_summary.get("topk_fn_paths"):
+                    fig = plot_image_grid(
+                        val_summary["topk_fn_paths"][:32],
+                        title="Top False Negatives",
+                        output_path=framework.experiment_dir / "07b_top_fn_samples.png",
+                    )
+                    if fig is not None:
+                        plt.close(fig)
+                        plots_generated.append("07b_top_fn_samples.png")
+        except Exception as exc:
+            logger.warning("Failed to generate error sample grids: %s", exc)
+            plots_failed.append({"plot": "07_error_samples.png", "error": str(exc)})
+
+        try:
+            if "targets_array" in val_summary and "probabilities_array" in val_summary:
+                targets_np = np.asarray(val_summary["targets_array"])
+                probs_np = np.asarray(val_summary["probabilities_array"]).reshape(-1)
+                preds_np = np.asarray(
+                    val_summary.get("predictions_array", (probs_np >= 0.5).astype(int))
+                ).reshape(-1)
+
+                real_probs = probs_np[targets_np == 0]
+                fake_probs = probs_np[targets_np == 1]
+
+                fig = plot_probability_distribution(
+                    probabilities_real=real_probs,
+                    probabilities_fake=fake_probs,
+                    output_path=framework.experiment_dir / "08_probability_distribution.png",
+                )
+                if fig is not None:
+                    plt.close(fig)
+                    plots_generated.append("08_probability_distribution.png")
+
+                fig = plot_error_analysis(
+                    targets=targets_np,
+                    predictions=preds_np,
+                    probabilities=probs_np,
+                    output_path=framework.experiment_dir / "09_error_analysis.png",
+                )
+                if fig is not None:
+                    plt.close(fig)
+                    plots_generated.append("09_error_analysis.png")
+        except Exception as exc:
+            logger.warning("Failed to generate probability/error analysis plots: %s", exc)
+            plots_failed.append({"plot": "probability_analysis", "error": str(exc)})
+
+        try:
+            create_comprehensive_report(
+                val_summary,
+                output_dir=framework.experiment_dir,
+            )
+            plots_generated.extend(
+                [
+                    "metrics_summary.png",
+                    "confusion_matrix.png",
+                    "class_distribution.png",
+                    "threshold_analysis.png",
+                ]
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to create comprehensive report plots: %s", exc)
+            plots_failed.append({"plot": "comprehensive_report", "error": str(exc)})
+
+        summary["val_final"] = {
+            "metrics": val_summary.get("metrics", {}),
+            "loss": val_summary.get("loss"),
+            "confusion_matrix": val_summary.get("confusion_matrix", {}),
+            "total_samples": val_summary.get("total_samples"),
+            "class_distribution": val_summary.get("class_distribution", {}),
+            "probability_statistics": val_summary.get("probability_statistics", {}),
+        }
+        summary["evaluation_summary_file"] = evaluation_summary_path.name
+
+    except Exception as exc:
+        logger.error("Post-training evaluation failed: %s", exc)
+        plots_failed.append({"plot": "evaluation", "error": str(exc)})
+
+    summary["artifacts"] = {
+        "plots": plots_generated,
+        "plots_failed": plots_failed,
+        "learning_curves": learning_curve_path.name,
+        "best_model": "best_model.pth",
+    }
+
+    with open(summary_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    logger.info("Updated training summary with evaluation artifacts: %s", summary_path)
 
     framework.close()
     return 0

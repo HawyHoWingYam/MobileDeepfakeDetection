@@ -93,6 +93,9 @@ class ModelEvaluator:
 
                 # Forward pass
                 outputs = model(images)
+                if outputs.ndim > 1 and outputs.shape[-1] == 1:
+                    outputs = outputs.squeeze(-1)
+                targets = targets.view(-1)
                 probabilities = torch.sigmoid(outputs)
                 predictions = (probabilities >= self.threshold).float()
 
@@ -397,6 +400,9 @@ class ModelEvaluator:
 
                 # Forward pass
                 outputs = model(images)
+                if outputs.ndim > 1 and outputs.shape[-1] == 1:
+                    outputs = outputs.squeeze(-1)
+                targets = targets.view(-1)
                 probabilities = torch.sigmoid(outputs)
                 predictions = (probabilities >= self.threshold).float()
 
