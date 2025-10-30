@@ -77,3 +77,4 @@ env/
 !logs/.gitkeep
 !results/.gitkeep
 !manifests/.gitkeep
+outputs/*

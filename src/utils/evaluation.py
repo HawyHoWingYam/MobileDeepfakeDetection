@@ -513,6 +513,16 @@ class ModelEvaluator:
                 top_fn_idx = fn_indices[np.argsort(-fn_probs)[:top_k_errors]]
                 topk_fn_paths = [self.sample_paths[i] for i in top_fn_idx if i < len(self.sample_paths)]
 
+        # Perform comprehensive threshold sweep (0.50-0.90 with step 0.02)
+        threshold_sweep_results, threshold_sweep_csv = self.threshold_sweep(
+            targets, probabilities, start=0.50, end=0.90, step=0.02
+        )
+
+        # Generate calibration table (Phase B2)
+        calibration_table_results, calibration_table_csv = self.generate_calibration_table(
+            probabilities, targets, n_bins=10
+        )
+
         # Build comprehensive summary
         summary = {
             'evaluation_mode': mode,
@@ -543,6 +553,8 @@ class ModelEvaluator:
                 'std': float(probabilities.std()),
             },
             'threshold_analysis': self._analyze_thresholds(targets, probabilities, thresholds),
+            'threshold_sweep': threshold_sweep_results,  # NEW: fine-grained sweep
+            'calibration_table': calibration_table_results,  # NEW: calibration metrics
             'classification_report': metrics.get('detailed', {}),
             # PR-3: New fields for plotting
             'roc_curve': roc_data,
@@ -555,6 +567,8 @@ class ModelEvaluator:
             'targets_array': targets,
             'probabilities_array': probabilities,
             'predictions_array': predictions,
+            'threshold_sweep_csv': threshold_sweep_csv,  # NEW: CSV string for export
+            'calibration_table_csv': calibration_table_csv,  # NEW: calibration CSV
         }
 
         logger.info(f"✅ Full evaluation completed: {summary['total_samples']} samples analyzed")
@@ -598,6 +612,138 @@ class ModelEvaluator:
                 logger.warning(f"Could not calculate metrics for threshold {threshold}: {e}")
 
         return threshold_results
+
+    def threshold_sweep(
+        self,
+        targets: np.ndarray,
+        probabilities: np.ndarray,
+        start: float = 0.50,
+        end: float = 0.90,
+        step: float = 0.02
+    ) -> Tuple[List[Dict[str, Any]], str]:
+        """
+        Comprehensive threshold sweep with fine granularity.
+
+        Args:
+            targets: True labels
+            probabilities: Model probability predictions
+            start: Minimum threshold (default: 0.50)
+            end: Maximum threshold (default: 0.90)
+            step: Step size (default: 0.02)
+
+        Returns:
+            Tuple of (list of threshold metrics dicts, CSV string for export)
+        """
+        import io
+        import csv as csv_module
+
+        threshold_sweep_results = []
+        thresholds = np.arange(start, end + step, step)
+
+        for threshold in thresholds:
+            predictions = (probabilities >= threshold).astype(int)
+
+            try:
+                tn, fp, fn, tp = confusion_matrix(targets, predictions).ravel()
+
+                specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
+                sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+                fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
+
+                metrics = {
+                    'threshold': float(round(threshold, 3)),
+                    'f1': float(f1_score(targets, predictions, zero_division=0)),
+                    'accuracy': float(accuracy_score(targets, predictions)),
+                    'precision': float(precision_score(targets, predictions, zero_division=0)),
+                    'recall': float(recall_score(targets, predictions, zero_division=0)),
+                    'specificity': float(specificity),
+                    'fpr': float(fpr),
+                    'tp': int(tp),
+                    'fp': int(fp),
+                    'tn': int(tn),
+                    'fn': int(fn),
+                }
+                threshold_sweep_results.append(metrics)
+            except Exception as e:
+                logger.warning(f"Could not calculate metrics for threshold {threshold}: {e}")
+
+        # Generate CSV string
+        if threshold_sweep_results:
+            csv_buffer = io.StringIO()
+            fieldnames = list(threshold_sweep_results[0].keys())
+            writer = csv_module.DictWriter(csv_buffer, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(threshold_sweep_results)
+            csv_string = csv_buffer.getvalue()
+        else:
+            csv_string = ""
+
+        logger.info(f"✅ Threshold sweep completed: {len(threshold_sweep_results)} thresholds analyzed")
+
+        return threshold_sweep_results, csv_string
+
+    def generate_calibration_table(
+        self,
+        probabilities: np.ndarray,
+        targets: np.ndarray,
+        n_bins: int = 10
+    ) -> Tuple[List[Dict[str, Any]], str]:
+        """
+        Phase B2: Generate calibration table with accuracy vs confidence.
+
+        Args:
+            probabilities: Model probability predictions
+            targets: True labels
+            n_bins: Number of calibration bins (default: 10)
+
+        Returns:
+            Tuple of (list of calibration metrics dicts, CSV string for export)
+        """
+        import io
+        import csv as csv_module
+
+        bin_edges = np.linspace(0, 1, n_bins + 1)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        calibration_table = []
+
+        for i in range(n_bins):
+            mask = (probabilities >= bin_edges[i]) & (probabilities < bin_edges[i + 1])
+            n_samples = mask.sum()
+
+            if n_samples > 0:
+                avg_confidence = float(probabilities[mask].mean())
+                accuracy = float(targets[mask].mean())
+                expected_error = abs(accuracy - avg_confidence)
+            else:
+                avg_confidence = float(bin_centers[i])
+                accuracy = 0.0
+                expected_error = 0.0
+
+            calibration_table.append({
+                'bin': int(i),
+                'lower': float(round(bin_edges[i], 3)),
+                'upper': float(round(bin_edges[i + 1], 3)),
+                'center': float(round(bin_centers[i], 3)),
+                'n_samples': int(n_samples),
+                'avg_confidence': float(round(avg_confidence, 4)),
+                'accuracy': float(round(accuracy, 4)),
+                'expected_error': float(round(expected_error, 4)),
+            })
+
+        # Generate CSV string
+        if calibration_table:
+            csv_buffer = io.StringIO()
+            fieldnames = list(calibration_table[0].keys())
+            writer = csv_module.DictWriter(csv_buffer, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(calibration_table)
+            csv_string = csv_buffer.getvalue()
+        else:
+            csv_string = ""
+
+        logger.info(f"✅ Calibration table generated: {len(calibration_table)} bins analyzed")
+
+        return calibration_table, csv_string
 
     def save_predictions(
         self,

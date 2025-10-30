@@ -60,6 +60,25 @@ from utils.experiment_framework import (  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
+def _parse_kv_pairs(pairs: Optional[List[str]]) -> Dict[str, int]:
+    """Parse CLI key=value pairs into a dict."""
+    parsed: Dict[str, int] = {}
+    if not pairs:
+        return parsed
+    for item in pairs:
+        if "=" not in item:
+            raise argparse.ArgumentTypeError(f"Expected key=value, got '{item}'")
+        key, value = item.split("=", 1)
+        key = key.strip()
+        try:
+            parsed[key] = int(float(value))
+        except ValueError as exc:  # noqa: BLE001
+            raise argparse.ArgumentTypeError(
+                f"Value for '{key}' must be numeric, got '{value}'"
+            ) from exc
+    return parsed
+
+
 def _str2bool(v: object) -> bool:
     if isinstance(v, bool):
         return v
@@ -306,7 +325,8 @@ def _infer_dataset(
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to save intermediate preds '%s': %s", preds_path, exc)
 
-    return all_preds, difficult
+    merged["dataset"] = name
+    return merged, difficult
 
 
 def main() -> int:
@@ -349,6 +369,20 @@ def main() -> int:
     parser.add_argument("--num_workers", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--use_amp", type=_str2bool, default=None)
+    parser.add_argument(
+        "--dataset_quota",
+        nargs="*",
+        default=None,
+        metavar="DATASET=COUNT",
+        help="Per-dataset cap applied to difficult samples (e.g. dfdc=15000)",
+    )
+    parser.add_argument(
+        "--dataset_min",
+        nargs="*",
+        default=None,
+        metavar="DATASET=COUNT",
+        help="Per-dataset minimum to retain (e.g. celebdf_v2=3000)",
+    )
 
     args = parser.parse_args()
 
@@ -377,6 +411,8 @@ def main() -> int:
 
     s2cfg = _load_stage2_config(args.stage2_config, cli_overrides)
     device = _resolve_device(s2cfg.device)
+    dataset_quota_cfg = _parse_kv_pairs(args.dataset_quota)
+    dataset_min_cfg = _parse_kv_pairs(args.dataset_min)
 
     # Reproducibility
     setup_reproducible_environment(42)
@@ -390,6 +426,7 @@ def main() -> int:
     model = _load_stage1_model(Path(args.stage1_model_path), device)
 
     # Iterate datasets and process train split
+    dataset_full_records: Dict[str, pd.DataFrame] = {}
     difficult_parts: List[pd.DataFrame] = []
     for name in ["celebdf_v2", "faceforensics", "deeperforensics", "dfdc"]:
         ds_cfg = datasets.get(name)
@@ -398,7 +435,7 @@ def main() -> int:
             continue
 
         logger.info("Processing dataset '%s'", name)
-        all_preds, difficult = _infer_dataset(
+        merged_preds, difficult = _infer_dataset(
             name=name,
             cfg=ds_cfg,
             model=model,
@@ -408,10 +445,11 @@ def main() -> int:
             save_intermediate=s2cfg.save_intermediate_preds,
         )
 
+        dataset_full_records[name] = merged_preds
         logger.info(
             "Dataset '%s': total=%d, difficult=%d (amb>=%.2f<=%.2f or error at thr=%.2f)",
             name,
-            len(all_preds),
+            len(merged_preds),
             len(difficult),
             s2cfg.ambiguity_lower,
             s2cfg.ambiguity_upper,
@@ -424,6 +462,114 @@ def main() -> int:
     if difficult_parts:
         df_difficult = pd.concat(difficult_parts, ignore_index=True)
         df_difficult = df_difficult.drop_duplicates(subset=["dataset", "image_path"], keep="first")
+
+        if dataset_min_cfg:
+            for dataset_name, minimum in dataset_min_cfg.items():
+                if minimum is None or minimum <= 0:
+                    continue
+                current_subset = df_difficult[df_difficult["dataset"] == dataset_name]
+                current_count = len(current_subset)
+                if current_count >= minimum:
+                    continue
+                full_preds = dataset_full_records.get(dataset_name)
+                if full_preds is None or full_preds.empty:
+                    logger.warning(
+                        "Dataset '%s' missing prediction records; cannot satisfy minimum %d.",
+                        dataset_name,
+                        minimum,
+                    )
+                    continue
+
+                available = full_preds.drop_duplicates(subset=["dataset", "image_path"], keep="first")
+                if not current_subset.empty:
+                    available = available[~available["image_path"].isin(current_subset["image_path"])]
+
+                if available.empty:
+                    logger.warning(
+                        "Dataset '%s' has no additional samples to reach minimum %d (current=%d).",
+                        dataset_name,
+                        minimum,
+                        current_count,
+                    )
+                    continue
+
+                needed = minimum - current_count
+                needed = min(needed, len(available))
+
+                available = available.copy()
+                if "difficulty" not in available.columns:
+                    available["difficulty"] = "none"
+                available["distance_to_threshold"] = np.abs(
+                    available["prob"] - s2cfg.decision_threshold
+                )
+                available = available.sort_values("distance_to_threshold", ascending=True)
+                selected = available.head(needed).copy()
+                if selected.empty:
+                    logger.warning(
+                        "Dataset '%s' could not provide additional samples despite available entries.",
+                        dataset_name,
+                    )
+                    continue
+
+                # Mark padding source so downstream analysis can filter if needed
+                selected.loc[selected["difficulty"] == "none", "difficulty"] = "min_padding"
+                selected = selected.drop(columns=["distance_to_threshold"], errors="ignore")
+
+                df_difficult = pd.concat([df_difficult, selected], ignore_index=True)
+                logger.info(
+                    "Dataset '%s' padded with %d near-threshold samples to reach minimum %d (total=%d).",
+                    dataset_name,
+                    len(selected),
+                    minimum,
+                    len(df_difficult[df_difficult["dataset"] == dataset_name]),
+                )
+
+                if len(df_difficult[df_difficult["dataset"] == dataset_name]) < minimum:
+                    logger.warning(
+                        "Dataset '%s' still below requested minimum %d after padding (current=%d).",
+                        dataset_name,
+                        minimum,
+                        len(df_difficult[df_difficult["dataset"] == dataset_name]),
+                    )
+
+        df_difficult = df_difficult.drop_duplicates(subset=["dataset", "image_path"], keep="first")
+
+        if dataset_quota_cfg or dataset_min_cfg:
+            rng = np.random.default_rng(42)
+            capped_parts: List[pd.DataFrame] = []
+            for dataset_name, subset in df_difficult.groupby("dataset", sort=False):
+                original_len = len(subset)
+                quota = (dataset_quota_cfg or {}).get(dataset_name)
+                minimum = (dataset_min_cfg or {}).get(dataset_name)
+
+                target = original_len
+                if quota is not None:
+                    target = min(target, quota)
+                if minimum is not None:
+                    if original_len < minimum:
+                        logger.warning(
+                            "Dataset '%s' only has %d difficult samples (< requested min %d); keeping all.",
+                            dataset_name,
+                            original_len,
+                            minimum,
+                        )
+                    else:
+                        target = max(target, minimum)
+
+                target = min(target, original_len)
+                if target < original_len:
+                    indices = rng.choice(original_len, size=target, replace=False)
+                    subset = subset.iloc[np.sort(indices)]
+                    logger.info(
+                        "Dataset '%s' capped from %d to %d difficult samples",
+                        dataset_name,
+                        original_len,
+                        target,
+                    )
+
+                capped_parts.append(subset)
+
+            df_difficult = pd.concat(capped_parts, ignore_index=True)
     else:
         df_difficult = pd.DataFrame(columns=["image_path", "label", "prob", "pred", "difficulty", "dataset"])  # noqa: E501
 

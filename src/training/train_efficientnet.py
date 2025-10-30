@@ -89,7 +89,7 @@ class TrainConfig:
     batch_size: int = 256
     learning_rate: float = 1e-4
     weight_decay: float = 1e-4
-    patience: int = 5
+    patience: int = 4
     min_delta: float = 0.0005
     restore_best: bool = True
     save_on_metric: str = "f1"
@@ -106,6 +106,11 @@ class TrainConfig:
     pos_class_weight: float = 1.0
     real_aug_prob: float = 0.2
     grad_clip_norm: float = 1.0
+    label_smoothing: float = 0.05
+    use_scheduler: bool = True
+    scheduler_factor: float = 0.5
+    scheduler_patience: int = 2
+    scheduler_min_lr: float = 1e-6
 
 
 def resolve_device(s: str) -> torch.device:
@@ -247,7 +252,7 @@ def main() -> int:
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--learning_rate", "--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
-    parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--patience", type=int, default=4)
     parser.add_argument("--min_delta", type=float, default=0.0005)
     parser.add_argument("--restore_best", type=str2bool, default=True)
     parser.add_argument("--save_on_metric", type=str, default="f1")
@@ -264,6 +269,11 @@ def main() -> int:
     parser.add_argument("--pos_class_weight", type=float, default=1.0)
     parser.add_argument("--real_aug_prob", type=float, default=0.2)
     parser.add_argument("--grad_clip_norm", type=float, default=1.0)
+    parser.add_argument("--label_smoothing", type=float, default=0.05)
+    parser.add_argument("--use_scheduler", type=str2bool, default=True)
+    parser.add_argument("--scheduler_factor", type=float, default=0.5)
+    parser.add_argument("--scheduler_patience", type=int, default=2)
+    parser.add_argument("--scheduler_min_lr", type=float, default=1e-6)
 
     args = parser.parse_args()
 
@@ -300,6 +310,11 @@ def main() -> int:
         pos_class_weight=args.pos_class_weight,
         real_aug_prob=args.real_aug_prob,
         grad_clip_norm=args.grad_clip_norm,
+        label_smoothing=args.label_smoothing,
+        use_scheduler=args.use_scheduler,
+        scheduler_factor=args.scheduler_factor,
+        scheduler_patience=args.scheduler_patience,
+        scheduler_min_lr=args.scheduler_min_lr,
     )
 
     # Experiment directory
@@ -346,6 +361,19 @@ def main() -> int:
 
     pos_weight_tensor = torch.tensor([cfg.pos_class_weight], device=device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor, reduction="none")
+
+    # Setup scheduler
+    scheduler = None
+    if cfg.use_scheduler:
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="max",
+            factor=cfg.scheduler_factor,
+            patience=cfg.scheduler_patience,
+            min_lr=cfg.scheduler_min_lr,
+        )
+        logger.info("ReduceLROnPlateau scheduler enabled: factor=%.2f, patience=%d, min_lr=%.2e",
+                   cfg.scheduler_factor, cfg.scheduler_patience, cfg.scheduler_min_lr)
 
     # Data
     train_loader, _, class_counts = make_train_loader(cfg)
@@ -397,6 +425,12 @@ def main() -> int:
             images = images.to(device)
             targets = targets.to(device)
 
+            hard_targets = targets.detach().clone()
+
+            # Apply label smoothing
+            if cfg.label_smoothing > 0:
+                targets = targets * (1 - cfg.label_smoothing) + cfg.label_smoothing * 0.5
+
             optimizer.zero_grad(set_to_none=True)
             logits = model(images).squeeze(1)
             loss_values = criterion(logits, targets).view(-1)
@@ -421,7 +455,7 @@ def main() -> int:
 
             probs = torch.sigmoid(logits)
             train_prob_buffer.extend(probs.detach().cpu().tolist())
-            train_target_buffer.extend(targets.detach().cpu().tolist())
+            train_target_buffer.extend(hard_targets.cpu().tolist())
 
         # Validation
         val_metrics = evaluator.evaluate_model(model, val_loader, criterion=criterion, mode="validation")
@@ -492,6 +526,14 @@ def main() -> int:
                 early_stopped = True
                 break
 
+        # Scheduler step (on AUC metric)
+        if scheduler is not None:
+            prev_lrs = [pg["lr"] for pg in optimizer.param_groups]
+            scheduler.step(monitor)
+            new_lrs = [pg["lr"] for pg in optimizer.param_groups]
+            if any(abs(a - b) > 1e-12 for a, b in zip(prev_lrs, new_lrs)):
+                logger.info("Scheduler adjusted learning rates: %s -> %s", prev_lrs, new_lrs)
+
     # Restore best
     if best_state is not None and cfg.restore_best:
         model.load_state_dict(best_state)
@@ -534,6 +576,11 @@ def main() -> int:
             "pos_class_weight": cfg.pos_class_weight,
             "real_aug_prob": cfg.real_aug_prob,
             "grad_clip_norm": cfg.grad_clip_norm,
+            "label_smoothing": cfg.label_smoothing,
+            "use_scheduler": cfg.use_scheduler,
+            "scheduler_factor": cfg.scheduler_factor,
+            "scheduler_patience": cfg.scheduler_patience,
+            "scheduler_min_lr": cfg.scheduler_min_lr,
             "evaluation_threshold": evaluator.threshold,
         },
     }
@@ -763,16 +810,43 @@ def main() -> int:
         }
         summary["evaluation_summary_file"] = evaluation_summary_path.name
 
+        artifacts_dict = summary.setdefault("artifacts", {})
+        artifacts_dict.update(
+            {
+                "plots": plots_generated,
+                "plots_failed": plots_failed,
+                "learning_curves": learning_curve_path.name,
+                "best_model": "best_model.pth",
+            }
+        )
+        artifacts_dict.setdefault("threshold_sweep_csv", None)
+        artifacts_dict.setdefault("calibration_table_csv", None)
+
+        # Save threshold sweep CSV if available (Phase B: B1 implementation)
+        try:
+            if "threshold_sweep_csv" in val_summary and val_summary["threshold_sweep_csv"]:
+                threshold_sweep_csv_path = Path(framework.experiment_dir) / "threshold_sweep.csv"
+                with open(threshold_sweep_csv_path, "w") as f:
+                    f.write(val_summary["threshold_sweep_csv"])
+                logger.info("Saved threshold sweep to: %s", threshold_sweep_csv_path)
+                artifacts_dict["threshold_sweep_csv"] = "threshold_sweep.csv"
+        except Exception as exc:
+            logger.warning("Failed to save threshold sweep CSV: %s", exc)
+
+        # Save calibration table CSV if available (Phase B: B2 implementation)
+        try:
+            if "calibration_table_csv" in val_summary and val_summary["calibration_table_csv"]:
+                calibration_table_csv_path = Path(framework.experiment_dir) / "calibration_table.csv"
+                with open(calibration_table_csv_path, "w") as f:
+                    f.write(val_summary["calibration_table_csv"])
+                logger.info("Saved calibration table to: %s", calibration_table_csv_path)
+                artifacts_dict["calibration_table_csv"] = "calibration_table.csv"
+        except Exception as exc:
+            logger.warning("Failed to save calibration table CSV: %s", exc)
+
     except Exception as exc:
         logger.error("Post-training evaluation failed: %s", exc)
         plots_failed.append({"plot": "evaluation", "error": str(exc)})
-
-    summary["artifacts"] = {
-        "plots": plots_generated,
-        "plots_failed": plots_failed,
-        "learning_curves": learning_curve_path.name,
-        "best_model": "best_model.pth",
-    }
 
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
