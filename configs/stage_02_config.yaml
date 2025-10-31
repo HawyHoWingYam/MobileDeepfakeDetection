@@ -1,0 +1,20 @@
+# Stage 02: Difficult Sample Mining Configuration
+
+stage_02:
+  # Ambiguity zone for probabilities (inclusive)
+  ambiguity_lower: 0.3
+  ambiguity_upper: 0.7
+
+  # Binary decision threshold for error tagging (pred = prob >= threshold)
+  decision_threshold: 0.5
+
+  # Inference performance knobs
+  batch_size: 256
+  num_workers: 12
+  device: auto          # auto | cuda | cpu
+  pin_memory: true
+  use_amp: true         # Enable AMP on CUDA to speed up inference
+
+  # Whether to write per-dataset prediction CSVs under outputs/stage2/run_*
+  save_intermediate_preds: false
+

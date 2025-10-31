@@ -1,0 +1,134 @@
+{
+  "datasets": {
+    "celebdf_v2": {
+      "enabled": true,
+      "name": "Celeb-DF v2",
+      "description": "Celeb-DF v2 dataset for deepfake detection",
+      "root_path": ".",
+      "metadata": {
+        "image_size": [256, 256],
+        "num_classes": 2,
+        "class_names": ["real", "fake"]
+      },
+      "splits": {
+        "train": "manifests/celebdf_v2_train_balanced.csv",
+        "val": "manifests/celebdf_v2_val_balanced.csv",
+        "test": "manifests/celebdf_v2_test_balanced.csv"
+      },
+      "preprocessing": {
+        "normalize": true,
+        "augmentation": true
+      }
+    },
+    "faceforensics": {
+      "enabled": true,
+      "name": "FaceForensics++",
+      "description": "FaceForensics++ dataset with multiple manipulation methods",
+      "root_path": ".",
+      "metadata": {
+        "image_size": [256, 256],
+        "num_classes": 2,
+        "class_names": ["real", "fake"]
+      },
+      "splits": {
+        "train": "manifests/faceforensics_train_balanced.csv",
+        "val": "manifests/faceforensics_val_balanced.csv",
+        "test": "manifests/faceforensics_test_balanced.csv"
+      },
+      "preprocessing": {
+        "normalize": true,
+        "augmentation": true
+      }
+    },
+    "deeperforensics": {
+      "enabled": true,
+      "name": "DeeperForensics 1.0",
+      "description": "DeeperForensics 1.0 dataset with high-quality deepfakes",
+      "root_path": ".",
+      "metadata": {
+        "image_size": [256, 256],
+        "num_classes": 2,
+        "class_names": ["real", "fake"]
+      },
+      "splits": {
+        "train": "manifests/deeperforensics_train_balanced.csv",
+        "val": "manifests/deeperforensics_val_balanced.csv",
+        "test": "manifests/deeperforensics_test_balanced.csv"
+      },
+      "preprocessing": {
+        "normalize": true,
+        "augmentation": true
+      }
+    },
+    "dfdc": {
+      "enabled": true,
+      "name": "DFDC",
+      "description": "Deepfake Detection Challenge dataset",
+      "root_path": ".",
+      "metadata": {
+        "image_size": [256, 256],
+        "num_classes": 2,
+        "class_names": ["real", "fake"]
+      },
+      "splits": {
+        "train": "manifests/dfdc_train_balanced.csv",
+        "val": "manifests/dfdc_val_balanced.csv",
+        "test": "manifests/dfdc_test_balanced.csv"
+      },
+      "preprocessing": {
+        "normalize": true,
+        "augmentation": true
+      }
+    }
+  ,
+    "deepfake_eval_2024": {
+      "enabled": true,
+      "name": "Deepfake Eval 2024 (OOD Test)",
+      "description": "Multi-source evaluation dataset: 52 languages, 88 websites, real/fake images + video frames. Used for Out-of-Distribution generalization testing in Stage 01, Stage 03, and Stage 05.",
+      "root_path": ".",
+      "metadata": {
+        "image_size": [256, 256],
+        "num_classes": 2,
+        "class_names": ["real", "fake"],
+        "source": "HuggingFace:nuriachandra/Deepfake-Eval-2024",
+        "purpose": "Out-of-Distribution generalization test",
+        "modalities": ["images", "video_frames"]
+      },
+      "splits": {
+        "val": "manifests/deepfake_eval_2024_val.csv",
+        "test": "manifests/deepfake_eval_2024_test.csv"
+      },
+      "preprocessing": {
+        "normalize": true,
+        "augmentation": false
+      }
+    }
+  },
+  "multi_dataset_configs": {
+    "unified_training": {
+      "enabled": true,
+      "description": "Configuration for unified multi-dataset training",
+      "datasets_included": ["celebdf_v2", "faceforensics", "deeperforensics", "dfdc"],
+      "balancing": {
+        "method": "equal_weight",
+        "enabled": true,
+        "description": "Stage 01: Equal weight for all 4 datasets regardless of sample count"
+      }
+    }
+  },
+  "evaluation_configs": {
+    "in_distribution": {
+      "description": "Standard evaluation on training data distribution (same domains as training)",
+      "datasets": ["celebdf_v2", "faceforensics", "deeperforensics", "dfdc"],
+      "purpose": "Monitor training progress and inter-stage improvements"
+    },
+    "out_of_distribution": {
+      "description": "Generalization test on completely unseen data sources (52 languages, 88 websites)",
+      "datasets": ["deepfake_eval_2024"],
+      "purpose": "Final robustness validation and real-world performance assessment"
+    }
+  },
+  "default_dataset": "celebdf_v2",
+  "version": "1.1",
+  "created_for": "AWARE-NET Stage 01-05 with OOD evaluation"
+}
