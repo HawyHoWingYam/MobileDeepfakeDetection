@@ -18,6 +18,8 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+import re  # NEW: shard filename matching
+import io  # NEW: bytes buffer for URL fetch
 
 try:
     from datasets import Image, load_dataset  # type: ignore
@@ -25,6 +27,24 @@ except ImportError as exc:  # pragma: no cover - handled at runtime
     raise SystemExit(
         "The 'datasets' package is required. Install with `pip install datasets`."
     ) from exc
+
+# Optional dependency for restricted-shard mode
+try:  # NEW: import huggingface_hub lazily
+    from huggingface_hub import (
+        list_repo_files,
+        hf_hub_download,
+        snapshot_download,
+        login,
+    )  # type: ignore
+except Exception:  # pragma: no cover
+    list_repo_files = None
+    hf_hub_download = None
+    snapshot_download = None
+    login = None
+try:  # NEW: for URL downloads when CSV provides image_url
+    import requests  # type: ignore
+except Exception:  # pragma: no cover
+    requests = None
 
 
 logger = logging.getLogger("download_hf_dataset")
@@ -121,6 +141,81 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable HuggingFace dataset caching to reduce memory footprint.",
     )
+    # Snapshot (full repository) mode
+    parser.add_argument(
+        "--snapshot-all",
+        action="store_true",
+        help="Download the entire dataset repository via snapshot_download and exit.",
+    )
+    parser.add_argument(
+        "--snapshot-dir",
+        default="Deepfake-Eval-2024",
+        help="Local directory to place the repository snapshot (default: Deepfake-Eval-2024)",
+    )
+    parser.add_argument(
+        "--allow-patterns",
+        default=None,
+        help="Comma-separated glob patterns to include in snapshot (optional)",
+    )
+    parser.add_argument(
+        "--ignore-patterns",
+        default=None,
+        help="Comma-separated glob patterns to exclude from snapshot (optional)",
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=8,
+        help="Max parallel workers for snapshot download (default: 8)",
+    )
+    parser.add_argument(
+        "--snapshot-use-symlinks",
+        action="store_true",
+        help="Use symlinks for snapshot files to save disk space (default: False)",
+    )
+    parser.add_argument(
+        "--no-resume-snapshot",
+        action="store_true",
+        help="Disable resume for snapshot download (default: resume enabled)",
+    )
+    parser.add_argument(
+        "--enable-hf-transfer",
+        action="store_true",
+        help="Enable hf_transfer acceleration for snapshot (sets HF_HUB_ENABLE_HF_TRANSFER=1)",
+    )
+    # NEW: Restrict shards mode to avoid resolving/downloading thousands of files
+    parser.add_argument(
+        "--restrict-shards",
+        action="store_true",
+        help="Only download and load a small number of split shards instead of resolving all files.",
+    )
+    parser.add_argument(
+        "--shard-match",
+        default="train",
+        help="Substring to match shard filenames for the split (default: 'train').",
+    )
+    parser.add_argument(
+        "--shard-ext",
+        choices=["parquet", "jsonl", "json", "csv"],
+        default=None,
+        help="Preferred shard file extension (auto-detect if omitted).",
+    )
+    parser.add_argument(
+        "--max-shards",
+        type=int,
+        default=1,
+        help="Maximum number of shards to use in restrict-shards mode (default: 1).",
+    )
+    parser.add_argument(
+        "--list-files",
+        action="store_true",
+        help="List remote repository files and exit (helps choosing --shard-match / --shard-ext)",
+    )
+    parser.add_argument(
+        "--shard-file",
+        default=None,
+        help="Exact remote filename to download (overrides --shard-match). Use with --restrict-shards.",
+    )
     return parser.parse_args()
 
 
@@ -214,6 +309,79 @@ def get_checkpoint_path(output_dir: Path) -> Path:
     return output_dir / "manifest_checkpoint.csv"
 
 
+# NEW: choose and download a minimal set of shards for a split
+def _select_and_download_shards(
+    repo_id: str,
+    split_hint: str,
+    shard_ext: str | None,
+    max_shards: int,
+    token: str | None,
+) -> tuple[list[str], str]:
+    """Return (local_paths, ext) for a small subset of split shards.
+
+    This avoids resolving/downloading thousands of files to reduce memory usage.
+    """
+    if list_repo_files is None or hf_hub_download is None:
+        raise RuntimeError(
+            "huggingface_hub not available. Install with `pip install huggingface_hub`."
+        )
+
+    files = list_repo_files(repo_id, repo_type="dataset")
+    # Preference order (can be overridden by shard_ext)
+    ext_order = ["parquet", "jsonl", "json", "csv"]
+    if shard_ext and shard_ext in ext_order:
+        ext_order = [shard_ext] + [e for e in ext_order if e != shard_ext]
+
+    chosen: list[str] = []
+    used_ext: str | None = None
+    # Heuristics for preferred tokens by hint
+    hint = (split_hint or "").lower()
+    prefer_tokens = []
+    exclude_tokens = []
+    if "image" in hint:
+        prefer_tokens = ["image", "img", "photo", "picture"]
+        exclude_tokens = ["audio"]
+    elif "video" in hint:
+        prefer_tokens = ["video", "frame"]
+        exclude_tokens = ["audio"]
+    elif "audio" in hint:
+        prefer_tokens = ["audio"]
+
+    for ext in ext_order:
+        pat = re.compile(re.escape(split_hint), re.IGNORECASE) if split_hint else None
+        cands = [
+            f for f in files
+            if f.lower().endswith("." + ext)
+            and (pat.search(f) if pat else True)
+        ]
+        # If no direct matches, broaden search to any with this extension
+        if not cands:
+            cands = [f for f in files if f.lower().endswith("." + ext)]
+        # Apply preferred/excluded tokens ordering
+        if cands and prefer_tokens:
+            pref = [f for f in cands if any(t in f.lower() for t in prefer_tokens)]
+            nonpref = [f for f in cands if f not in pref]
+            cands = pref + nonpref
+        if cands and exclude_tokens:
+            cands = [f for f in cands if not any(t in f.lower() for t in exclude_tokens)] or cands
+        if cands:
+            chosen = cands[: max(1, int(max_shards))]
+            used_ext = ext
+            break
+
+    if not chosen or not used_ext:
+        raise RuntimeError(
+            f"No matching shards for split_hint='{split_hint}', ext_order={ext_order}. Total files={len(files)}."
+        )
+
+    local_paths: list[str] = []
+    for fname in chosen:
+        local_paths.append(
+            hf_hub_download(repo_id=repo_id, repo_type="dataset", filename=fname, token=token)
+        )
+    return local_paths, used_ext
+
+
 def main() -> int:
     args = parse_args()
     logging.basicConfig(
@@ -222,6 +390,52 @@ def main() -> int:
     )
 
     token = resolve_token(args.token)
+    # Optional: list remote files and exit (introspection helper)
+    if args.list_files:
+        if list_repo_files is None:
+            print("huggingface_hub not installed. Run: pip install huggingface_hub", flush=True)
+            return 1
+        files = list_repo_files(args.dataset_id, repo_type="dataset")
+        print(f"Total files: {len(files)}")
+        for f in files:
+            print(f)
+        return 0
+
+    # Snapshot (full repository) mode
+    if args.snapshot_all:
+        if snapshot_download is None:
+            logger.error("huggingface_hub not available. Install with `pip install huggingface_hub`.")
+            return 1
+        if args.enable_hf_transfer:
+            os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
+        try:
+            if token and login is not None:
+                try:
+                    login(token=token)
+                except Exception:
+                    pass
+            allow_patterns = [p.strip() for p in args.allow_patterns.split(",")] if args.allow_patterns else None
+            ignore_patterns = [p.strip() for p in args.ignore_patterns.split(",")] if args.ignore_patterns else None
+            local_dir = str(Path(args.snapshot_dir))
+            logger.info(
+                "Starting snapshot_download to %s (allow=%s ignore=%s)",
+                local_dir, allow_patterns, ignore_patterns,
+            )
+            snapshot_download(
+                repo_id=args.dataset_id,
+                repo_type="dataset",
+                local_dir=local_dir,
+                local_dir_use_symlinks=bool(args.snapshot_use_symlinks),
+                allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+                max_workers=int(args.max_workers),
+                resume_download=not bool(args.no_resume_snapshot),
+            )
+            logger.info("Snapshot completed: %s", local_dir)
+            return 0
+        except Exception as exc:
+            logger.exception("Snapshot download failed: %s", exc)
+            return 1
     output_dir = ensure_dir(Path(args.output_dir))
     images_dir = ensure_dir(output_dir / "images")
     manifest_path = output_dir / "manifest.csv"
@@ -272,30 +486,103 @@ def main() -> int:
     if args.disable_caching:
         load_dataset_kwargs["keep_in_memory"] = False
 
-    try:
-        ds = load_dataset(**load_dataset_kwargs)
-    except TypeError:
-        # Older datasets versions expect use_auth_token instead of token
-        if token:
-            load_dataset_kwargs.pop("token", None)
-            load_dataset_kwargs["use_auth_token"] = token
+    ds = None  # NEW: allow alternate load path
+    if args.restrict_shards:
+        logger.info(
+            "Restricting to %d shard(s) matching '%s' to avoid large resolution...",
+            args.max_shards,
+            args.shard_match,
+        )
+        try:
+            if args.shard_file:
+                if list_repo_files is None or hf_hub_download is None:
+                    logger.error("huggingface_hub not installed. Run: pip install huggingface_hub")
+                    return 1
+                files = list_repo_files(args.dataset_id, repo_type="dataset")
+                if args.shard_file not in files:
+                    logger.error("--shard-file '%s' not found in repository. Use --list-files to inspect.", args.shard_file)
+                    return 1
+                local_paths = [
+                    hf_hub_download(repo_id=args.dataset_id, repo_type="dataset", filename=args.shard_file, token=token)
+                ]
+                used_ext = Path(args.shard_file).suffix.lstrip(".").lower() or (args.shard_ext or "csv")
+            else:
+                local_paths, used_ext = _select_and_download_shards(
+                    repo_id=args.dataset_id,
+                    split_hint=str(args.split).split("[")[0],
+                    shard_ext=args.shard_ext,
+                    max_shards=args.max_shards,
+                    token=token,
+                )
+            builder = {"parquet": "parquet", "jsonl": "json", "json": "json", "csv": "csv"}[used_ext]
+            ds = load_dataset(builder, data_files={"train": local_paths}, split="train", streaming=False)
+        except Exception as exc:
+            logger.error("Restricted-shard loading failed: %s", exc)
+            return 1
+
+    if ds is None:
         try:
             ds = load_dataset(**load_dataset_kwargs)
         except TypeError:
-            # Fallback: remove streaming parameter for older versions
-            load_dataset_kwargs.pop("streaming", None)
-            ds = load_dataset(**load_dataset_kwargs)
+            # Older datasets versions expect use_auth_token instead of token
+            if token:
+                load_dataset_kwargs.pop("token", None)
+                load_dataset_kwargs["use_auth_token"] = token
+            try:
+                ds = load_dataset(**load_dataset_kwargs)
+            except TypeError:
+                # Fallback: remove streaming parameter for older versions
+                load_dataset_kwargs.pop("streaming", None)
+                ds = load_dataset(**load_dataset_kwargs)
 
-    # Cast image column only if not in streaming mode (streaming mode handles this differently)
-    if not args.streaming:
-        ds = ds.cast_column(args.image_column, Image())
+    # Defer casting until we resolve the actual image column name below
 
-    label_features = ds.features.get(args.label_column) if hasattr(ds, "features") else None
+    # Resolve columns dynamically in case CSV uses different names
+    available_cols = list(getattr(ds, "column_names", []))
+    logger.info("Available columns: %s", available_cols)
+    def _resolve_col(preferred: str, candidates: list[str]) -> str:
+        if preferred in available_cols:
+            return preferred
+        for c in candidates:
+            if c in available_cols:
+                return c
+        return preferred  # fallback; may be missing
+
+    # Try to adapt to common schemas
+    image_col = _resolve_col(args.image_column, [
+        "image", "image_url", "url", "path", "image_path", "filepath", "file_path"
+    ])
+    label_col = _resolve_col(args.label_column, [
+        "label", "fake", "is_fake", "target", "y", "class"
+    ])
+
+    # Try to cast to Image only if non-streaming AND the column exists AND it's not a URL-like column
+    image_col_l = image_col.lower()
+    looks_like_url = any(t in image_col_l for t in ["url", "link", "media"])
+    if ((not args.streaming) or args.restrict_shards) and image_col in available_cols and not looks_like_url:
+        try:
+            ds = ds.cast_column(image_col, Image())
+        except Exception:
+            # It's fine if casting fails (e.g., URLs), we'll handle formats below
+            pass
+
+    label_features = ds.features.get(label_col) if hasattr(ds, "features") else None
     label_encoder: Dict[str, int] = {}
 
     compression = args.compression.lower()
     if compression == "jpg":
         compression = "jpeg"
+
+    # Prepare HTTP session for URL downloads (set UA to avoid 403s on some CDNs)
+    http_session = None
+    if requests is not None:
+        try:
+            http_session = requests.Session()
+            http_session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119 Safari/537.36"
+            })
+        except Exception:
+            http_session = None
 
     try:
         for idx, sample in enumerate(ds):
@@ -306,9 +593,9 @@ def main() -> int:
             if args.max_samples is not None and idx >= args.max_samples:
                 break
 
-            image = sample.get(args.image_column)
+            image = sample.get(image_col)
             if image is None:
-                logger.warning("Sample %d missing image column '%s'; skipping", idx, args.image_column)
+                logger.warning("Sample %d missing image column '%s'; skipping", idx, image_col)
                 continue
 
             # Handle PIL Image conversion in streaming mode
@@ -320,7 +607,7 @@ def main() -> int:
                     logger.warning("Sample %d failed to open image: %s; skipping", idx, e)
                     continue
 
-            label_raw = sample.get(args.label_column)
+            label_raw = sample.get(label_col)
             label = encode_label(label_raw, label_encoder, label_features, label_map=label_map)
 
             label_dir = ensure_dir(images_dir / f"class_{label}")
@@ -330,8 +617,41 @@ def main() -> int:
             if image_path.exists() and args.skip_existing:
                 logger.debug("Skipping existing image: %s", image_path)
             else:
-                pil_image = image.convert("RGB") if hasattr(image, "convert") else image
-                pil_image.save(image_path, quality=95 if compression == "jpeg" else None)
+                # Convert and save image from various representations
+                pil_image = None
+                try:
+                    if hasattr(image, "convert"):
+                        pil_image = image.convert("RGB")  # PIL.Image
+                    elif isinstance(image, dict):
+                        # Could be {'path': ..., 'bytes': ...}
+                        p = image.get("path")
+                        b = image.get("bytes")
+                        if p and os.path.exists(p):
+                            from PIL import Image as PILImage  # lazy import
+                            pil_image = PILImage.open(p).convert("RGB")
+                        elif b is not None:
+                            from PIL import Image as PILImage
+                            pil_image = PILImage.open(io.BytesIO(b)).convert("RGB")
+                    elif isinstance(image, str):
+                        # Local path or URL
+                        if image.startswith("http://") or image.startswith("https://"):
+                            if http_session is None:
+                                raise RuntimeError("requests not available to fetch URL images")
+                            r = http_session.get(image, timeout=(5, 20), allow_redirects=True)
+                            r.raise_for_status()
+                            from PIL import Image as PILImage
+                            pil_image = PILImage.open(io.BytesIO(r.content)).convert("RGB")
+                        elif os.path.exists(image):
+                            from PIL import Image as PILImage
+                            pil_image = PILImage.open(image).convert("RGB")
+                    # Fallback: unsupported type
+                    if pil_image is None:
+                        logger.warning("Sample %d: unsupported image type (%s); skipping", idx, type(image))
+                        continue
+                    pil_image.save(image_path, quality=95 if compression == "jpeg" else None)
+                except Exception as exc:
+                    logger.warning("Sample %d: failed to save image (%s); skipping", idx, exc)
+                    continue
 
             rel_path = image_path.relative_to(output_dir)
             rel_path_str = str(rel_path).replace("\\", "/")

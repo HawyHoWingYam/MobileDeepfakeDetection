@@ -83,3 +83,4 @@ outputs/*
 !configs/*.json
 # Ignore local Claude settings
 .claude/
+Deepfake-Eval-2024/*

@@ -85,7 +85,7 @@
       "enabled": true,
       "name": "Deepfake Eval 2024 (OOD Test)",
       "description": "Multi-source evaluation dataset: 52 languages, 88 websites, real/fake images + video frames. Used for Out-of-Distribution generalization testing in Stage 01, Stage 03, and Stage 05.",
-      "root_path": ".",
+      "root_path": "Deepfake-Eval-2024",
       "metadata": {
         "image_size": [256, 256],
         "num_classes": 2,

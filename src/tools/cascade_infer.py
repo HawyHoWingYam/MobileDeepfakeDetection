@@ -73,6 +73,11 @@ class CascadeEngine:
         stage1_model: str = 'mobilenetv4_hybrid_medium',
         stage2_model: str = 'tf_efficientnetv2_b0',
         device: str = 'auto',
+        stage1_size: int = 256,
+        stage2_size: int = 384,
+        stage2_temperature: float = 1.0,
+        stage2_decision_threshold: float = 0.5,
+        stage2_tta: str = 'none',  # 'none' | 'hflip'
     ):
         if device == 'auto':
             self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -84,6 +89,9 @@ class CascadeEngine:
         self.low = float(cfg['low_thresh'])
         self.high = float(cfg['high_thresh'])
         self.escalation_est = float(cfg.get('escalation_rate', 0.0))
+        # Stage 2 decision threshold: CLI overrides config; fallback to 0.5
+        cfg_s2_th = float(cfg.get('stage2_threshold', 0.5))
+        self.stage2_threshold = float(stage2_decision_threshold) if stage2_decision_threshold is not None else cfg_s2_th
 
         logger.info(f"Thresholds: low={self.low:.4f}, high={self.high:.4f}; expected escalation ~{self.escalation_est:.1%}")
 
@@ -93,8 +101,12 @@ class CascadeEngine:
         self.s1.eval(); self.s2.eval()
 
         # Preprocessing
-        self.tr1 = build_transform(256)
-        self.tr2 = build_transform(384)
+        self.tr1 = build_transform(stage1_size)
+        self.tr2 = build_transform(stage2_size)
+        self.stage2_tta = str(stage2_tta or 'none').lower()
+
+        # Temperature for Stage 2 calibration (T>0; logits/T before sigmoid)
+        self.stage2_temperature = float(stage2_temperature) if stage2_temperature and stage2_temperature > 0 else 1.0
 
         # Stats
         self.stats = {'total': 0, 's1_real': 0, 's1_fake': 0, 's2_used': 0}
@@ -127,10 +139,19 @@ class CascadeEngine:
             return {'prediction': 1, 'confidence': p1, 'stage_used': 1, 'stage1_confidence': p1, 'stage2_confidence': None}
 
         # Stage 2
-        x2 = self.tr2(image=img_rgb)['image'].unsqueeze(0).to(self.device)
-        logit2 = self.s2(x2)
-        p2 = torch.sigmoid(logit2.view(-1)).item()
-        pred = int(p2 >= 0.5)
+        def _stage2_prob(img_rgb_np) -> float:
+            x = self.tr2(image=img_rgb_np)['image'].unsqueeze(0).to(self.device)
+            logit = self.s2(x)
+            if self.stage2_temperature != 1.0:
+                return torch.sigmoid(logit.view(-1) / self.stage2_temperature).item()
+            return torch.sigmoid(logit.view(-1)).item()
+
+        if self.stage2_tta == 'hflip':
+            img_flip = cv2.flip(img_rgb, 1)
+            p2 = 0.5 * (_stage2_prob(img_rgb) + _stage2_prob(img_flip))
+        else:
+            p2 = _stage2_prob(img_rgb)
+        pred = int(p2 >= self.stage2_threshold)
         self.stats['s2_used'] += 1
         self.stats['total'] += 1
         return {'prediction': pred, 'confidence': p2, 'stage_used': 2, 'stage1_confidence': p1, 'stage2_confidence': p2}
@@ -150,12 +171,23 @@ def main() -> int:
     ap.add_argument('--stage1-model', default='mobilenetv4_hybrid_medium')
     ap.add_argument('--stage2-model', default='tf_efficientnetv2_b0')
     ap.add_argument('--device', default='auto')
+    ap.add_argument('--stage1-size', type=int, default=256, help='Stage 1 input size (default: 256)')
+    ap.add_argument('--stage2-size', type=int, default=384, help='Stage 2 input size (default: 384)')
+    ap.add_argument('--stage2-temperature', type=float, default=1.0, help='Temperature for Stage 2 calibration (default: 1.0)')
+    ap.add_argument('--stage2-decision-threshold', type=float, default=None,
+                    help='Decision threshold for Stage 2 (overrides thresholds JSON if provided). Default: use config value or 0.5')
     ap.add_argument('--image-path')
     ap.add_argument('--image-dir')
     ap.add_argument('--manifest')
     ap.add_argument('--output')
+    ap.add_argument('--chunksize', type=int, default=0,
+                   help='If >0, stream manifest in chunks of this many rows (shows progress earlier, lower memory)')
     ap.add_argument('--no-progress', action='store_true', default=False,
                    help='Disable progress bar output')
+    ap.add_argument('--resume', action='store_true', default=False,
+                   help='Resume from existing output by skipping already processed paths')
+    ap.add_argument('--stage2-tta', default='none', choices=['none','hflip'],
+                   help='Stage 2 test-time augmentation (default: none). hflip averages original+flipped')
     args = ap.parse_args()
 
     engine = CascadeEngine(
@@ -165,6 +197,11 @@ def main() -> int:
         stage1_model=args.stage1_model,
         stage2_model=args.stage2_model,
         device=args.device,
+        stage1_size=args.stage1_size,
+        stage2_size=args.stage2_size,
+        stage2_temperature=args.stage2_temperature,
+        stage2_decision_threshold=args.stage2_decision_threshold,
+        stage2_tta=args.stage2_tta,
     )
 
     rows: List[Dict] = []
@@ -192,16 +229,69 @@ def main() -> int:
         logger.info(f"Total={stats['total']} s2_used={stats['s2_used']} ({stats.get('s2_rate',0.0):.1%})")
 
     elif args.manifest:
-        df = pd.read_csv(args.manifest)
-        iterator = df.iterrows() if args.no_progress else tqdm(df.iterrows(), total=len(df), desc=f"Infer manifest ({len(df)} rows)")
-        for _, row in iterator:
-            path = row['image_path']
-            img = cv2.imread(path)
-            if img is None:
-                logger.warning(f"Skip unreadable: {path}")
-                continue
-            r = engine.infer_image(img)
-            rows.append({'path': path, 'label': int(row.get('label', -1)), **r})
+        if args.chunksize and args.chunksize > 0 and args.output:
+            # Stream in chunks to expose progress early and reduce memory
+            header_written = False
+            processed = 0
+            skipped = 0
+            pbar = None if args.no_progress else tqdm(desc="Infer manifest (streaming)")
+
+            # Optional resume support: build a set of already processed paths
+            processed_paths = None
+            out_path = Path(args.output)
+            if args.resume and out_path.exists():
+                processed_paths = set()
+                try:
+                    for out_chunk in pd.read_csv(out_path, usecols=["path"], chunksize=max(100000, args.chunksize)):
+                        processed_paths.update(out_chunk["path"].astype(str).tolist())
+                    header_written = True
+                    if pbar is not None:
+                        pbar.set_description("Infer manifest (resuming)")
+                    logger.info("Resume enabled: found %d previously processed rows in %s", len(processed_paths), out_path)
+                except Exception as e:
+                    logger.warning("Resume: failed to read existing output (%s). Starting fresh. Error: %s", out_path, e)
+                    processed_paths = None
+
+            for chunk in pd.read_csv(args.manifest, chunksize=args.chunksize):
+                chunk_rows: List[Dict] = []
+                for _, row in chunk.iterrows():
+                    path = row['image_path']
+                    if processed_paths is not None and path in processed_paths:
+                        skipped += 1
+                        continue
+                    img = cv2.imread(path)
+                    if img is None:
+                        logger.warning(f"Skip unreadable: {path}")
+                        continue
+                    r = engine.infer_image(img)
+                    chunk_rows.append({'path': path, 'label': int(row.get('label', -1)), **r})
+                if chunk_rows:
+                    out = Path(args.output)
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    pd.DataFrame(chunk_rows).to_csv(out, mode='a', header=not header_written, index=False)
+                    header_written = True
+                    if processed_paths is not None:
+                        for r in chunk_rows:
+                            processed_paths.add(r['path'])
+                processed += len(chunk_rows)
+                if pbar is not None:
+                    pbar.update(len(chunk_rows))
+                    pbar.set_postfix(processed=processed, skipped=skipped)
+            if pbar is not None:
+                pbar.close()
+            logger.info("Saved predictions to %s (streamed; rows=%d, skipped=%d)", args.output, processed, skipped)
+            return 0
+        else:
+            df = pd.read_csv(args.manifest)
+            iterator = df.iterrows() if args.no_progress else tqdm(df.iterrows(), total=len(df), desc=f"Infer manifest ({len(df)} rows)")
+            for _, row in iterator:
+                path = row['image_path']
+                img = cv2.imread(path)
+                if img is None:
+                    logger.warning(f"Skip unreadable: {path}")
+                    continue
+                r = engine.infer_image(img)
+                rows.append({'path': path, 'label': int(row.get('label', -1)), **r})
         stats = engine.report()
         logger.info(f"Total={stats['total']} s2_used={stats['s2_used']} ({stats.get('s2_rate',0.0):.1%})")
     else:

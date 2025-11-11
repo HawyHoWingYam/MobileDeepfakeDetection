@@ -1726,6 +1726,7 @@ def main():
         default=True,
         help="Restore best model weights after early stopping"
     )
+    
 
     args = parser.parse_args()
 
@@ -1820,7 +1821,7 @@ def main():
 # Setup reproducible environment (Stage 00 feature)
     setup_reproducible_environment(args.seed)
 
-    # Create trainer and start training
+    # Create trainer and optionally load from checkpoint
     trainer = SimpleMobileNetV4Trainer(
         model_name=args.model_name,
         learning_rate=args.learning_rate,
@@ -1842,6 +1843,8 @@ def main():
         save_on_metric=getattr(args, 'save_on_metric', 'auc'),
         warmup_epochs=getattr(args, 'warmup_epochs', 0),
     )
+
+    
 
     # Setup data loaders (Stage 01 requirement)
     trainer.setup_data_loaders()

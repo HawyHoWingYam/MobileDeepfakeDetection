@@ -108,7 +108,16 @@ def main() -> int:
         print(f"Predictions CSV not found: {preds_path}")
         return 1
 
-    df = pd.read_csv(preds_path)
+    # Read predictions with consistent dtypes and coerce numeric columns
+    df = pd.read_csv(preds_path, low_memory=False)
+    # Best-effort dtype coercion to avoid object/str vs float comparison errors
+    for col in ["label", "prediction", "stage_used"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(-1).astype(int)
+    if "stage1_confidence" in df.columns:
+        df["stage1_confidence"] = pd.to_numeric(df["stage1_confidence"], errors="coerce")
+    if "stage2_confidence" in df.columns:
+        df["stage2_confidence"] = pd.to_numeric(df["stage2_confidence"], errors="coerce")
     validate_columns(df)
 
     sel = select_difficult(df, args.low, args.high, args.margin, include_edge=not args.no_edge)
@@ -125,4 +134,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -36,6 +36,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, WeightedRandomSampler, ConcatDataset
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
+from torch.cuda.amp import autocast, GradScaler
+import torch.backends.cudnn as cudnn
 import matplotlib.pyplot as plt
 
 # Ensure 'src' on path
@@ -111,6 +113,10 @@ class TrainConfig:
     scheduler_factor: float = 0.5
     scheduler_patience: int = 2
     scheduler_min_lr: float = 1e-6
+    amp: bool = True
+    grad_accum_steps: int = 1
+    grad_checkpointing: bool = False
+    channels_last: bool = False
 
 
 def resolve_device(s: str) -> torch.device:
@@ -274,6 +280,10 @@ def main() -> int:
     parser.add_argument("--scheduler_factor", type=float, default=0.5)
     parser.add_argument("--scheduler_patience", type=int, default=2)
     parser.add_argument("--scheduler_min_lr", type=float, default=1e-6)
+    parser.add_argument("--amp", type=str2bool, default=True, help="Enable CUDA AMP mixed precision")
+    parser.add_argument("--grad_accum_steps", type=int, default=1, help="Gradient accumulation steps")
+    parser.add_argument("--grad_checkpointing", type=str2bool, default=False, help="Enable backbone gradient checkpointing (reduces memory)")
+    parser.add_argument("--channels_last", type=str2bool, default=False, help="Use channels_last memory format to reduce memory")
 
     args = parser.parse_args()
 
@@ -286,6 +296,7 @@ def main() -> int:
     # Setup
     setup_reproducible_environment(42)
     device = resolve_device(args.device)
+    cudnn.benchmark = True
     cfg = TrainConfig(
         train_manifest=train_manifest,
         model_name=args.model_name,
@@ -315,6 +326,10 @@ def main() -> int:
         scheduler_factor=args.scheduler_factor,
         scheduler_patience=args.scheduler_patience,
         scheduler_min_lr=args.scheduler_min_lr,
+        amp=args.amp,
+        grad_accum_steps=max(1, int(args.grad_accum_steps)),
+        grad_checkpointing=args.grad_checkpointing,
+        channels_last=args.channels_last,
     )
 
     # Experiment directory
@@ -327,6 +342,26 @@ def main() -> int:
         dropout_rate=cfg.dropout_rate,
         model_name=cfg.model_name
     ).to(device)
+
+    if cfg.channels_last:
+        try:
+            model = model.to(memory_format=torch.channels_last)
+            logger.info("Using channels_last memory format for model")
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Failed to set channels_last memory format: %s", exc)
+
+    if cfg.grad_checkpointing:
+        try:
+            if hasattr(model.backbone, 'set_grad_checkpointing'):
+                model.backbone.set_grad_checkpointing(True)
+                logger.info("Enabled grad checkpointing via set_grad_checkpointing(True)")
+            elif hasattr(model, 'set_grad_checkpointing'):
+                model.set_grad_checkpointing(True)
+                logger.info("Enabled grad checkpointing via model.set_grad_checkpointing(True)")
+            else:
+                logger.warning("Backbone does not support grad checkpointing; skipping")
+        except Exception as exc:
+            logger.warning("Failed to enable grad checkpointing: %s", exc)
 
     if cfg.freeze_backbone_epochs > 0:
         for param in model.backbone.parameters():
@@ -417,6 +452,9 @@ def main() -> int:
     val_fnr_history: List[float] = []
     epoch_metrics_history: List[Dict[str, Any]] = []
 
+    scaler = GradScaler(enabled=(cfg.amp and device.type == 'cuda'))
+    accum_steps = max(1, cfg.grad_accum_steps)
+
     for epoch in range(cfg.epochs):
         if backbone_frozen and epoch >= cfg.freeze_backbone_epochs:
             for param in model.backbone.parameters():
@@ -431,9 +469,13 @@ def main() -> int:
         train_prob_buffer: List[float] = []
         train_target_buffer: List[float] = []
 
-        for images, targets in pbar:
-            images = images.to(device)
-            targets = targets.to(device)
+        optim_step = 0
+        for batch_idx, (images, targets) in enumerate(pbar):
+            if cfg.channels_last:
+                images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
+            else:
+                images = images.to(device, non_blocking=True)
+            targets = targets.to(device, non_blocking=True)
 
             hard_targets = targets.detach().clone()
 
@@ -441,9 +483,12 @@ def main() -> int:
             if cfg.label_smoothing > 0:
                 targets = targets * (1 - cfg.label_smoothing) + cfg.label_smoothing * 0.5
 
-            optimizer.zero_grad(set_to_none=True)
-            logits = model(images).squeeze(1)
-            loss_values = criterion(logits, targets).view(-1)
+            if (batch_idx % accum_steps) == 0:
+                optimizer.zero_grad(set_to_none=True)
+
+            with autocast(enabled=(cfg.amp and device.type == 'cuda')):
+                logits = model(images).squeeze(1)
+                loss_values = criterion(logits, targets).view(-1)
             if neg_class_weight_active:
                 sample_weights = torch.where(
                     targets < 0.5,
@@ -453,10 +498,24 @@ def main() -> int:
                 loss = (loss_values * sample_weights).mean()
             else:
                 loss = loss_values.mean()
-            loss.backward()
-            if cfg.grad_clip_norm > 0:
-                clip_grad_norm_(model.parameters(), cfg.grad_clip_norm)
-            optimizer.step()
+
+            if scaler.is_enabled():
+                scaler.scale(loss).backward()
+            else:
+                loss.backward()
+
+            is_accum_step = ((batch_idx + 1) % accum_steps == 0) or ((batch_idx + 1) == len(train_loader))
+            if is_accum_step:
+                if cfg.grad_clip_norm > 0:
+                    if scaler.is_enabled():
+                        scaler.unscale_(optimizer)
+                    clip_grad_norm_(model.parameters(), cfg.grad_clip_norm)
+                if scaler.is_enabled():
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+                optim_step += 1
 
             epoch_loss += loss.item()
             n_batches += 1
