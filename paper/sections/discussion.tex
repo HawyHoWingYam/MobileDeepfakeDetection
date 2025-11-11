@@ -1,0 +1,12 @@
+The cascade exposes explicit trade\hyp offs: lowering $\tau\_{low}$ and/or raising $\tau\_{high}$ reduces false negatives but increases Stage~2 usage; conversely, tighter thresholds reduce escalation at the risk of missed fakes. Our tuning results indicate near\hyp zero FNR at low escalation on combined validation. However, cross\hyp dataset results on Deepfake\hyp Eval\hyp 2024 reveal distribution shift and robustness gaps that merit further study.
+
+Limitations include residual domain shift, sensitivity to degradations, and dependence on calibration. Future directions: (i) robustness stress testing and adaptive thresholds (per\hyp family, per\hyp device), (ii) distillation or architecture search to shrink Stage~2 latency, and (iii) domain adaptation to improve generalization without inflating on\hyp device cost.
+
+\subsection*{Threats to Validity}
+\textbf{Data shifts.} Cross\hyp dataset gaps (e.g., Deepfake\hyp Eval\hyp 2024) may not fully reflect broader wild distributions. We mitigate via multi\hyp dataset training and difficult\hyp sample mining, but residual shift remains.
+
+\textbf{Threshold sensitivity.} Results depend on grid\hyp searched low/high thresholds and (optionally) Stage~2 temperature. We report tuned values and provide robustness sweeps to reveal trade\hyp offs; deployment may require periodic re\hyp tuning.
+
+\textbf{Perturbation scope.} Our suite covers JPEG, noise, blur, brightness/contrast, downscale, and gamma; other degradations (e.g., color casts, cropping, codecs) are not exhaustively tested.
+
+\textbf{Compute constraints.} CPU\hyp only inference and sample\hyp limited sweeps are used for timely evaluation; exact numbers may vary under different hardware or larger samples. We prioritize trends and trade\hyp offs over absolute values.

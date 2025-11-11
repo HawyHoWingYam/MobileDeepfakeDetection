@@ -1,0 +1,37 @@
+% Auto-generated tables
+\begin{table}[h]
+  \centering
+  \caption{Single-model performance on combined validation (auto-generated).}\label{tab:single_models_auto}
+  \begin{tabular}{lcccccc}\toprule
+  Model & AUC & F1 & Acc & Prec & Rec & FNR \\ \midrule
+  MobileNetV4 (Stage~1) & 0.9936 & -- & -- & -- & -- & -- \\ 
+  EfficientNetV2 (Stage~2, b3) & 0.9633 & 0.8930 & 0.8946 & 0.8806 & 0.9057 & 0.0943 \\ 
+  \bottomrule\end{tabular}\end{table}
+
+\begin{table}[h]
+  \centering
+  \caption{Best cascade configurations (auto-generated).}\label{tab:cascade_best_auto}
+  \begin{tabular}{cccccc}\toprule
+ Low & High & AUC & F1 & FNR & Escalation \\ \midrule
+  0.03 & 0.55 & 0.9924 & 0.9460 & 0.0032 & 0.0396 \\ 
+  0.03 & 0.55 & 0.9941 & 0.9644 & 0.0054 & 0.0150 \\ 
+  \bottomrule\end{tabular}\end{table}
+
+\begin{table}[h]
+  \centering
+  \caption{Deepfake-Eval-2024 (calibrated)}\label{tab:deepeval_calibrated}
+  \begin{tabular}{lccccc}\toprule
+ Split & Acc & F1 & FNR & FPR & Stage2 Rate \\ \midrule
+  test & 0.4995 & 0.2796 & 0.7901 & 0.2513 & 0.5226 \\ 
+  val & 0.5804 & 0.2996 & 0.7288 & 0.2667 & 0.5108 \\ 
+  \bottomrule\end{tabular}\end{table}
+
+\begin{table}[h]
+  \centering
+  \caption{Deepfake-Eval-2024 (stage2only)}\label{tab:deepeval_stage2only}
+  \begin{tabular}{lccccc}\toprule
+ Split & Acc & F1 & FNR & FPR & Stage2 Rate \\ \midrule
+  test & 0.4647 & 0.5962 & 0.1456 & 0.8706 & 0.9891 \\ 
+  val & 0.3273 & 0.4460 & 0.1817 & 0.9155 & 0.9751 \\ 
+  \bottomrule\end{tabular}\end{table}
+

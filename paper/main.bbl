@@ -1,0 +1,26 @@
+\begin{thebibliography}{1}
+
+\bibitem{deepfake_survey}
+A.~Author and B.~Author, ``Deepfake detection: A survey,'' {\em Journal of
+  Vision and Imaging}, 2022.
+
+\bibitem{mobilenetv4}
+A.~Howard {\em et~al.}, ``Mobilenetv4: Further scaling up mobile cnns,'' in
+  {\em Proc. CVPR}, 2024.
+
+\bibitem{efficientnetv2}
+M.~Tan and Q.~Le, ``Efficientnetv2: Smaller models and faster training,'' in
+  {\em Proc. ICML}, 2021.
+
+\bibitem{torchscript}
+``Torchscript documentation.'' \url{https://pytorch.org/docs/stable/jit.html},
+  2024.
+
+\bibitem{pytorch_mobile}
+A.~Paszke {\em et~al.}, ``Pytorch mobile: Build and run pytorch models on
+  mobile.'' \url{https://pytorch.org/mobile/home/}, 2023.
+
+\bibitem{torchao}
+``torchao quantization.'' \url{https://github.com/pytorch/ao}, 2024.
+
+\end{thebibliography}
