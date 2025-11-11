@@ -1,0 +1,79 @@
+% Results and Analysis – tables and figures first
+
+\subsection{Single-Model Baselines}
+
+% Auto-generated tables (single-model and cascade best)
+\input{generated/auto_tables}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=.45\textwidth]{figures/outputs_stage1_run_20251023_034316_01_roc_curve.png}\hfill
+  \includegraphics[width=.45\textwidth]{figures/outputs_stage3_run_20251030_081127_01_roc_curve.png}
+  \caption{ROC curves for Stage~1 (left) and Stage~2 (right) on combined validation.}
+  \label{fig:roc_baselines}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=.45\textwidth]{figures/outputs_stage1_run_20251023_034316_03_calibration.png}\hfill
+  \includegraphics[width=.45\textwidth]{figures/outputs_stage1_run_20251023_034316_confusion_matrix.png}
+  \caption{Stage~1 calibration (left) and confusion matrix (right).}
+  \label{fig:stage1_calib_conf}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=.45\textwidth]{figures/outputs_stage3_run_20251030_081127_03_calibration.png}\hfill
+  \includegraphics[width=.45\textwidth]{figures/outputs_stage3_run_20251030_081127_confusion_matrix.png}
+  \caption{Stage~2 calibration (left) and confusion matrix (right).}
+  \label{fig:stage2_calib_conf}
+\end{figure}
+
+\subsection{Cascade Threshold Tuning}
+
+\begin{table}[h]
+  \centering
+  \caption{Best cascade configurations (validation). Low/high thresholds, metrics, and escalation rate.}
+  \label{tab:cascade_best}
+  \begin{tabular}{cccccc}
+    \toprule
+    Low & High & AUC & F1 & FNR & Escalation \\
+    \midrule
+    0.05 & 0.55 & \num{0.9941} & \num{0.9654} & \num{0.0060} & \num{0.0116} \\
+    0.03 & 0.55 & \num{0.9941} & \num{0.9644} & \num{0.0054} & \num{0.0150} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=.32\textwidth]{figures/outputs_stage4_run_20251031_075851_heatmap_f1.png}\hfill
+  \includegraphics[width=.32\textwidth]{figures/outputs_stage4_run_20251031_075851_heatmap_fnr.png}\hfill
+  \includegraphics[width=.32\textwidth]{figures/outputs_stage4_run_20251031_075851_best_config_metrics.png}
+  \caption{Cascade threshold tuning heatmaps and best configuration metrics (example run).}
+  \label{fig:cascade_heatmaps}
+\end{figure}
+
+\subsection{Cross-Dataset Evaluation (Deepfake-Eval-2024)}
+% The Deepfake-Eval-2024 calibrated and Stage2-only tables are included in the auto tables above.
+
+On Deepfake\hyp Eval\hyp 2024, the calibrated cascade exhibits substantially lower absolute performance than in\hyp distribution validation (Table~\ref{tab:deepeval_calibrated}). This gap is expected given the distribution shift, variety of sources, and lack of fine\hyp tuning on the OOD corpus. A Stage~2\,only setting (Table~\ref{tab:deepeval_stage2only}) shows the upper bound when the expert handles nearly all samples, at the cost of high system load. These results motivate domain adaptation or dataset\hyp aware calibration for deployment.
+
+% Robustness curves (auto-generated snippet)
+\input{generated/robustness_figs}
+
+\subsection{Robustness to Common Perturbations}
+We evaluate the tuned cascade under four perturbation families (JPEG compression, Gaussian noise, motion blur, and brightness/contrast). Figure~\ref{fig:robustness_curves} plots F1 vs. perturbation strength (additional Accuracy and FNR plots are provided in the repository). Results exhibit non\hyp monotonic trends across families:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{JPEG:} F1 mildly improves as quality decreases (95\,$\rightarrow$\,20), accompanied by a reduction in FNR. This likely reflects compression artifacts that accentuate cues learned by the detector; full-sample evaluation is needed to confirm.
+  \item \textbf{Gaussian:} Increasing noise (sigma 2\,$\rightarrow$\,12) lowers FNR and raises F1 in the small-sample sweep. We hypothesize that heavy noise disrupts real textures more than fake cues under the current thresholds; a larger run and per-family calibration will clarify.
+  \item \textbf{Motion blur:} F1 improves from kernel 3 to 13 with a gradual drop in FNR, indicating partial robustness to blur at the tested sizes.
+  \item \textbf{Brightness:} Moderate brightness changes (0.7\,$\rightarrow$\,1.3) show a slight F1 increase and FNR decrease.
+\end{itemize}
+These results motivate per\hyp family threshold/temperature calibration and consistent reporting of Stage~2 escalation rates to quantify efficiency\hyp robustness trade\hyp offs. Table~\ref{tab:robustness_table} summarizes F1/Acc/FNR/S2 Rate by perturbation and level. We further sweep cascade thresholds to visualize FNR vs. Stage~2 rate under distortions; Figure~\ref{fig:robustness_tradeoff} shows representative trade\hyp offs.
+
+% Robustness summary table (auto-generated)
+\input{generated/robustness_table}
+
+% Trade-off figures (auto-generated if present)
+\input{generated/robustness_tradeoff}

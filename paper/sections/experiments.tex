@@ -1,0 +1,20 @@
+\textbf{Environment.} Training and analysis use PyTorch~2.1+, timm, albumentations, and scikit-learn. Scripts and requirements are provided in the repository (\verb|requirements.txt|). All runs produce a timestamped directory under \verb|outputs/| with logs (\verb|log.md|), CSV metrics, summary JSON, and plots.
+
+\textbf{Datasets.} We train on CelebDF-v2, FaceForensics, DeeperForensics, and DFDC using balanced manifests; Deepfake-Eval-2024 is held out for validation/test. Table~\ref{tab:dataset_sizes} reports split sizes. We employ equal-by-dataset sampling during Stage~1 and difficult-subset mining for Stage~3 to focus on ambiguous patterns.
+
+\textbf{Key Commands.} End-to-end pipeline commands are included in scripts:
+\begin{itemize}[leftmargin=*]
+  \item Stage~1: \verb|python -m src.training.train_mobilenet ...|
+  \item Stage~2 mining: \verb|python -m src.tools.create_difficult_subset ...|
+  \item Stage~3: \verb|python -m src.training.train_efficientnet --model_name tf_efficientnetv2_b3 ...|
+  \item Stage~4 tuning: \verb|python src/tools/tune_cascade_system.py ...|
+  \item Cross-dataset eval: \verb|python src/tools/eval_cascade_across_datasets.py ...|
+  \item Stage~2 temperature: \verb|python src/tools/calibrate_temperature.py ...|
+  \item Export (mobile): \verb|python -m src.tools.export_torchscript ...|
+\end{itemize}
+
+\textbf{Hyperparameters.} Unless noted, Stage~1 uses LR=\num{1e-4}, batch=\num{256}, epochs=\num{15}, AdamW, WD=\num{1e-4}, image size \SI{256}{px}. Stage~3 (b3) uses batch=\num{256}, LR=\num{1e-4}, dropout=0.3, label smoothing=0.05, AMP on, early stopping with patience 4. We freeze/unfreeze the backbone during warm-up when beneficial and monitor gradient norms.
+
+\textbf{Metrics.} We report AUC, F1, Accuracy, Precision/Recall, FNR/FPR, and Stage~2 escalation rate. For deployment, we additionally measure per-frame latency and APK size and account for the fraction of samples that require Stage~2 on device.
+
+\textbf{Reproducibility.} All scripts are in \verb|src/| with pinned dependencies. We fix random seeds where applicable, snapshot configs, and log artifacts under \verb|outputs/|. Paper tables are auto-generated from CSV/JSON via \verb|tools/generate_paper_assets.py|; robustness curves/tables use \verb|tools/analyze_robustness.py| and \verb|tools/robustness_threshold_sweep.py|. For Overleaf compilation, either mirror the \verb|outputs/| structure or copy referenced figures to \verb|paper/figures| and update paths.
