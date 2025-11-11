@@ -13,3 +13,6 @@ Contributions:
 \end{itemize}
 
 This paper builds on our midterm and early project reports (see paper\_related) and the stage plans/reports (project\_instruction). We present a self\hyp contained account of the method, results, and deployment, and we release artifacts for full reproducibility. Where relevant, we discuss distillation/pruning as future extensions consistent with the initial roadmap and outline how our pipeline can accommodate them (e.g., swapping Stage~2 with a distilled expert while keeping the same thresholding and evaluation tooling).
+
+\subsection*{Open Challenges in Mobile Deepfake Detection}
+Despite strong in\hyp distribution results reported by many detectors, three practical challenges persist: (i) cross\hyp dataset generalization under distribution shift (often large AUC drops are observed on in\hyp the\hyp wild data \cite{todo_generalization_gap}); (ii) principled management of the accuracy\,–\,latency\,–\,memory trade\,off on mobile devices, beyond generic compression; and (iii) security\hyp oriented control of false negatives that conflicts with efficiency. Our system design and evaluation target these gaps by exposing tunable dials (thresholds, temperatures) aligned with operational budgets and by reporting escalation rates alongside accuracy metrics.

@@ -2,6 +2,9 @@ The cascade exposes explicit trade\hyp offs: lowering $\tau\_{low}$ and/or raisi
 
 Limitations include residual domain shift, sensitivity to degradations, and dependence on calibration. Future directions: (i) robustness stress testing and adaptive thresholds (per\hyp family, per\hyp device), (ii) distillation or architecture search to shrink Stage~2 latency, and (iii) domain adaptation to improve generalization without inflating on\hyp device cost.
 
+\subsection*{Domain Adaptation and Feature Diagnostics}
+Feature\hyp space visualization (e.g., t\,\-SNE) and distributional distances (e.g., MMD) can quantify gaps between training sources and OOD sets \cite{todo_domain_adapt_survey}. Lightweight adaptation (temperature, thresholds) and progressive mixing schedules are promising deployment\hyp friendly options.
+
 \subsection*{Threats to Validity}
 \textbf{Data shifts.} Cross\hyp dataset gaps (e.g., Deepfake\hyp Eval\hyp 2024) may not fully reflect broader wild distributions. We mitigate via multi\hyp dataset training and difficult\hyp sample mining, but residual shift remains.
 

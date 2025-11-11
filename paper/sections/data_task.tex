@@ -36,3 +36,22 @@
 \paragraph{Augmentation and Preprocessing.} Images are resized to \SI{256}{px} on the shorter side and normalized. We use Albumentations for light geometric and photometric augmentation; a small probability of additional augmentation is applied on real samples to mitigate class imbalance effects (\verb|real_aug_prob|).
 
 \paragraph{OOD Generalization.} Following Stage~5, we evaluate the cascade on Deepfake\hyp Eval\hyp 2024. We report both calibrated cascade results and a Stage~2\,only upper bound (Table~\ref{tab:deepeval_calibrated}, \ref{tab:deepeval_stage2only} from auto\hyp generated tables). The sizable performance gap relative to in\hyp distribution validation underscores the importance of robustness studies and future domain adaptation.
+
+\subsection*{Dataset Characteristics}
+\begin{table}[h]
+  \centering
+  \caption{Qualitative characteristics (to motivate protocol design).}
+  \label{tab:dataset_characteristics}
+  \begin{tabular}{lllll}
+    \toprule
+    Dataset & Generation & Quality & Source & Notes \\
+    \midrule
+    CelebDF\,v2 & Face\hyp swap & High & YouTube & Celebrities; curated videos \\
+    FaceForensics++ & Multiple & Mid & Actors & Diverse manipulations \\
+    DFDC & Multiple & Mid\,–\,Low & Internet & Large\,–\,scale, mixed quality \\
+    DeeperForensics & Multiple & Mid & Lab & Hard cases; challenging textures \\
+    Deepfake\hyp Eval\hyp 2024 & Multiple & Mid\,–\,Low & Web & In\hyp the\hyp wild, multi\hyp source \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+These traits justify balanced sampling across sources and holding out an OOD\,set.
