@@ -3,7 +3,7 @@
 % Auto-generated mobile artifact table (if present)
 \input{generated/mobile_tables}
 
-\paragraph{PTQ vs. QAT.} We adopt post\hyp training dynamic quantization (PTQ) for linear layers due to its simplicity and strong accuracy\hyp size trade\hyp off on our models. Quantization\hyp aware training (QAT) \cite{todo_ptq_qat_survey,todo_qat_survey} can further reduce the quantization gap by learning with simulated quantization noise, at the cost of training complexity and longer cycles. We plan to evaluate per\hyp channel INT8 and selective INT4 for heads/backbone under the same export pipeline \cite{todo_int4_quant}.
+\paragraph{PTQ vs. QAT.} We adopt post\hyp training dynamic quantization (PTQ) for linear layers due to its simplicity and strong accuracy\hyp size trade\hyp off on our models. Quantization\hyp aware training (QAT) \cite{jacob2017integeronly} can further reduce the quantization gap by learning with simulated quantization noise, at the cost of training complexity and longer cycles; see \cite{gholami2021quant_survey,han2016deepcompression,esser2020lsq} for broader comparisons of PTQ/QAT. As complementary levers, pruning and knowledge distillation reduce compute and model size with modest accuracy loss \cite{blalock2020pruningsurvey,hinton2015distilling,romero2015fitnets,furlanello2018bornagain}. We plan to evaluate per\hyp channel INT8 and selective INT4 for heads/backbone under the same export pipeline.
 
 % Placeholders for on-device latency table (to be filled after measurement)
 \begin{table}[h]
