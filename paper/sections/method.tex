@@ -1,6 +1,6 @@
 We adopt a six-stage pipeline designed for both accuracy and deployability, mapped directly to the repository structure and scripts.
 
-\paragraph{Stage~1: Lightweight Filter (MobileNetV4).} A compact MobileNetV4 variant (\verb|mobilenetv4_hybrid_medium|) serves as a fast binary classifier. We train with BCE on a unified multi-dataset loader that balances contributions via \verb|WeightedRandomSampler| (\verb|train_mobilenet.py:create_multi_dataset_loader|). Key defaults (\verb|configs/experiment_default.yaml|): learning rate \num{1e-4}, batch size \num{256}, epochs \num{15}, AdamW with weight decay \num{1e-4}. Albumentations provides light augmentation; inputs are normalized and resized to \SI{256}{px}. The Stage~1 head outputs a single logit.
+\paragraph{Stage~1: Lightweight Filter (MobileNetV4).} A compact MobileNetV4 variant (\verb|mobilenetv4_hybrid_medium|) serves as a fast binary classifier. We train with BCE on a unified multi-dataset loader that balances contributions via \verb|WeightedRandomSampler| (\verb|train_mobilenet.py:create_multi_dataset_loader|). Key defaults (\verb|configs/experiment_default.yaml|): learning rate \num{1e-4}, batch size \num{256}, epochs \num{15}, AdamW with weight decay \num{1e-4}. Albumentations \cite{buslaev2018albumentations} provides light augmentation; inputs are normalized and resized to \SI{256}{px}. The Stage~1 head outputs a single logit.
 
 \paragraph{Stage~2: Difficult Sample Mining.} We score training data with Stage~1 (no augmentation) and label samples as \emph{difficult} if they are misclassified or lie in a predefined ambiguity band around 0.5. The script \verb|tools/create_difficult_subset.py| writes a manifest (e.g., \verb|manifests/train_difficult_subset.csv|) that concentrates Stage~2 on ambiguous patterns and corner cases.
 
@@ -17,7 +17,7 @@ Let $\mathcal{D}=\{(x_i, y_i)\}_{i=1}^N$ be training pairs and $p_1(x)=\sigma(f_
 \[
 \mathcal{H} = \{(x,y)\in\mathcal{D}: \mathbf{1}[\hat{y}_1(x)\ne y]\ \ \text{or}\ \ x\in\mathcal{A}_\delta\},
 \]
-where $\hat{y}_1(x)=\mathbf{1}[p_1(x)>\tau]$ is a provisional decision at threshold $\tau$. We optionally stratify by dataset label $d(x)$ and cap per\hyp dataset counts to avoid distributional skew. This construction is consistent with curriculum\hyp or hard\hyp example strategies \cite{todo_curriculum_survey,todo_hard_mining}, while preserving validation on the full multi\hyp dataset split to mitigate bias.
+where $\hat{y}_1(x)=\mathbf{1}[p_1(x)>\tau]$ is a provisional decision at threshold $\tau$. We optionally stratify by dataset label $d(x)$ and cap per\hyp dataset counts to avoid distributional skew. This construction is consistent with curriculum\hyp or hard\hyp example strategies \cite{bengio2009curriculum,shrivastava2016ohem}, while preserving validation on the full multi\hyp dataset split to mitigate bias.
 
 \subsection*{Cascade Optimization (Cost-Sensitive Objective)}
 Let $\tau_{\mathrm{low}}<\tau_{\mathrm{high}}$ be Stage~1 decision thresholds and $\tau_2$ the Stage~2 threshold. Define the Stage~2 escalation rate
@@ -26,13 +26,13 @@ We optimize for low false negatives under an efficiency budget $B$:
 \[
 \min_{\tau_{\mathrm{low}},\tau_{\mathrm{high}},\,\tau_2}\ \mathrm{FNR}\big(\tau_{\mathrm{low}},\tau_{\mathrm{high}},\tau_2\big)\quad\text{s.t.}\quad \pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}})\le B.
 \]
-An equivalent cost\hyp sensitive form uses expected compute $\mathbb{E}[C]=C_1\cdot(1-\pi_2)+C_2\cdot\pi_2\le K$ with Stage~1/2 unit costs $(C_1,C_2)$ \cite{todo_cost_sensitive,todo_cascade_adaptive}. We implement a grid search that is simple, parallel, and reproducible; Bayesian optimization or dynamic programming are viable future accelerators \cite{todo_bayes_opt}.
+An equivalent cost\hyp sensitive form uses expected compute $\mathbb{E}[C]=C_1\cdot(1-\pi_2)+C_2\cdot\pi_2\le K$ with Stage~1/2 unit costs $(C_1,C_2)$ \cite{elkan2001cost}. We implement a grid search that is simple, parallel, and reproducible; Bayesian optimization or dynamic programming are viable future accelerators \cite{snoek2012bayesopt}.
 
 \subsection*{Routing Strategies}
-We adopt confidence\hyp based routing with two thresholds $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ for interpretability and direct control over $\pi_2$. Alternatives include entropy\hyp or margin\hyp based routing \cite{todo_entropy_routing,todo_margin_routing}. Confidence routing works well with calibrated logits (optional temperature on Stage~2) and matches deployment needs where a tunable escalation rate is critical.
+We adopt confidence\hyp based routing with two thresholds $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ for interpretability and direct control over $\pi_2$. Alternatives include entropy\hyp or margin\hyp based routing \cite{kaya2019shallowdeep,teerapittayanon2017branchynet}. Confidence routing works well with calibrated logits (optional temperature on Stage~2) and matches deployment needs where a tunable escalation rate is critical.
 
 \subsection*{Quantization and Deployment Notes}
-We use post\hyp training dynamic quantization for linear layers to reduce on\hyp device footprint and maintain accuracy. Quantization\hyp aware training (QAT) \cite{todo_qat_survey} can further reduce the gap, but increases training complexity; we leave QAT and mixed\hyp precision (e.g., INT4+INT8) \cite{todo_int4_quant} as future work within the same export pipeline.
+We use post\hyp training dynamic quantization for linear layers to reduce on\hyp device footprint and maintain accuracy. Quantization\hyp aware training (QAT) \cite{jacob2017integeronly} can further reduce the gap, but increases training complexity; we leave mixed\hyp precision (e.g., INT4+INT8) and advanced schemes as future work within the same export pipeline. Temperature scaling is used for probability calibration when transferring thresholds across datasets \cite{guo2017calibration}.
 
 \subsection*{Objectives, Milestones, and Evaluation Strategy}
 \textbf{Objectives.} Achieve a practical deepfake detector on mobile devices with: (i) high recall (low FNR) under realistic conditions; (ii) low latency and small footprint; (iii) reproducible training and tuning pipelines with auditable artifacts.

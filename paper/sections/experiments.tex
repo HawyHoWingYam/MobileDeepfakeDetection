@@ -1,4 +1,4 @@
-\textbf{Environment.} Training and analysis use PyTorch~2.1+, timm, albumentations, and scikit-learn. Scripts and requirements are provided in the repository (\verb|requirements.txt|). All runs produce a timestamped directory under \verb|outputs/| with logs (\verb|log.md|), CSV metrics, summary JSON, and plots.
+\textbf{Environment.} Training and analysis use PyTorch~2.1+ \cite{paszke2019pytorch}, timm, Albumentations \cite{buslaev2018albumentations}, and scikit\-learn \cite{pedregosa2011sklearn}. Scripts and requirements are provided in the repository (\verb|requirements.txt|). All runs produce a timestamped directory under \verb|outputs/| with logs (\verb|log.md|), CSV metrics, summary JSON, and plots.
 
 \textbf{Datasets.} We train on CelebDF-v2, FaceForensics, DeeperForensics, and DFDC using balanced manifests; Deepfake-Eval-2024 is held out for validation/test. Table~\ref{tab:dataset_sizes} reports split sizes. We employ equal-by-dataset sampling during Stage~1 and difficult-subset mining for Stage~3 to focus on ambiguous patterns.
 
@@ -26,4 +26,4 @@ We evaluate models in two regimes: (i) combined validation across training sourc
 Stage~1 uses an equal\hyp by\hyp dataset \verb|WeightedRandomSampler| with per\hyp dataset weights $w_k\propto 1/n_k$. We ablate (a) no balancing, (b) equal by dataset, and (c) capped contributions per epoch. For Stage~3, hard\hyp subset training is validated on the full combined validation set to mitigate selection bias.
 
 \subsection*{Augmentation Rationale}
-Light geometric/photometric augmentation improves robustness; a small real\hyp class augmentation probability reduces asymmetry in error gradients. Additional perturbation sweeps (JPEG/noise/blur/brightness) are reported separately to avoid conflating training augmentation with robustness evaluation.
+Light geometric/photometric augmentation improves robustness; a small real\hyp class augmentation probability reduces asymmetry in error gradients. Additional perturbation sweeps (JPEG/noise/blur/brightness) are reported separately to avoid conflating training augmentation with robustness evaluation. We implement these augmentations with Albumentations \cite{buslaev2018albumentations} for speed and flexibility.
