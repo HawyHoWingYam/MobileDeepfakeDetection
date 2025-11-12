@@ -17,7 +17,7 @@ Let $\mathcal{D}=\{(x_i, y_i)\}_{i=1}^N$ be training pairs and $p_1(x)=\sigma(f_
 \[
 \mathcal{H} = \{(x,y)\in\mathcal{D}: \mathbf{1}[\hat{y}_1(x)\ne y]\ \ \text{or}\ \ x\in\mathcal{A}_\delta\},
 \]
-where $\hat{y}_1(x)=\mathbf{1}[p_1(x)>\tau]$ is a provisional decision at threshold $\tau$. We optionally stratify by dataset label $d(x)$ and cap per\hyp dataset counts to avoid distributional skew. This construction is consistent with curriculum\hyp or hard\hyp example strategies \cite{bengio2009curriculum,shrivastava2016ohem}, while preserving validation on the full multi\hyp dataset split to mitigate bias.
+where $\hat{y}_1(x)=\mathbf{1}[p_1(x)>\tau]$ is a provisional decision at threshold $\tau$. We optionally stratify by dataset label $d(x)$ and cap per\hyp dataset counts to avoid distributional skew. This construction is consistent with hard\hyp example mining strategies (online hard example mining) \cite{shrivastava2016ohem}, while preserving validation on the full multi\hyp dataset split to mitigate bias.
 
 \subsection*{Cascade Optimization (Cost-Sensitive Objective)}
 Let $\tau_{\mathrm{low}}<\tau_{\mathrm{high}}$ be Stage~1 decision thresholds and $\tau_2$ the Stage~2 threshold. Define the Stage~2 escalation rate
@@ -29,7 +29,7 @@ We optimize for low false negatives under an efficiency budget $B$:
 An equivalent cost\hyp sensitive form uses expected compute $\mathbb{E}[C]=C_1\cdot(1-\pi_2)+C_2\cdot\pi_2\le K$ with Stage~1/2 unit costs $(C_1,C_2)$ \cite{elkan2001cost}. We implement a grid search that is simple, parallel, and reproducible; Bayesian optimization or dynamic programming are viable future accelerators \cite{snoek2012bayesopt}.
 
 \subsection*{Routing Strategies}
-We adopt confidence\hyp based routing with two thresholds $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ for interpretability and direct control over $\pi_2$. Alternatives include entropy\hyp or margin\hyp based routing \cite{kaya2019shallowdeep,teerapittayanon2017branchynet}. Confidence routing works well with calibrated logits (optional temperature on Stage~2) and matches deployment needs where a tunable escalation rate is critical.
+We adopt confidence\hyp based routing with two thresholds $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ for interpretability and direct control over $\pi_2$. Alternatives include entropy\hyp or margin\hyp based routing (early exits) \cite{kaya2019shallowdeep}. Confidence routing works well with calibrated logits (optional temperature on Stage~2) and matches deployment needs where a tunable escalation rate is critical.
 
 \subsection*{Quantization and Deployment Notes}
 We use post\hyp training dynamic quantization for linear layers to reduce on\hyp device footprint and maintain accuracy. Quantization\hyp aware training (QAT) \cite{jacob2017integeronly} can further reduce the gap, but increases training complexity; we leave mixed\hyp precision (e.g., INT4+INT8) and advanced schemes as future work within the same export pipeline. Temperature scaling is used for probability calibration when transferring thresholds across datasets \cite{guo2017calibration}.

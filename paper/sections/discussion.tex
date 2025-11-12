@@ -3,7 +3,10 @@ The cascade exposes explicit trade\hyp offs: lowering $\tau\_{low}$ and/or raisi
 Limitations include residual domain shift, sensitivity to degradations, and dependence on calibration. Future directions: (i) robustness stress testing and adaptive thresholds (per\hyp family, per\hyp device), (ii) distillation or architecture search to shrink Stage~2 latency, and (iii) domain adaptation to improve generalization without inflating on\hyp device cost.
 
 \subsection*{Domain Adaptation and Feature Diagnostics}
-Feature\hyp space visualization (e.g., t\,\-SNE) and distributional distances (e.g., MMD) can quantify gaps between training sources and OOD sets \cite{todo_domain_adapt_survey}. Lightweight adaptation (temperature, thresholds) and progressive mixing schedules are promising deployment\hyp friendly options.
+Feature\hyp space visualization (e.g., t\,\-SNE) and distributional distances (e.g., MMD) can quantify gaps between training sources and OOD sets (domain adaptation survey) \cite{wang2018deepDA_survey}. Lightweight adaptation (temperature, thresholds) and progressive mixing schedules are promising deployment\hyp friendly options.
+
+\subsection*{Early Exits and Overthinking}
+Shallow\hyp Deep and related early\hyp exit works show that internal classifiers can both reduce compute and, in some cases, alter final predictions due to overthinking (early exits) \cite{kaya2019shallowdeep}. Our confidence\hyp based two\hyp threshold routing mitigates such risks by making Stage~1 decisions only under high confidence and escalating ambiguous cases, which we monitor via the Stage~2 escalation rate.
 
 \subsection*{Threats to Validity}
 \textbf{Data shifts.} Cross\hyp dataset gaps (e.g., Deepfake\hyp Eval\hyp 2024) may not fully reflect broader wild distributions. We mitigate via multi\hyp dataset training and difficult\hyp sample mining, but residual shift remains.
