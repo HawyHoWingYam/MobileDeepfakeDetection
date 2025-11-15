@@ -1,447 +1,206 @@
-# MobileDeepfakeDetection 🤖
+# MobileDeepfakeDetection
 
-[![GitHub](https://img.shields.io/badge/GitHub-HawyHoWingYam%2FMobileDeepfakeDetection-blue)](https://github.com/HawyHoWingYam/MobileDeepfakeDetection)
-[![Claude Code](https://img.shields.io/badge/Claude_Code-Enabled-green)](https://claude.ai/code)
-[![AI Workflow](https://img.shields.io/badge/AI_Workflow-Active-purple)](#ai-driven-development)
+Two‑stage cascaded deepfake detection system designed for mobile deployment.  
+Stage 1 is a lightweight MobileNetV4 filter; Stage 2 is an EfficientNetV2‑B3 expert.  
+The project includes a full training → tuning → evaluation → export pipeline and a LaTeX paper.
 
-MobileDeepfakeDetection implements a multi-stage cascade architecture for efficient deepfake detection optimized for mobile deployment. The system features a revolutionary **AI-driven development workflow** where the entire development lifecycle is controlled through natural language commands.
+This README reflects the **current** implementation and is aligned with:
 
-## 🚀 Key Features
+- The paper in `paper/`  
+- The Chinese phase documents in `project_instruction/`  
+- The Python code in `src/`
 
-- **Complete Cascade Architecture**: 4-stage pipeline from fast filter to mobile deployment
-- **Mobile-Optimized**: QAT + Knowledge Distillation for >75% size reduction, >3x speedup
-- **Advanced Video Processing**: Temporal analysis, streaming, and adaptive sampling
-- **Cross-Platform Deployment**: ONNX export with comprehensive mobile compatibility
-- **AI-Driven Development**: 100% natural language workflow control
-- **Production-Ready**: Comprehensive testing, benchmarking, and deployment automation
+---
 
-## Current Implementation Status
+## 1. High‑Level Overview
 
-✅ **Stage 1 Complete**: Fast filter using MobileNetV4-Hybrid-Medium with temperature scaling calibration  
-✅ **Stage 2 Complete**: EfficientNetV2-B3 + GenConViT dual-mode precision analyzers
-✅ **Stage 3 Complete**: K-fold cross-validation + LightGBM meta-model training
-✅ **Stage 4 Complete**: Mobile optimization, video processing, and deployment systems
-✅ **AI Workflow**: Complete GitHub CLI + Claude Code integration
-🔄 **Stage 5**: Final evaluation and production deployment (next)
+- **Goal**: Detect face‑swap deepfakes in videos/images with **high recall** and **controlled compute** on resource‑limited devices.  
+- **Main idea**:  
+  - Stage 1 (MobileNetV4) quickly filters easy real/fake cases.  
+  - Stage 2 (EfficientNetV2‑B3) only processes ambiguous samples.  
+  - Stage 4 tunes two thresholds to trade FNR against Stage‑2 usage.  
+  - Stage 5 evaluates robustness and cross‑dataset generalization.  
+  - Stage 6 exports TorchScript + quantized models for mobile integration.
+- **Optional components**:  
+  - Stage 3 LightGBM meta‑model and GenConViT expert are kept as **research tools**, not part of the default deployment path.
 
-## 🤖 AI-Driven Development
+---
 
-This project pioneered a revolutionary development approach where **100% of development operations** can be controlled through natural language commands. No more manual GitHub operations!
+## 2. Repository Structure
 
-### Natural Language Commands
+Only最重要的目錄簡要說明如下（詳細內容見 `project_instruction/` 和 `docs/`）：
 
-```bash
-# Issue Management
-@claude create issue for "Stage 2 GenConViT performance optimization"
-@claude analyze issue #123 and suggest implementation approach
-@claude assign issue #456 to appropriate team member
-
-# Pull Request Automation  
-@claude create PR for issue #123 with complete implementation
-@claude review PR #456 for security and performance issues
-@claude merge PR #789 if all checks pass and approved
-
-# Branch Management
-@claude create branch for issue #123 following naming conventions
-@claude switch to hybrid genconvit development branch
-@claude cleanup stale branches older than 30 days
+```text
+MobileDeepfakeDetection/
+├── src/                    # All training / evaluation / cascade / export code
+│   ├── stage1/             # Stage 1: MobileNetV4 filter (train / calibrate / evaluate)
+│   ├── stage2/             # Stage 2: EfficientNetV2-B3 expert (+ optional GenConViT)
+│   ├── stage3/             # Stage 3: LightGBM meta-model (optional analysis)
+│   ├── stage4/             # CascadeDetector, threshold tuning, mobile export helpers
+│   ├── tools/              # Robustness analysis, paper asset generation, etc.
+│   └── utils/, training/   # Dataset config, experiment helpers
+├── paper/                  # LaTeX source, figures, auto-generated tables
+├── project_instruction/    # Chinese phase docs (Stage 0–5), aligned with paper/code
+├── docs/                   # Environment, preprocessing, Stage 1 user guide
+├── config/                 # Dataset configuration files (dataset_paths.json, etc.)
+├── manifests/              # Generated CSV manifests (train/val/test splits)
+├── outputs/                # Training/eval outputs (logs, JSON/CSV, figures)
+├── test/                   # Minimal unit tests for Stage 1/2
+├── weights/                # Optional face detector weights (Caffe)
+├── environment.yml         # Conda environment (Python 3.12 + PyTorch 2.1+)
+└── dataset_paths*.json     # Example dataset path configs (no private paths)
 ```
 
-### Slash Commands
-- `/fix-issue <number>` - Analyze issue and create fix PR
-- `/create-feature <description>` - Create feature branch and implementation
-- `/optimize-stage1` - Performance optimization for Stage 1 MobileNetV4
-- `/optimize-stage2` - Performance optimization for Stage 2 models
-- `/review-pr <number>` - Comprehensive PR review with suggestions
+一些次要或歷史性文件（例如部分 log、zip 壓縮包、早期 Overleaf bundle）只作為備份存在，對主流程不是必需，可以在提交作業時選擇忽略。
 
-### Automated Workflows
-- **Issue Triage**: Auto-labeling and assignment based on content analysis
-- **PR Review**: AI-driven security, performance, and code quality analysis
-- **Branch Management**: Automatic creation, naming, and cleanup
-- **Documentation Sync**: Auto-update Wiki and docs from code changes
-- **Performance Monitoring**: Automated benchmarking and optimization suggestions
+---
 
-### Smart Features
-- **Context-Aware AI**: Automatically gathers relevant code, issues, and PR context
-- **Security Gates**: Multi-layer approval system for automated operations
-- **Asynchronous Processing**: Nightly AI analysis of complex tasks
-- **Knowledge Evolution**: CLAUDE.md rules auto-update from team decisions
+## 3. Datasets and Task
 
-## 🎯 Complete Architecture Overview
+### 3.1 Training / Validation Datasets
 
-The AWARE-NET system implements a complete 4-stage cascade architecture optimized for mobile deployment:
+The final implementation trains and validates on four academic datasets:
 
-### Stage 1: Fast Filter (MobileNetV4)
-- **Purpose**: High-speed preliminary filtering for obvious cases
-- **Model**: MobileNetV4-Hybrid-Medium with temperature scaling
-- **Performance**: >0.97 AUC, <10ms inference time
-- **Cascade Role**: Filters ~30% of samples with high confidence
+- **CelebDF‑v2** – High‑quality celebrity face‑swap videos.  
+- **FaceForensics++ (FF++)** – Multiple manipulation methods (Deepfakes, Face2Face, FaceSwap, NeuralTextures, etc.).  
+- **DFDC** – Crowd‑sourced dataset with diverse actors and compression pipelines.  
+- **DeeperForensics‑1.0** – Emphasizes real‑world perturbations and challenging textures.
 
-### Stage 2: Precision Analyzers (EfficientNetV2 + GenConViT)
-- **Purpose**: Detailed analysis for complex samples
-- **Models**: EfficientNetV2-B3 (CNN expert) + GenConViT (Transformer expert)
-- **Features**: Dual-mode processing with complementary feature extraction
-- **Performance**: >0.93 AUC with improved robustness
+All video datasets are preprocessed into **256×256 face crops** using a unified pipeline (MTCNN face detection + resizing), and described by CSV manifests.
 
-### Stage 3: Meta-Model Integration (LightGBM)
-- **Purpose**: Intelligent fusion of Stage 1-2 predictions
-- **Approach**: K-fold cross-validation with out-of-fold feature generation
-- **Features**: 6 feature combination strategies with hyperparameter optimization
-- **Performance**: >2% AUC improvement over best individual model
+> **DF40** is used only to analyze the desired **256×256 PNG** specification in early planning.  
+> It does **not** participate in the final training pipeline.
 
-### Stage 4: Mobile Optimization & Deployment
-- **Purpose**: Production-ready mobile deployment system
-- **Features**: QAT + Knowledge Distillation, ONNX export, video processing
-- **Optimization**: >75% size reduction, >3x speedup, <2% accuracy loss
-- **Capabilities**: Real-time streaming, temporal analysis, cross-platform deployment
+### 3.2 OOD Evaluation Dataset
 
-## 📱 Stage 4: Mobile Optimization & Deployment
+- **Deepfake‑Eval‑2024** – In‑the‑wild benchmark composed of real social‑platform videos.  
+  Used strictly as a **held‑out OOD benchmark** for Stage‑1/2 and cascade evaluation.
 
-Stage 4 transforms the research prototype into a production-ready mobile system:
+### 3.3 Task Definition
 
-### Mobile Optimization Pipeline
+Detection is framed as **frame‑level binary classification**:
+
+- Label `0` = real face, `1` = fake face.  
+- For videos, applications may aggregate frame‑level predictions into a video‑level score (e.g., max or average probability), but the core pipeline operates on face crops.
+
+---
+
+## 4. Six‑Stage Pipeline (Summary)
+
+This matches the paper’s Method section.
+
+1. **Stage 0 – Data & Environment (project setup)**  
+   - Configure datasets via `config/dataset_paths.json` (see `docs/dataset_configuration_guide.md`).  
+   - Preprocess raw videos into 256×256 PNG face crops using `scripts/preprocess_datasets_v2.py`.  
+   - Generate train/val/test manifests under `manifests/`.
+
+2. **Stage 1 – Lightweight Filter (MobileNetV4)**  
+   - Train with `src/stage1/train_stage1.py` on the combined manifest.  
+   - Apply light augmentation, AdamW, cosine LR, early stopping.  
+   - Calibrate probabilities via temperature scaling using `src/stage1/calibrate_model.py`.  
+   - Evaluate per‑dataset and combined metrics (`outputs/stage1/evaluation/...`).
+
+3. **Stage 2 – Expert Model (EfficientNetV2‑B3)**  
+   - Train with `src/stage2/train_stage2_effnet.py` on the same combined manifest.  
+   - Optionally incorporate hard example mining (difficult subset derived from Stage 1 scores).  
+   - Calibrate probabilities and export logits/embeddings for later stages.
+
+4. **Stage 3 – Meta‑Model (optional)**  
+   - Create meta‑dataset from Stage‑2 (and optional GenConViT) features using `src/stage3/create_meta_dataset.py`.  
+   - Train LightGBM meta‑model with `src/stage3/train_meta_model.py`.  
+   - In current experiments, Stage‑3 slightly underperforms the best Stage‑2 expert,  
+     so it is **not** used in the default deployment, but remains a research tool.
+
+5. **Stage 4 – Cascade Threshold Tuning**  
+   - Use cached logits and labels on the combined validation set.  
+   - Run grid search over $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ using scripts in `src/stage4/` / `src/tools/`.  
+   - Select operating points that minimize FNR under Stage‑2 usage budgets (e.g., FNR≈0.006 with Stage‑2 rate≈1.16%).  
+   - Implement the cascade logic in `src/stage4/cascade_detector.py` and evaluate via `benchmark_cascade.py`.
+
+6. **Stage 5 – Robustness & Cross‑Dataset Evaluation**  
+   - Evaluate Stage‑1/2 and the cascade on test splits of all datasets and on Deepfake‑Eval‑2024.  
+   - Use `src/tools/analyze_robustness.py` and `src/tools/robustness_threshold_sweep.py` to generate robustness tables/plots (JPEG, noise, blur, brightness, etc.).  
+   - Generated LaTeX tables and figures are written to `paper/generated/` and used directly in the paper.
+
+7. **Stage 6 – Mobile Export (TorchScript + PTQ)**  
+   - Export Stage‑1/2 to TorchScript, apply post‑training dynamic quantization on linear layers.  
+   - Bundle quantized models, thresholds, and calibration parameters into a simple mobile bundle (see `src/stage4/optimize_for_mobile.py` and `src/stage4/mobile_deployment/`).
+
+---
+
+## 5. Minimum Usage Guide
+
+> 這裡只提供一條「最少步驟」的路線圖，具體參數與詳細命令請參考 `docs/` 和 `project_instruction/`。
+
+### 5.1 Environment
+
 ```bash
-# Complete mobile optimization
-./src/stage4/run_mobile_optimization.sh --mode full
-
-# Quick optimization test
-./src/stage4/run_mobile_optimization.sh --mode quick --epochs 3
-```
-
-**Key Features**:
-- **Quantization-Aware Training**: INT8 quantization with knowledge distillation
-- **Cross-Platform Export**: ONNX format with validation and optimization
-- **Performance Benchmarking**: Multi-device testing and mobile compatibility
-- **Automated Deployment**: Complete deployment packages with inference scripts
-
-### Advanced Video Processing
-```bash
-# Video processing with temporal analysis
-python src/stage4/video_processor.py video.mp4 --save_plots
-
-# Real-time streaming processing
-python src/stage4/video_processor.py camera_input --streaming
-```
-
-**Advanced Features**:
-- **Temporal Consistency**: 8-frame sliding window analysis
-- **Adaptive Sampling**: Content-aware frame selection
-- **Scene Change Detection**: Intelligent processing triggers
-- **Streaming Support**: Real-time processing with <100ms latency
-
-### Integration Testing & Validation
-```bash
-# Complete integration testing
-python src/stage4/test_stage4_integration.py --full_pipeline
-
-# Performance benchmarking
-python src/stage4/benchmark_cascade.py --benchmark_all
-```
-
-**Testing Coverage**:
-- **End-to-End Validation**: Complete pipeline testing with synthetic data
-- **Robustness Testing**: Edge cases, error handling, invalid inputs
-- **Performance Regression**: Baseline comparison with tolerance checking
-- **Mobile Compatibility**: ONNX export validation and deployment testing
-
-## Stage 1: Fast Filter Architecture
-
-### Core Components
-1. **Model**: MobileNetV4-Hybrid-Medium (efficient mobile-optimized architecture)
-2. **Training**: Fine-tuned on combined dataset with comprehensive data augmentation
-3. **Calibration**: Temperature scaling for reliable probability outputs
-4. **Evaluation**: Comprehensive performance analysis with reliability diagrams
-
-### Stage 1 Performance
-- **Validation AUC**: >0.85 (target baseline)
-- **Cascade Strategy**: Conservative threshold (>0.98) for high-confidence real samples
-- **Processing Speed**: Optimized for real-time inference on mobile devices
-- **Calibration**: Significant ECE reduction through temperature scaling
-
-## Quick Start Guide
-
-### 1. Environment Setup
-
-#### Create Conda Environment
-```bash
-# Create environment from environment.yml
 conda env create -f environment.yml
 conda activate aware-net
-
-# Verify GPU setup
-python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
-python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
 ```
 
-#### Update PyTorch (Required)
-```bash
-# Install latest PyTorch nightly for compatibility
-pip install --pre --upgrade --no-cache-dir torch --extra-index-url https://download.pytorch.org/whl/nightly/cu128
-pip install --pre --upgrade --no-cache-dir torchvision --extra-index-url https://download.pytorch.org/whl/nightly/cu128
-```
+### 5.2 Dataset Configuration & Preprocessing
 
-### 2. Dataset Configuration
-
-#### Supported Datasets
-- **CelebDF-v2**: Celebrity deepfake detection dataset
-- **FF++ (FaceForensics++)**: Face manipulation detection dataset
-- **DFDC**: Deepfake Detection Challenge dataset
-- **DF40**: Pre-processed face swap dataset
-
-#### Setup Dataset Paths
-```bash
-# Interactive configuration setup
-python scripts/setup_dataset_config.py
-
-# Validate configuration
-python scripts/preprocess_datasets_v2.py --validate-only
-```
-
-### 3. Data Preprocessing
-
-All datasets are processed to unified **256x256 PNG** format for consistency.
-
-#### GPU-Accelerated Processing
-```bash
-# Multi-threaded GPU processing (recommended)
-python scripts/preprocess_datasets_v2.py --datasets celebdf_v2 --video-backend decord --face-detector insightface --workers 4
-
-# Process all datasets
-python scripts/preprocess_datasets_v2.py
-
-# View configuration
-python scripts/preprocess_datasets_v2.py --print-config
-```
-
-#### Output Structure
-```
-processed_data/
-├── train/
-│   ├── real/
-│   └── fake/
-├── val/
-│   ├── real/
-│   └── fake/
-├── final_test_sets/
-│   ├── celebdf_v2/
-│   ├── ffpp/
-│   └── dfdc/
-└── manifests/
-    ├── train_manifest.csv
-    ├── val_manifest.csv
-    └── test_*_manifest.csv
-```
-
-## Stage 1 Training Pipeline
-
-### Task 1.1: Model Training
-```bash
-# Train MobileNetV4-Hybrid-Medium model
-python src/stage1/train_stage1.py --data_dir processed_data --epochs 50 --batch_size 32 --lr 1e-4
-```
-
-**Features**:
-- Fine-tuned MobileNetV4-Hybrid-Medium from timm library
-- Binary classification with BCEWithLogitsLoss
-- AdamW optimizer with CosineAnnealingLR scheduler
-- Comprehensive data augmentation (RandomHorizontalFlip, ColorJitter, RandomAffine, GaussianBlur)
-- Automatic best model saving based on validation AUC
-
-### Task 1.2: Probability Calibration
-```bash
-# Calibrate model probabilities using temperature scaling
-python src/stage1/calibrate_model.py --model_path output/stage1/best_model.pth --data_dir processed_data
-```
-
-**Features**:
-- Temperature scaling optimization using scipy.optimize
-- Minimizes Negative Log-Likelihood (NLL) loss
-- Generates reliability diagrams for calibration visualization
-- Saves optimal temperature parameter for inference
-
-### Task 1.3: Performance Evaluation
-```bash
-# Comprehensive performance evaluation
-python src/stage1/evaluate_stage1.py --model_path output/stage1/best_model.pth --temp_file output/stage1/calibration_temp.json
-```
-
-**Metrics**:
-- AUC Score, F1-Score, Accuracy, Confusion Matrix
-- Expected Calibration Error (ECE)
-- ROC curves and reliability plots
-- Cascade threshold analysis (leakage and filtration rates)
-
-## Project Structure
-
-```
-MobileDeepfakeDetection/
-├── src/
-│   ├── stage1/                    # Stage 1: Fast Filter
-│   │   ├── train_stage1.py       # MobileNetV4 training
-│   │   ├── calibrate_model.py    # Temperature scaling calibration
-│   │   ├── evaluate_stage1.py    # Performance evaluation
-│   │   └── utils.py              # Shared utilities
-│   ├── stage2/                    # Stage 2: Precision Analyzers
-│   │   ├── feature_extractor.py  # Unified feature extraction
-│   │   ├── evaluate_stage2.py    # Cross-model evaluation
-│   │   └── genconvit_manager.py  # GenConViT dual-mode manager
-│   ├── stage3/                    # Stage 3: Meta-Model Integration
-│   │   ├── create_meta_dataset.py # K-fold cross-validation
-│   │   ├── train_meta_model.py   # LightGBM meta-model training
-│   │   └── evaluate_stage3.py    # Meta-model evaluation
-│   ├── stage4/                    # Stage 4: Mobile Optimization
-│   │   ├── cascade_detector.py   # Unified cascade system
-│   │   ├── optimize_for_mobile.py # QAT + Knowledge Distillation
-│   │   ├── benchmark_cascade.py  # Performance benchmarking
-│   │   ├── video_processor.py    # Advanced video processing
-│   │   ├── test_stage4_integration.py # Integration testing
-│   │   ├── mobile_deployment/    # Deployment utilities
-│   │   │   ├── onnx_exporter.py  # ONNX export system
-│   │   │   └── deployment_validator.py # Deployment testing
-│   │   ├── TESTING.md           # Testing documentation
-│   │   ├── README.md            # Stage 4 documentation
-│   │   └── run_mobile_optimization.sh # Automation script
-│   └── utils/
-│       └── dataset_config.py     # Dataset configuration management
-├── scripts/                      # Data processing scripts
-│   ├── preprocess_datasets_v2.py
-│   └── setup_dataset_config.py
-├── config/
-│   └── dataset_paths.json       # Dataset path configuration
-├── docs/                        # Documentation
-├── processed_data/              # Processed face images
-├── output/                      # Training outputs
-│   ├── stage1/                  # Stage 1 outputs
-│   ├── stage2_effnet/          # Stage 2 EfficientNet outputs
-│   ├── stage2_genconvit/       # Stage 2 GenConViT outputs
-│   ├── stage3/                  # Stage 3 meta-model outputs
-│   └── stage4/                  # Stage 4 optimization outputs
-│       ├── optimized_models/    # Quantized models
-│       ├── benchmark_results/   # Performance benchmarks
-│       └── deployment_packages/ # Mobile deployment packages
-├── project_instruction/         # Implementation documentation
-│   └── progress_record/        # Daily progress records
-└── dataset/                     # Raw video datasets
-```
-
-## Technical Implementation Details
-
-### Model Architecture
-- **Base Model**: MobileNetV4-Hybrid-Medium (from timm library)
-- **Input Size**: 256×256 RGB images
-- **Output**: Single node for binary classification (real/fake)
-- **Optimization**: Fine-tuned on combined deepfake datasets
-
-### Training Configuration
-```python
-# Key training parameters
-model_name = "mobilenetv4_hybrid_medium.ix_e550_r256_in1k"
-loss_fn = torch.nn.BCEWithLogitsLoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-5)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
-```
-
-### Data Augmentation Strategy
-```python
-train_transforms = transforms.Compose([
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-    transforms.RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-    transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
-```
-
-### Calibration Method
-- **Technique**: Temperature scaling (simple and effective)
-- **Objective**: Minimize Negative Log-Likelihood
-- **Formula**: `calibrated_prob = sigmoid(logits / T)`
-- **Validation**: ECE and reliability diagrams
-
-## Cascade Strategy Design
-
-### Stage 1 Threshold Analysis
-The evaluation script analyzes different confidence thresholds for cascade decisions:
-- **High Confidence (>0.98)**: Samples classified as "simple real" - filtered out
-- **Low/Medium Confidence**: Samples passed to Stage 2 for detailed analysis
-- **Leakage Rate**: Percentage of fake samples incorrectly passed as real
-- **Filtration Rate**: Percentage of samples filtered by Stage 1
-
-### Success Metrics
-- **Training Convergence**: Validation AUC >0.85, F1-Score >0.80
-- **Calibration Effect**: ECE reduction >50%
-- **Cascade Efficiency**: At 0.98 threshold, leakage rate <5%, filtration rate >30%
-
-## GPU Processing Features
-
-### Multi-threaded Performance
-- **Single-threaded**: ~1.55s/video, 30-40% GPU utilization
-- **Multi-threaded (4 workers)**: ~0.4-0.8s/video, **70-85% GPU utilization**
-- **Speed improvement**: 2-4x faster processing
-
-### Supported Backends
-- **Face Detection**: InsightFace (GPU), MediaPipe, YOLOv8, MTCNN
-- **Video Processing**: Decord (GPU), TorchVision.io, OpenCV
-
-## Environment Variables
+1. Edit `config/dataset_paths.json` (or start from `dataset_paths_example.json`).  
+2. Run preprocessing (example, adjust flags to your environment):
 
 ```bash
-export CUDA_VISIBLE_DEVICES=0  # GPU selection
-export PYTHONPATH="${PYTHONPATH}:$(pwd)/src"  # Python path for src imports
+python scripts/preprocess_datasets_v2.py \
+  --video-backend decord \
+  --face-detector mtcnn \
+  --workers 4
 ```
 
-## Troubleshooting
+This populates `processed_data/` and `manifests/`.
 
-### Common Issues
-- **CUDA not available**: Verify NVIDIA drivers and install PyTorch nightly builds
-- **Memory errors**: Reduce batch sizes in training configuration
-- **Import errors**: Ensure PYTHONPATH includes src directory
-- **Face detection issues**: Switch between different face detection backends
+### 5.3 Train & Evaluate Stage 1
 
-### Performance Optimization
-- Use gradient accumulation for large effective batch sizes
-- Enable mixed precision training when available
-- Implement proper data loading with multiple workers
-- Monitor GPU utilization during processing
-
-## Development Roadmap
-
-### Completed Implementation (Stages 1-4)
-- ✅ **Stage 1**: MobileNetV4-Hybrid-Medium fast filter with temperature scaling
-- ✅ **Stage 2**: EfficientNetV2-B3 + GenConViT dual-mode precision analyzers
-- ✅ **Stage 3**: K-fold cross-validation + LightGBM meta-model integration
-- ✅ **Stage 4**: Complete mobile optimization and deployment system
-  - ✅ QAT + Knowledge Distillation pipeline (>75% size reduction)
-  - ✅ Advanced video processing with temporal analysis
-  - ✅ ONNX export and cross-platform deployment
-  - ✅ Comprehensive integration testing and benchmarking
-- ✅ **AI-Driven Development**: Complete GitHub CLI + Claude Code workflow
-- ✅ **Production Infrastructure**: Testing, documentation, and automation
-
-### Stage 5 (Final Phase)
-- 🔄 **Comprehensive Evaluation**: Final testing across all datasets and deployment scenarios
-- 🔄 **Production Deployment**: Mobile app integration and real-world validation
-- 🔄 **Performance Monitoring**: Continuous optimization and feedback integration
-
-### System Metrics Achieved
-- **Model Optimization**: >75% size reduction, >3x speedup, <2% accuracy loss
-- **Video Processing**: Real-time streaming with <100ms latency
-- **Cross-Platform**: ONNX deployment with mobile compatibility validation
-- **Code Quality**: 5,100+ lines with comprehensive testing (>90% success rate)
-- **Documentation**: Complete guides, automation scripts, and deployment packages
-
-## Citation
-
-If you use this code in your research, please cite the original paper:
-```bibtex
-@article{aware-net,
-  title={Adaptive Weighted Averaging for Robust Ensemble Network in Deepfake Detection},
-  author={[Author Information]},
-  journal={[Journal Information]},
-  year={[Year]}
-}
+```bash
+python src/stage1/train_stage1.py --data_root processed_data
+python src/stage1/calibrate_model.py --data_root processed_data
+python src/stage1/evaluate_stage1.py --data_root processed_data
 ```
 
-## License
+### 5.4 Train Stage 2 and Tune Cascade
 
-This project is for research purposes only. Please refer to respective dataset licenses for usage restrictions.
+```bash
+python src/stage2/train_stage2_effnet.py --data_root processed_data
+# optional: hard example mining + meta-dataset generation
+python src/stage4/benchmark_cascade.py --data_root processed_data
+```
+
+These commands update `outputs/` and `paper/generated/` so that the LaTeX paper reflects the latest experiments.
+
+---
+
+## 6. How This Repository Relates to the Paper
+
+- The **paper text** lives in `paper/sections/*.tex`.  
+- All **tables/figures** that summarize metrics are generated from `outputs/` via scripts in `src/tools/` and written into `paper/generated/*.tex`.  
+- The **Chinese project_instruction documents** (`project_instruction/階段*.md`) explain the same pipeline stage‑by‑stage and are now kept consistent with the paper and code.
+
+If you update experiments (e.g., retrain Stage‑2 or re‑tune the cascade), run the appropriate tools in `src/tools/` to regenerate `paper/generated/` before re‑compiling the paper.
+
+---
+
+## 7. Notes for Organizing and Submitting the Project
+
+When submitting this project together with the paper:
+
+- 必須保留：`src/`, `paper/`, `project_instruction/`, `docs/`, `config/`, `manifests/`, `environment.yml`, 關鍵 `outputs/`（至少包含目前論文所用的 run）。  
+- 建議保留：`test/`（單元測試）、`dataset_paths_example.json`（示例配置）。  
+- 可選保留：`weights/`（Caffe face detector）、較大的 `outputs/` 子目錄（視空間而定）。  
+- 可以忽略或壓縮：舊的 log、zip bundle、早期 Overleaf 導出檔，只要已不再被腳本引用。
+
+對於你自己要備份到雲端的內容，優先順序建議是：
+
+1. `paper/`（最終 LaTeX + PDF）  
+2. 關鍵 `outputs/`（對應論文表格的 run）  
+3. `manifests/`（資料切分）  
+4. `config/dataset_paths.json` / `dataset_paths_example.json`
+
+---
+
+如需更細節的中文說明與開發歷史，請參考 `project_instruction/` 下的各個階段文檔，以及 `Midterm Progress Report.md`。  
+這些文檔加上本 README 構成了一條從研究構想到最終實作的完整故事線。  
+

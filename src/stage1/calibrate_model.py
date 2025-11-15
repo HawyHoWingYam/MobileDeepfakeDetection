@@ -34,6 +34,7 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score, accuracy_score, f1_score
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 # Import from stage1 utils
 import sys
@@ -366,7 +367,8 @@ def main():
     all_labels = []
     
     with torch.no_grad():
-        for images, labels in dataloader:
+        progress = tqdm(dataloader, desc="Calib Inference [batches]", unit="batch")
+        for images, labels in progress:
             images, labels = images.to(device), labels.to(device)
             
             logits = model(images).squeeze(1)

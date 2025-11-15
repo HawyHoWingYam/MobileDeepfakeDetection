@@ -3,19 +3,29 @@
 % Auto-generated mobile artifact table (if present)
 \input{generated/mobile_tables}
 
-\paragraph{PTQ vs. QAT.} We adopt post\hyp training dynamic quantization (PTQ) for linear layers due to its simplicity and strong accuracy\hyp size trade\hyp off on our models. Quantization\hyp aware training (QAT) \cite{jacob2017integeronly} can further reduce the quantization gap by learning with simulated quantization noise, at the cost of training complexity and longer cycles; see \cite{gholami2021quant_survey,han2016deepcompression,esser2020lsq} for broader comparisons of PTQ/QAT. As complementary levers, pruning and knowledge distillation reduce compute and model size with modest accuracy loss \cite{blalock2020pruningsurvey,hinton2015distilling,romero2015fitnets,furlanello2018bornagain}. We plan to evaluate per\hyp channel INT8 and selective INT4 for heads/backbone under the same export pipeline.
+\paragraph{PTQ vs. QAT.} We adopt post\hyp training dynamic quantization (PTQ) for linear layers due to its simplicity and strong accuracy\hyp size trade\hyp off on our models. Quantization\hyp aware training (QAT) can further reduce the quantization gap by learning with simulated quantization noise, at the cost of training complexity and longer cycles; recent surveys provide an overview of PTQ/QAT trade\hyp offs for vision models \cite{gholami2021quant_survey}. As complementary levers, pruning and knowledge distillation reduce compute and model size with modest accuracy loss \cite{blalock2020pruningsurvey,gou2021kdsurvey}. We plan to evaluate per\hyp channel INT8 and selective INT4 for heads/backbone under the same export pipeline.
 
-% Placeholders for on-device latency table (to be filled after measurement)
 \begin{table}[h]
   \centering
-  \caption{On-device performance (to be completed): average per-frame latency and Stage~2 escalation rate.}
+  \caption{Estimated cascade latency on a desktop CPU baseline using TorchScript models on synthetic inputs. Stage~2 rate corresponds to the safety-first configuration in Table~\ref{tab:cascade_best}.}
   \label{tab:mobile_perf}
   \begin{tabular}{lcccc}
     \toprule
     Device & Stage~1 (ms) & Stage~2 (ms) & S2 Rate (\%) & APK Size (MB) \\
     \midrule
-    Mid-range & -- & -- & -- & -- \\
-    High-end  & -- & -- & -- & -- \\
+    Desktop CPU (baseline) & 84.1 & 103.2 & 1.16 & -- \\
     \bottomrule
   \end{tabular}
 \end{table}
+
+\noindent Note: The desktop CPU baseline is measured with TorchScript models on synthetic inputs (median per\-frame time; warmup~50, eval~200), and the Stage~2 rate is taken from the safety\hyp first operating point in Table~\ref{tab:cascade_best}. Average per\-frame latency follows $L_\mathrm{avg} = L_1 + e\cdot L_2$, where $e$ is the Stage~2 escalation rate. Mobile device results are pending; APK size depends on packaging and assets.
+
+\paragraph{Compute Savings.} Let $C\_1$ and $C\_2$ denote the per\hyp frame compute costs (or latencies) of Stage~1 and Stage~2, and let $e$ be the Stage~2 escalation rate under a given threshold configuration. The expected per\hyp frame cost of the cascade is
+\[
+  \mathbb{E}[C] = C\_1 + e\cdot C\_2,
+\]
+since all samples pass through Stage~1 and only a fraction $e$ are escalated. In our tuned configurations on the combined validation set, $e$ ranges from roughly \num{0.0116} to \num{0.0150} (Table~\ref{tab:cascade_best}), meaning that fewer than \num{2}\% of frames reach the expert. If we conservatively assume that Stage~2 is $k$ times more expensive than Stage~1 (e.g., $k\approx10$ on a CPU baseline), then the cascade uses about
+\[
+  \mathbb{E}[C] \approx C\_1 + e\cdot k C\_1 = (1 + e k)\,C\_1
+\]
+per frame. With $e=\num{0.015}$ and $k=10$, this yields $\mathbb{E}[C]\approx1.15 C\_1$, i.e., more than \num{85}\% of the cost of a Stage~2\hyp only system is saved. On mobile devices, where energy and thermal budgets are tight, such savings translate directly into lower duty cycles and longer usable sessions for continuous media scanning. Precise on\hyp device latencies and power measurements are left to future work, but this simple model illustrates why keeping $e$ small is crucial for practical deployment.

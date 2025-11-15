@@ -1,42 +1,122 @@
-We adopt a six-stage pipeline designed for both accuracy and deployability, mapped directly to the repository structure and scripts.
+We adopt a six-stage pipeline designed for both accuracy and deployability. The core decision stack in our final system has two modeling stages (Stage~1–2), followed by tuning (Stage~4), robustness and cross\hyp dataset evaluation (Stage~5), and mobile deployment (Stage~6). Stage~3 explores an optional meta\hyp model that we do \emph{not} deploy by default but keep as a research tool for fusion analysis.
 
-\paragraph{Stage~1: Lightweight Filter (MobileNetV4).} A compact MobileNetV4 variant (\verb|mobilenetv4_hybrid_medium|) serves as a fast binary classifier. We train with BCE on a unified multi-dataset loader that balances contributions via \verb|WeightedRandomSampler| (\verb|train_mobilenet.py:create_multi_dataset_loader|). Key defaults (\verb|configs/experiment_default.yaml|): learning rate \num{1e-4}, batch size \num{256}, epochs \num{15}, AdamW with weight decay \num{1e-4}. Albumentations \cite{buslaev2018albumentations} provides light augmentation; inputs are normalized and resized to \SI{256}{px}. The Stage~1 head outputs a single logit.
+\begin{figure}[ht]
+  \centering
+  \small
+  \begin{tabular}{c}
+    \fbox{\begin{minipage}{.9\linewidth}\centering
+      \textbf{Stage 1: MobileNetV4 filter}\\[2pt]
+      fast frame-level screening on device
+    \end{minipage}}
+    \\[6pt]
+    $\downarrow$ escalate ambiguous cases \\[6pt]
+    \fbox{\begin{minipage}{.9\linewidth}\centering
+      \textbf{Stage 2: EfficientNetV2 expert}\\[2pt]
+      high-fidelity logits and embeddings
+    \end{minipage}}
+    \\[6pt]
+    $\downarrow$ offline threshold and policy search (Stage 4) \\[6pt]
+    \fbox{\begin{minipage}{.9\linewidth}\centering
+      \textbf{Stage 4: Cascade tuning}\\[2pt]
+      choose $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ under escalation budget
+    \end{minipage}}
+    \\[6pt]
+    $\downarrow$ robustness and OOD evaluation (Stage 5) \\[6pt]
+    \fbox{\begin{minipage}{.9\linewidth}\centering
+      \textbf{Stage 6: Mobile deployment}\\[2pt]
+      export calibrated models and thresholds to device
+    \end{minipage}}
+  \end{tabular}
+  \caption{System pipeline at a glance. Stage~1 and Stage~2 form the deployed cascade; Stage~3 (LightGBM meta-model) is optional and used for analysis rather than in the default mobile path.}
+  \label{fig:pipeline_overview}
+\end{figure}
 
-\paragraph{Stage~2: Difficult Sample Mining.} We score training data with Stage~1 (no augmentation) and label samples as \emph{difficult} if they are misclassified or lie in a predefined ambiguity band around 0.5. The script \verb|tools/create_difficult_subset.py| writes a manifest (e.g., \verb|manifests/train_difficult_subset.csv|) that concentrates Stage~2 on ambiguous patterns and corner cases.
+\begin{table}[h]
+  \centering
+  \caption{Roles of components by stage (high-level summary).}
+  \label{tab:stage_roles}
+  {\scriptsize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}llp{0.32\textwidth}p{0.36\textwidth}@{}}
+    \toprule
+    Stage & Component & Backbone / Model & Role \\
+    \midrule
+    1 & Fast filter & MobileNetV4\hyp Hybrid\hyp Medium & Frame\hyp level real/fake screening \\
+    2 & Expert & EfficientNetV2\hyp B3 (optional GenConViT) & High\hyp fidelity logits + embeddings \\
+    3 (opt.) & Meta\hyp model & LightGBM & Experimental fusion of expert features \\
+    4 & Cascade tuning & Threshold grid search & Optimise FNR under escalation budget \\
+    5 & Robustness/OOD & Cascade engine + sweeps & Stress tests (perturbations, Deepfake\hyp Eval\hyp 2024) \\
+    6 & Deployment & TorchScript/ONNX + metadata & On\hyp device inference bundle for mobile \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
 
-\paragraph{Stage~3: Expert Model (EfficientNetV2-b3).} The expert is trained on the difficult subset using \verb|train_efficientnet.py| with regularization (dropout 0.3), optional label smoothing, and early stopping. We use \verb|tf_efficientnetv2_b3| in our best run (AUC~\num{0.9633}, F1~\num{0.8930} on combined validation; see \verb|outputs/stage3/run_20251030_081127/|). Validation always occurs on the full multi-dataset validation split to avoid overfitting to mined examples.
+\paragraph{Stage~1: Lightweight Filter (MobileNetV4).} A compact MobileNetV4 variant serves as a fast binary classifier. Concretely, we use timm's \verb|mobilenetv4_hybrid_medium.ix_e550_r256_in1k| and fine\hyp tune it with \verb|BCEWithLogitsLoss| on a unified multi\hyp dataset loader built from pre\hyp balanced manifests (Section~\ref{tab:dataset_sizes}) with standard \verb|shuffle=True|. Earlier experiments with explicit \verb|WeightedRandomSampler| showed similar behaviour but added complexity, so the final configuration equalizes dataset contributions at the manifest level and keeps the loader simple. A torchvision transform pipeline provides light augmentation (resize to \SI{256}{px}, random horizontal flip, colour jitter, small random affine perturbations, and Gaussian blur) before normalization. We train with AdamW and a cosine annealing scheduler, apply early stopping on validation AUC, and select the best checkpoint for subsequent stages; training runs log curves and metrics for later analysis. The Stage~1 head outputs a single logit per image. A separate calibration step fits a temperature scaling parameter on a validation manifest, producing a JSON file used in cascade tuning and cross\hyp dataset evaluation.
 
-\paragraph{Stage~4: Cascade and Threshold Tuning.} We define low/high thresholds on Stage~1 fake probability $p\_1(x)$. If $p\_1(x) < \tau\_{low}$ predict real; if $p\_1(x) > \tau\_{high}$ predict fake; otherwise escalate to Stage~2 whose probability $p\_2(x)$ is thresholded at $\tau\_2$ (default 0.5 or calibrated). We grid-search $(\tau\_{low},\tau\_{high})$ using cached logits for efficiency (\verb|tools/tune_cascade_system.py|), optimizing F1 and minimizing FNR under an escalation-rate budget. Representative best settings: $(0.05, 0.55)$ yields FNR~\num{0.0060} with \num{1.16}\% escalation; $(0.03, 0.55)$ yields FNR~\num{0.0054} with \num{1.50}\% escalation.
+\paragraph{Stage~2: Expert Feature Extractor (EfficientNetV2, optional GenConViT).} We train Stage~2 experts to provide higher\hyp fidelity signals for ambiguous cases and to serve as feature extractors for the cascade. In our main results, EfficientNetV2\hyp B3 (\verb|efficientnetv2_b3.in21k_ft_in1k|) serves as the production CNN expert, trained on the combined train manifest with moderately stronger augmentation and a larger batch size than Stage~1. During Stage~2 experiments we optionally construct a ``difficult subset'' manifest based on Stage~1 scores (misclassified or low\hyp margin samples) and upweight it in training to focus the expert on corner cases; per\hyp dataset caps prevent drift toward any single source. The expert outputs logits and intermediate embeddings that are cached for cascade tuning (Stage~4) and, when enabled, meta\hyp model experiments (Stage~3).
 
-\paragraph{Stage~5: Cross-Dataset Evaluation and Robustness.} We evaluate on Deepfake\hyp Eval\hyp 2024 and generate robustness curves under JPEG, Gaussian noise, motion blur, and brightness changes (\verb|tools/analyze_robustness.py|, \verb|tools/robustness_threshold_sweep.py|). Auto-generated LaTeX snippets include numerical tables and trade-off plots.
+\paragraph{GenConViT Exploration (optional expert).} We additionally explored GenConViT as a transformer\-style expert via a small integration manager that supports hybrid (custom) and pretrained modes with unified interfaces. In AUTO mode, we prefer the pretrained path when available and fall back to hybrid otherwise. Under our configuration and timeline, GenConViT training exhibited instability and domain\hyp specific biases from pretrained weights, and its best validation metrics matched or slightly underperformed EfficientNetV2\hyp B3. As a result, we treat GenConViT as an optional research component rather than part of the default cascade; Appendix~A (GenConViT section) summarises the alternative\-architecture experiments and their limitations.
 
-\paragraph{Stage~6: Mobile Deployment.} We export TorchScript models with dynamic quantization (\verb|tools/export_torchscript.py|), bundle cascade thresholds/temperature, and integrate into Android via PyTorch Mobile. Table~\ref{tab:mobile_artifacts_auto} summarizes exported artifact sizes.
+\paragraph{Stage~3: Meta\-Model Integration (LightGBM).} We construct a K\-fold meta\-dataset by collecting out\hyp of\hyp fold predictions and features from the experts. For each fold, Stage~2 models are retrained on the fold's training split, and embeddings/logits are extracted on the held\hyp out validation split; this yields unbiased features for meta\hyp learning. Each expert's embeddings are aligned to a unified 256\hyp D space (via projection or zero\hyp padding), and the aligned vectors are concatenated to form a 512\hyp D meta\hyp feature. In the current implementation, Stage~1 logits are not included but can be added in future variants. A LightGBM classifier~\cite{ke2017lightgbm} is then trained to fuse expert signals, with a modest hyperparameter sweep over learning rate, number of leaves, depth, and L1/L2 regularization. We report the best configuration by validation F1/AUC. Validation always occurs on the full multi\hyp dataset split to avoid overfitting; the meta\hyp model serves as the final decision head for escalated samples when enabled.
+
+\subsection*{Algorithm Summary}
+For clarity, we summarise the end\hyp to\hyp end training and inference procedures as high\hyp level steps that operate on manifest rows rather than raw folders.
+
+\paragraph{Training Pipeline.}
+\begin{enumerate}[leftmargin=*,itemsep=2pt,parsep=0pt]
+  \item Preprocess raw videos into face crops and generate per\hyp dataset train/validation/test manifests with labels and basic metadata.
+  \item Train the Stage~1 MobileNetV4 filter on a balanced multi\hyp dataset manifest and calibrate it with temperature scaling on a held\hyp out validation set.
+  \item Train the Stage~2 EfficientNetV2\hyp B3 expert (and any optional research experts) on the same manifest, optionally upweighting a hard\hyp example subset; cache logits and embeddings on validation data.
+  \item Optionally construct K\hyp fold meta\hyp datasets from out\hyp of\hyp fold expert features and train LightGBM meta\hyp models for fusion.
+  \item Perform cascade threshold tuning on the combined validation manifest by sweeping $(\tau\_{\mathrm{low}},\tau\_{\mathrm{high}})$ and selecting operating points that trade FNR against the Stage~2 escalation rate under a budget.
+  \item Run robustness and cross\hyp dataset evaluations, including Deepfake\hyp Eval\hyp 2024, under controlled perturbations and store summary metrics and figures.
+  \item Export calibrated models, thresholds, and lightweight metadata into mobile\hyp ready bundles for deployment on devices.
+\end{enumerate}
+
+\paragraph{Inference Pipeline.}
+\begin{enumerate}[leftmargin=*,itemsep=2pt,parsep=0pt]
+  \item Apply the Stage~1 filter to each frame; if the calibrated fake probability is confidently below $\tau\_{\mathrm{low}}$ or above $\tau\_{\mathrm{high}}$, return a real/fake decision without escalation.
+  \item For ambiguous cases with scores in $[\tau\_{\mathrm{low}},\tau\_{\mathrm{high}}]$, run Stage~2 to obtain refined logits (and, when enabled, meta\hyp features).
+  \item In the default cascade, threshold Stage~2 logits at a fixed value (e.g., 0.5) to obtain the final decision; when the optional meta\hyp model is enabled, feed expert features into it and threshold its output instead.
+\end{enumerate}
+
+This summary formalises the textual description above: training proceeds from data preprocessing and manifest construction through Stage~1–3 modelling, threshold tuning, and robustness evaluation, while inference in the default system uses a fixed two\hyp threshold routing policy between Stage~1 and Stage~2 with an optional meta\hyp model.
+
+\paragraph{Stage~4: Cascade and Threshold Tuning.} We define low/high thresholds on Stage~1 fake probability $p\_1(x)$. If $p\_1(x) < \tau\_{low}$ we predict real; if $p\_1(x) > \tau\_{high}$ we predict fake; otherwise we escalate to Stage~2 (and, when enabled, optionally to Stage~3) for further analysis. In the configurations reported in Table~\ref{tab:cascade_best}, we restrict attention to the two-threshold cascade (Stage~1 + Stage~2 only) and select operating points such as $(\tau\_{low},\tau\_{high})=(0.05,0.55)$ and $(0.03,0.55)$. We perform an offline grid search over $(\tau\_{low},\tau\_{high})$ using cached logits and labels, optimising F1 and minimising FNR under an escalation\hyp rate budget; tuned settings and trade\hyp off plots are logged for auditability. We additionally track the Stage~1 leakage rate
+\[
+\pi\_{\mathrm{leak}} = \Pr\big(p\_1(x) < \tau\_{low} \mid y=1\big),
+\]
+the fraction of fake samples incorrectly accepted by Stage~1, and report it alongside the Stage~2 escalation rate to make the recall\hyp vs\hyp compute trade\hyp off explicit.
+
+\paragraph{Stage~5: Cross-Dataset Evaluation and Robustness.} We evaluate the cascade and Stage~2\hyp only expert on Deepfake\hyp Eval\hyp 2024 and generate robustness curves under JPEG compression, Gaussian noise, motion blur, brightness changes, and additional perturbations (downscale, gamma) using dedicated robustness analysis scripts. These tools load trained checkpoints and thresholds, apply controlled distortions to images from a given manifest, and compute metrics (AUC, F1, Accuracy, FNR/FPR, Stage~2 rate) across perturbation strength. They also sweep $(\tau\_{low},\tau\_{high})$ offline to visualise FNR vs.\ Stage~2 rate trade\hyp offs under each distortion family. Auto\hyp generated LaTeX snippets (tables and figures) are written under \verb|paper/generated/| for seamless inclusion in the paper.
+
+\paragraph{Stage~6: Mobile Deployment.} We export TorchScript models for Stage~1 and Stage~2 with dynamic quantization applied to linear layers, and bundle cascade thresholds/temperature in a lightweight JSON metadata file suitable for Android integration. A dedicated export helper produces a directory of quantized artifacts and a bundle manifest for mobile integration; an ONNX exporter can optionally produce ONNX bundles for other runtimes. Table~\ref{tab:mobile_artifacts_auto} summarizes exported artifact sizes. On device we fix thresholds for stability and low jitter, and we keep the runtime logic minimal (single forward pass for Stage~1, optional Stage~2 call for escalated samples).
 
 \subsection*{Hard Example Mining (Formalization)}
-Let $\mathcal{D}=\{(x_i, y_i)\}_{i=1}^N$ be training pairs and $p_1(x)=\sigma(f_1(x))$ be the Stage~1 fake probability. We define a margin $m(x)=\lvert p_1(x)-0.5\rvert$ and an ambiguity band $\mathcal{A}_\delta=\{x: m(x)\le \delta\}$ for $\delta\in(0,0.5)$. The \emph{hard set} $\mathcal{H}$ is
+Let $\mathcal{D}=\{(x_i, y_i)\}_{i=1}^N$ be training pairs and $p_1(x)=\sigma(f_1(x))$ be the Stage~1 fake probability. We define a margin $m(x)=\lvert p_1(x)-0.5\rvert$ and an ambiguity band $\mathcal{A}_\delta=\{x: m(x)\le \delta\}$ for $\delta\in(0,0.5)$. In our instantiated hard\hyp subset runs, we use an ambiguity window of $[0.1,0.9]$ around 0.5 and a provisional decision threshold $\tau=0.5$. The \emph{hard set} $\mathcal{H}$ is
 \[
 \mathcal{H} = \{(x,y)\in\mathcal{D}: \mathbf{1}[\hat{y}_1(x)\ne y]\ \ \text{or}\ \ x\in\mathcal{A}_\delta\},
 \]
-where $\hat{y}_1(x)=\mathbf{1}[p_1(x)>\tau]$ is a provisional decision at threshold $\tau$. We optionally stratify by dataset label $d(x)$ and cap per\hyp dataset counts to avoid distributional skew. This construction is consistent with hard\hyp example mining strategies (online hard example mining) \cite{shrivastava2016ohem}, while preserving validation on the full multi\hyp dataset split to mitigate bias.
+where $\hat{y}_1(x)=\mathbf{1}[p_1(x)>\tau]$ is a provisional decision at threshold $\tau$. We optionally stratify by dataset label $d(x)$ and cap per\hyp dataset counts to avoid distributional skew. This construction mirrors common hard\hyp example mining strategies while preserving validation on the full multi\hyp dataset split to mitigate bias. The ambiguity band width $\delta$ (and corresponding lower/upper bounds, e.g., 0.1/0.9) is a tunable hyperparameter that trades coverage for purity.
 
 \subsection*{Cascade Optimization (Cost-Sensitive Objective)}
 Let $\tau_{\mathrm{low}}<\tau_{\mathrm{high}}$ be Stage~1 decision thresholds and $\tau_2$ the Stage~2 threshold. Define the Stage~2 escalation rate
 \[ \pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}})=\Pr\big(\tau_{\mathrm{low}}\le p_1(x)\le\tau_{\mathrm{high}}\big). \]
-We optimize for low false negatives under an efficiency budget $B$:
+We optimize for low false negatives under an efficiency budget $B$ (in practice, we target budgets such as $B\in\{0.02,0.05\}$ corresponding to 2--5\% Stage~2 usage, and then inspect tighter points such as the 1.16\% and 1.50\% escalation configurations reported in Table~\ref{tab:cascade_best}):
 \[
 \min_{\tau_{\mathrm{low}},\tau_{\mathrm{high}},\,\tau_2}\ \mathrm{FNR}\big(\tau_{\mathrm{low}},\tau_{\mathrm{high}},\tau_2\big)\quad\text{s.t.}\quad \pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}})\le B.
 \]
-An equivalent cost\hyp sensitive form uses expected compute $\mathbb{E}[C]=C_1\cdot(1-\pi_2)+C_2\cdot\pi_2\le K$ with Stage~1/2 unit costs $(C_1,C_2)$ \cite{elkan2001cost}. We implement a grid search that is simple, parallel, and reproducible; Bayesian optimization or dynamic programming are viable future accelerators \cite{snoek2012bayesopt}.
+An equivalent cost\hyp sensitive form uses expected compute $\mathbb{E}[C]=C_1\cdot(1-\pi_2)+C_2\cdot\pi_2\le K$ with Stage~1/2 unit costs $(C_1,C_2)$. We implement a grid search that is simple, parallel, and reproducible; Bayesian optimization or dynamic programming are viable future accelerators. Selected operating points and budgets are logged for auditability.
 
 \subsection*{Routing Strategies}
 We adopt confidence\hyp based routing with two thresholds $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ for interpretability and direct control over $\pi_2$. Alternatives include entropy\hyp or margin\hyp based routing (early exits) \cite{kaya2019shallowdeep}. Confidence routing works well with calibrated logits (optional temperature on Stage~2) and matches deployment needs where a tunable escalation rate is critical.
 
 \subsection*{Quantization and Deployment Notes}
-We use post\hyp training dynamic quantization for linear layers to reduce on\hyp device footprint and maintain accuracy. Quantization\hyp aware training (QAT) \cite{jacob2017integeronly} can further reduce the gap, but increases training complexity; we leave mixed\hyp precision (e.g., INT4+INT8) and advanced schemes as future work within the same export pipeline. Temperature scaling is used for probability calibration when transferring thresholds across datasets \cite{guo2017calibration}.
+We use post\hyp training dynamic quantization for linear layers to reduce on\hyp device footprint and maintain accuracy. Quantization\hyp aware training (QAT) can further reduce the gap, but increases training complexity; recent surveys summarise trade\hyp offs between PTQ and QAT for vision models~\cite{gholami2021quant_survey}. Mixed\hyp precision settings (e.g., INT4+INT8) and more advanced schemes remain future work within the same export pipeline. Temperature scaling is used for probability calibration when transferring thresholds across datasets \cite{guo2017calibration}. Exported bundles include a small meta file with thresholds and (optional) temperature to keep the runtime stateless.
 
 \subsection*{Objectives, Milestones, and Evaluation Strategy}
 \textbf{Objectives.} Achieve a practical deepfake detector on mobile devices with: (i) high recall (low FNR) under realistic conditions; (ii) low latency and small footprint; (iii) reproducible training and tuning pipelines with auditable artifacts.
 
-\textbf{Milestones.} The roadmap includes data preparation across multiple datasets; Stage~1 training; Stage~2 difficult-sample mining and Stage~3 expert training; cascade threshold tuning with caching; cross-dataset evaluation; and mobile export/integration. Optional enhancements include knowledge distillation (teacher--student), pruning, and advanced quantization; our pipeline can incorporate these by swapping the expert while keeping the same tuning and evaluation.
+\textbf{Milestones.} The roadmap includes data preparation across multiple datasets; Stage~1 training; Stage~2 difficult\-sample mining and Stage~3 expert training; cascade threshold tuning with caching; cross\-dataset evaluation; and mobile export/integration. Optional enhancements include knowledge distillation (teacher\-\-student), pruning, and advanced quantization; our pipeline can incorporate these by swapping the expert while keeping the same tuning and evaluation. Each milestone logs configs and outputs to ease iteration and review.
 
-\textbf{Evaluation Strategy.} We report AUC, F1, Accuracy, Precision/Recall, FNR/FPR, and Stage~2 escalation rate for cascade analysis; for deployment, we report average per-frame latency (Stage~1/2) and application size. Robustness is assessed via controlled perturbations with performance vs. strength curves and FNR vs. Stage~2 trade-off sweeps.
+\textbf{Evaluation Strategy.} We report AUC, F1, Accuracy, Precision/Recall, FNR/FPR, and Stage~2 escalation rate for cascade analysis; for deployment, we report average per\-frame latency (Stage~1/2) and application size. Robustness is assessed via controlled perturbations with performance vs. strength curves and FNR vs. Stage\-2 trade\-off sweeps, and we place figures and tables close to the corresponding text to reduce float drift.

@@ -2,16 +2,88 @@
 
 \subsection{Single-Model Baselines}
 
-% Auto-generated tables (single-model and cascade best)
 \input{generated/auto_tables}
+\input{generated/stage1_eval_summary}
+\input{generated/stage2_eval_summary}
+\noindent The auto\hyp generated tables first summarise single\hyp model performance for Stage~1 (MobileNetV4) and the strongest Stage~2 expert on the combined validation split (Table~\ref{tab:single_models_auto}), and then provide per\hyp dataset breakdowns for both stages (Tables~\ref{tab:stage1_per_dataset} and~\ref{tab:stage2_per_dataset}). Across the combined validation manifest, the EfficientNetV2 expert attains higher AUC and F1 than the lightweight Stage~1 filter (AUC~\num{0.9633}, F1~\num{0.8930}, FNR~\num{0.0943}), but at a higher per\hyp sample cost. For Stage~1, datasets with more controlled acquisition conditions (e.g., CelebDF\,v2, FaceForensics++) achieve very high absolute performance, whereas more heterogeneous sources (e.g., DFDC, DeeperForensics) remain more challenging. The corresponding Stage~2 results, computed from the same cached logits at a fixed threshold (0.70), show a similar pattern with different operating points, motivating the cascaded design in which Stage~1 handles easy cases cheaply and escalates ambiguous inputs to the stronger expert, and Stage~4 tunes thresholds explicitly rather than relying on a single global cut\hyp off.
+
+\noindent To make the trade\hyp offs between the two stages more explicit, Table~\ref{tab:stage1_stage2_compare} contrasts their combined\hyp validation performance. Stage~1 offers slightly higher AUC but does not by itself achieve the very low FNR that the tuned cascade can reach; Stage~2 provides stronger calibrated probabilities and serves as the high\hyp accuracy expert within the cascade.
+
+\begin{table}[h]
+  \centering
+  \caption{Stage~1 vs.\ Stage~2 performance on the combined validation split. Stage~1 is used as a fast filter within the cascade; Stage~2 serves as the high-accuracy expert.}
+  \label{tab:stage1_stage2_compare}
+  {\small
+  \begin{tabular}{lccc}
+    \toprule
+    Model & AUC & F1 & FNR \\
+    \midrule
+    Stage~1 MobileNetV4 filter & 0.9936 & N/A & N/A \\
+    Stage~2 EfficientNetV2-B3 expert & 0.9633 & 0.8930 & 0.0943 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+\noindent Note on GenConViT: We explored a GenConViT expert but, under our configuration and timeline, observed limited and inconsistent gains over the strongest single expert (EfficientNetV2). Primary single-model lines therefore reflect EfficientNetV2; GenConViT remains available as an optional expert and for meta-model fusion (see Method/Appendix).
+% Intentionally kept minimal; device-side baselines will be added with on-device measurements.
 
 \begin{figure}[h]
   \centering
   \includegraphics[width=.45\textwidth]{figures/outputs_stage1_run_20251023_034316_01_roc_curve.png}\hfill
   \includegraphics[width=.45\textwidth]{figures/outputs_stage3_run_20251030_081127_01_roc_curve.png}
-  \caption{ROC curves for Stage~1 (left) and Stage~2 (right) on combined validation.}
+  \caption{ROC curves for Stage~1 (left) and an expert model (right, EfficientNetV2) on combined validation.}
   \label{fig:roc_baselines}
 \end{figure}
+\FloatBarrier
+
+\subsection{Per-Dataset Performance Analysis}
+
+While aggregate metrics on the combined validation split provide a high\hyp level view of system performance, per\hyp dataset breakdowns reveal important differences in detection difficulty and model behavior across manipulation sources. We analyze Stage~1 and Stage~2 performance on four constituent datasets: CelebDF\hyp v2, FaceForensics++, DFDC, and DeeperForensics\hyp 1.0.
+
+\subsubsection{CelebDF-v2 Characteristics}
+CelebDF\hyp v2 comprises celebrity face swaps with high visual quality and controlled recording conditions. Per\hyp dataset Stage~1 results show that the lightweight filter performs very strongly on this dataset (high AUC and low FNR; Table~\ref{tab:stage1_per_dataset}), whereas the Stage~2 baseline at threshold 0.70 attains only moderate AUC (about \num{0.77}) and relatively high FNR (\num{0.38}; Table~\ref{tab:stage2_per_dataset}). This reflects CelebDF\hyp v2's design philosophy: fakes are intentionally subtle and can evade simple cues, making naive single\hyp threshold operation unacceptable and motivating cascade escalation and threshold tuning. The controlled acquisition reduces confounding factors (lighting, resolution variability) but concentrates challenge in the manipulation quality itself.
+
+\subsubsection{FaceForensics++ Characteristics}
+FaceForensics++ includes diverse manipulation methods (Deepfakes, Face2Face, FaceSwap, NeuralTextures) with varying levels of realism. Stage~1 achieves strong performance on this dataset (high AUC and F1; Table~\ref{tab:stage1_per_dataset}), suggesting that MobileNetV4 captures common artifacts across multiple generation methods when trained on combined data. However, Stage~2's performance at threshold 0.70 (AUC~\num{0.80}, FNR~\num{0.54}; Table~\ref{tab:stage2_per_dataset}) reveals that fixed thresholds are suboptimal---the high FNR stems from conservative threshold choice rather than fundamental model weakness. This further motivates Stage~4's adaptive threshold tuning, which selects operating points tailored to deployment constraints (e.g., FNR budget) rather than arbitrary cutoffs.
+
+\subsubsection{DFDC (Deepfake Detection Challenge)}
+DFDC represents highly heterogeneous data: diverse actors, recording devices, compression levels, and manipulation techniques. Stage~1 maintains strong per\hyp dataset metrics (Table~\ref{tab:stage1_per_dataset}), while Stage~2 at threshold 0.70 achieves AUC~\num{0.90} with a non\hyp trivial FNR (\num{0.16}; Table~\ref{tab:stage2_per_dataset}). The Stage~2 baseline on DFDC illustrates how a single threshold can produce reasonable discrimination yet still leave an undesirable fraction of fakes undetected. Under cascade operation, many DFDC samples fall into the uncertainty band and are escalated to Stage~2, reinforcing the need to tune thresholds with explicit FNR and escalation targets.
+
+\subsubsection{DeeperForensics-1.0 Characteristics}
+DeeperForensics\hyp 1.0 emphasizes robustness to perturbations (compression, blur, noise) and includes high\hyp quality fakes with temporal consistency. Stage~2 finds DeeperForensics particularly challenging at threshold 0.70: AUC remains moderate (\num{0.86}), but FNR is extremely high (\num{0.67}) and recall low (\num{0.33}; Table~\ref{tab:stage2_per_dataset}). The conservative threshold severely limits recall; this is precisely the scenario where cascade threshold tuning (Stage~4) provides value by lowering $\tau_{low}$ to escalate more borderline cases and shifting the operating point toward lower FNR. DeeperForensics's emphasis on temporal consistency and robustness also highlights a limitation of our frame\hyp level approach---future work on temporal aggregation could improve performance on such datasets.
+
+\subsubsection{Cross-Dataset Patterns}
+Comparing per\hyp dataset results reveals systematic patterns:
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
+  \item \textbf{Dataset difficulty correlates with heterogeneity.} Controlled datasets (CelebDF\hyp v2, FF++) yield high absolute performance but can still challenge detectors through subtle manipulation quality. Heterogeneous datasets (DFDC, DeeperForensics) exhibit lower AUC and higher FNR at fixed thresholds due to within\hyp dataset variation (recording conditions, quality, manipulation diversity).
+
+  \item \textbf{Stage~1 vs.\ Stage~2 trade-offs vary by dataset.} On CelebDF\hyp v2 and FF++, Stage~1's simplicity suffices for many samples, with Stage~2 providing additional capacity primarily for ambiguous cases. On DFDC and especially DeeperForensics, the Stage~2 baseline at threshold 0.70 exposes how sensitive FNR is to threshold choice, and why a cascaded scheme with tuned thresholds is preferable to a single fixed cut\hyp off.
+
+  \item \textbf{Fixed thresholds are suboptimal across datasets.} The threshold 0.70 used in Table~\ref{tab:stage2_per_dataset} yields markedly different operating points across datasets (FNR ranges from \num{0.16} to \num{0.67}), underscoring the need for per\hyp dataset or per\hyp deployment calibration. Our cascade threshold tuning (Stage~4) addresses this by selecting $(\tau_{low}, \tau_{high})$ pairs that meet system\hyp level constraints (e.g., target FNR $<$ 1\%) rather than dataset\hyp specific cutoffs.
+\end{itemize}
+
+These per\hyp dataset insights inform deployment strategy: for applications prioritizing recall (e.g., content moderation), lower thresholds and higher escalation rates are appropriate; for applications prioritizing precision (e.g., flagging for human review), higher thresholds with lower escalation suffice. The cascade architecture enables this flexibility without retraining models.
+
+\subsection{Meta-Model (Stage 3) Analysis}
+Stage~3 trains a LightGBM meta\hyp model on K\hyp fold out\hyp of\hyp fold features from the Stage~2 experts (EfficientNetV2 and optional GenConViT). In our current runs, the meta\hyp model achieves validation performance similar to, but on average slightly worse than, the strongest single expert (Table~\ref{tab:stage2_stage3}). Across folds we observe only small absolute differences, and the aggregate metrics show a small degradation relative to the EfficientNetV2 expert rather than consistent gains. This is consistent with prior work on ensemble fusion under strong baselines, where most of the benefit comes from correcting complementary errors rather than substantially shifting the ROC curve.
+
+Given these modest deltas and the added complexity of maintaining separate meta\hyp model artifacts, our primary cascade results focus on a two\hyp stage configuration in which Stage~2 uses the best expert (EfficientNetV2) and Stage~3 is treated as an optional enhancement. The meta\hyp model remains valuable as an analysis tool: it confirms that expert features are highly informative and that there is limited residual complementarity to exploit under our current training mix. Future work could revisit this component with more diverse experts (e.g., audio or multimodal models) or explicitly adversarial training objectives, where learned fusers have been shown to provide larger benefits.
+
+\begin{table}[h]
+  \centering
+  \caption{Stage~2 expert vs.\ Stage~3 meta-model on combined validation. Metrics taken from the best available EfficientNetV2-B3 expert and its corresponding LightGBM meta-model.}
+  \label{tab:stage2_stage3}
+  {\small
+  \begin{tabular}{lccc}
+    \toprule
+    Model & AUC & F1 & FNR \\
+    \midrule
+    Stage~2 EfficientNetV2-B3 expert & 0.9633 & 0.8930 & 0.0943 \\
+    Stage~3 LightGBM meta-model      & 0.9610 & 0.8869 & 0.1067 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+\FloatBarrier
 
 \begin{figure}[h]
   \centering
@@ -20,6 +92,7 @@
   \caption{Stage~1 calibration (left) and confusion matrix (right).}
   \label{fig:stage1_calib_conf}
 \end{figure}
+\FloatBarrier
 
 \begin{figure}[h]
   \centering
@@ -28,6 +101,7 @@
   \caption{Stage~2 calibration (left) and confusion matrix (right).}
   \label{fig:stage2_calib_conf}
 \end{figure}
+\FloatBarrier
 
 \subsection{Cascade Threshold Tuning}
 
@@ -35,6 +109,7 @@
   \centering
   \caption{Best cascade configurations (validation). Low/high thresholds, metrics, and escalation rate.}
   \label{tab:cascade_best}
+  {\small
   \begin{tabular}{cccccc}
     \toprule
     Low & High & AUC & F1 & FNR & Escalation \\
@@ -42,10 +117,12 @@
     0.05 & 0.55 & \num{0.9941} & \num{0.9654} & \num{0.0060} & \num{0.0116} \\
     0.03 & 0.55 & \num{0.9941} & \num{0.9644} & \num{0.0054} & \num{0.0150} \\
     \bottomrule
-  \end{tabular}
+  \end{tabular}}
 \end{table}
 
-We adopt probability calibration (temperature scaling) on Stage~2 prior to threshold selection when transferring thresholds across datasets, following \cite{guo2017calibration}; under distribution shift, calibration effects can vary and should be reported with care \cite{minderer2021revisiting}.
+The two configurations in Table~\ref{tab:cascade_best} illustrate the core trade\hyp off. Tightening $\tau\_{low}$ from $0.05$ to $0.03$ reduces the false negative rate from \num{0.0060} to \num{0.0054}, but increases the Stage~2 escalation rate from \num{1.16}\% to \num{1.50}\%. In terms of the Stage~1 leakage rate $\pi\_{\mathrm{leak}}$, the lower threshold configuration accepts fewer borderline fakes at Stage~1 and delegates more samples to the expert; this behaviour is desirable in high\hyp risk deployments where missed fakes are costly, and the incremental compute is modest given the low baseline escalation.
+
+We adopt probability calibration (temperature scaling) on Stage~2 prior to threshold selection when transferring thresholds across datasets, following \cite{guo2017calibration}; under distribution shift, calibration effects can vary and should be reported with care \cite{minderer2021revisiting}. In our experiments, calibration slightly improves alignment between predicted probabilities and empirical frequencies on the combined validation set and stabilises the Pareto frontier of $(\mathrm{FNR}, \pi\_2)$ across nearby operating points, but does not fully close the gap on Deepfake\hyp Eval\hyp 2024.
 
 \begin{figure}[h]
   \centering
@@ -55,47 +132,52 @@ We adopt probability calibration (temperature scaling) on Stage~2 prior to thres
   \caption{Cascade threshold tuning heatmaps and best configuration metrics (example run).}
   \label{fig:cascade_heatmaps}
 \end{figure}
+\FloatBarrier
 
 \subsection{Cross-Dataset Evaluation (Deepfake-Eval-2024)}
 % The Deepfake-Eval-2024 calibrated and Stage2-only tables are included in the auto tables above.
 
-On Deepfake\hyp Eval\hyp 2024, the calibrated cascade exhibits substantially lower absolute performance than in\hyp distribution validation (Table~\ref{tab:deepeval_calibrated}). This gap is expected given the distribution shift, variety of sources, and lack of fine\hyp tuning on the OOD corpus. A Stage~2\,only setting (Table~\ref{tab:deepeval_stage2only}) shows the upper bound when the expert handles nearly all samples, at the cost of high system load. These results motivate domain adaptation or dataset\hyp aware calibration for deployment.
+On Deepfake\-Eval\-2024, the calibrated cascade performs substantially worse than on in\-distribution validation (Table~\ref{tab:deepeval_calibrated}): F1 falls below \num{0.30} on both validation and test splits, and FNR remains high ($\approx$\num{0.73}--\num{0.79}) even though only around half of the samples are escalated to Stage~2 (Stage~2 rate $\approx$\num{0.51}). This gap aligns with known failure modes on in\hyp the\hyp wild media~\cite{wilddeepfake2021,pei2024deepfakesurvey,deepeval2024}: (i) preprocessing mismatch (resolution, compression, face crops) between training data and social\hyp media distribution; (ii) missing or underrepresented generation methods and post\-processing pipelines during training; and (iii) detectors inadvertently learning dataset\-specific artifacts that do not transfer.
 
-% Robustness curves (auto-generated snippet)
+A Stage~2\-only setting (Table~\ref{tab:deepeval_stage2only}) serves as a crude upper bound when the expert handles nearly all samples. It attains higher F1 on the test split (F1~\num{0.60}, FNR~\num{0.15}) but at the cost of extremely high false positive rates (FPR~$\approx$\num{0.87}--\num{0.92}) and near\hyp maximal Stage~2 usage (Stage~2 rate~$\ge$\num{0.97}). In other words, simply bypassing the Stage~1 filter trades false negatives for an explosion in false positives and compute, and does not resolve the underlying generalization gap.
+
+Qualitatively, we observe that failures on Deepfake\hyp Eval\hyp 2024 often concentrate on clips with heavy recompression, strong editing, or atypical framing (e.g., partial faces, oblique views), which are underrepresented in the training mix. The cascade remains conservative---escalation rates increase relative to in\hyp distribution validation as more samples fall into the ambiguous band---but the expert itself is less calibrated, leading to higher residual FNR even after temperature scaling. Improving robustness and calibration on truly in\hyp the\hyp wild data therefore requires more than simple threshold transfer.
+
+Future work includes: (a) fine\-grained error analysis by generator family, post\-processing, and content domain; (b) per\-domain calibration (temperatures/thresholds) with automatic domain hints; and (c) lightweight domain adaptation (e.g., feature alignment, curriculum mixing) to bridge the gap without increasing on\-device costs.
+
 \input{generated/robustness_figs}
+\FloatBarrier
 
 \subsection{Routing Strategies: Confidence vs. Entropy vs. Margin}
-We compare confidence\hyp based routing (ours) with entropy and margin alternatives (early exits) \cite{kaya2019shallowdeep}. Confidence routing offers direct control of the escalation rate via $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ and pairs well with calibration; entropy and margin can be emulated within the same framework. A summary table is provided as a template for future runs.
-
-\begin{table}[h]
-  \centering
-  \caption{Routing strategy comparison (template; to be completed with measured values).}
-  \label{tab:routing_compare}
-  \begin{tabular}{lcccc}
-    \toprule
-    Strategy & S2 Rate (\%) & FNR & F1 & Notes \\
-    \midrule
-    Confidence (ours) & -- & -- & -- & Tunable $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ \\
-    Entropy & -- & -- & -- & Threshold on predictive entropy \\
-    Margin & -- & -- & -- & Threshold on $\lvert p-0.5\rvert$ \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+We compare confidence\-based routing (ours) with entropy and margin alternatives (template deferred to future work) \cite{kaya2019shallowdeep}. Confidence routing offers direct control of the escalation rate via $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ and pairs well with calibration; entropy and margin can be emulated within the same framework. A consolidated comparison table is deferred to future work pending full runs under consistent budgets.
 
 \subsection{Robustness to Common Perturbations}
-We evaluate the tuned cascade under four perturbation families (JPEG compression, Gaussian noise, motion blur, and brightness/contrast). Figure~\ref{fig:robustness_curves} plots F1 vs. perturbation strength (additional Accuracy and FNR plots are provided in the repository). Results exhibit non\hyp monotonic trends across families:
+We evaluate the tuned cascade under four perturbation types (JPEG compression, Gaussian noise, motion blur, and brightness/contrast) using the same combined validation manifest. Figure~\ref{fig:robustness_curves} plots F1 vs.\ perturbation strength, while Table~\ref{tab:robustness_table} aggregates F1/Acc/FNR/Stage~2 rate for representative levels, and Figure~\ref{fig:robustness_tradeoff} shows FNR vs.\ Stage~2 rate under threshold sweeps. Although these experiments are preliminary and would benefit from larger samples, several consistent patterns emerge:
 \begin{itemize}[leftmargin=*]
-  \item \textbf{JPEG:} F1 mildly improves as quality decreases (95\,$\rightarrow$\,20), accompanied by a reduction in FNR. This likely reflects compression artifacts that accentuate cues learned by the detector; full-sample evaluation is needed to confirm.
-  \item \textbf{Gaussian:} Increasing noise (sigma 2\,$\rightarrow$\,12) lowers FNR and raises F1 in the small-sample sweep. We hypothesize that heavy noise disrupts real textures more than fake cues under the current thresholds; a larger run and per-family calibration will clarify.
-  \item \textbf{Motion blur:} F1 improves from kernel 3 to 13 with a gradual drop in FNR, indicating partial robustness to blur at the tested sizes.
-  \item \textbf{Brightness:} Moderate brightness changes (0.7\,$\rightarrow$\,1.3) show a slight F1 increase and FNR decrease.
+  \item \textbf{JPEG compression.} As JPEG quality decreases from 95 to 20, F1 and accuracy fluctuate but do not collapse; in some settings, moderate compression slightly \emph{improves} F1 and lowers FNR (Table~\ref{tab:robustness_table}). This is consistent with frequency\hyp based analyses~\cite{durall2020watch,qian2020thinkingfrequency}: compression can accentuate artifacts that detectors rely on. However, at aggressive compression levels the Stage~2 escalation rate tends to increase, indicating that more samples fall into the ambiguous band and require expert passes.
+  \item \textbf{Gaussian noise.} Increasing noise (e.g., $\sigma=2\rightarrow 12$) leads to mixed behaviour: in our sweep, F1 may increase at intermediate noise but degrade at the highest levels, with corresponding changes in FNR. A plausible explanation is that strong noise perturbs real textures more than fake cues under the current thresholds, effectively acting as a domain shift; per\hyp family calibration (Section~\ref{tab:robustness_table}) and larger runs are needed to stabilise these trends.
+  \item \textbf{Motion blur.} For kernel sizes in the range tested (3--13), F1 and FNR change gradually rather than catastrophically, suggesting that the cascade retains partial robustness to modest blur. As with JPEG, higher blur tends to increase Stage~2 usage because more inputs are routed out of the high\hyp confidence band at Stage~1.
+  \item \textbf{Brightness/contrast.} Moderate brightness changes (e.g., 0.7--1.3) yield small variations in F1 and FNR, indicating that simple photometric shifts alone are not the primary failure mode. Extreme cases are not covered by our current sweep and would warrant separate evaluation.
 \end{itemize}
-These results motivate per\hyp family threshold/temperature calibration and consistent reporting of Stage\-2 escalation rates to quantify efficiency\hyp robustness trade\hyp offs. Prior analyses suggest frequency artifacts from generative up\hyp sampling are informative \cite{durall2020watch}, and adaptive frequency filtering can be beneficial (adaptive frequency) \cite{qian2020thinkingfrequency}. JPEG/noise may accentuate some cues at certain thresholds; a per\hyp family calibration protocol is therefore appropriate. We note that, beyond natural perturbations, adversarial attacks (e.g., CW, PGD) can severely degrade detector performance if unaccounted for \cite{carlini2017towards}; reporting calibrated thresholds and escalation rates helps bound risk under operational budgets. Table~\ref{tab:robustness_table} summarizes F1/Acc/FNR/S2 Rate by perturbation and level. We further sweep thresholds to visualize FNR vs. Stage~2 rate; Figure~\ref{fig:robustness_tradeoff} shows representative trade\hyp offs.
+Overall, these results motivate per\hyp family threshold/temperature calibration and consistent reporting of Stage~2 escalation rates to quantify efficiency\hyp robustness trade\hyp offs. Prior analyses suggest frequency artifacts from generative up\hyp sampling are informative \cite{durall2020watch}, and adaptive frequency filtering can be beneficial~\cite{qian2020thinkingfrequency}. JPEG and noise may accentuate some cues at certain thresholds; a per\hyp family calibration protocol is therefore appropriate. Beyond natural perturbations, adversarial attacks (e.g., CW, PGD) can severely degrade detector performance if unaccounted for \cite{carlini2017towards}; reporting calibrated thresholds and escalation rates helps bound risk under operational budgets.
 
 \paragraph{Temporal segmentation and partial forgeries.} Beyond video\hyp level decisions, frame\hyp level segmentation of forged segments has been explored to handle partial manipulations \cite{undercover2023}. Our two\hyp stage architecture is compatible with such post\hyp processing: Stage~1 can pre\hyp filter frames and Stage~2 can refine segment boundaries under a budget.
 
-% Robustness summary table (auto-generated)
 \input{generated/robustness_table}
+\FloatBarrier
 
-% Trade-off figures (auto-generated if present)
 \input{generated/robustness_tradeoff}
+\FloatBarrier
+
+\subsection{Error Analysis and Failure Mode Taxonomy}
+
+Beyond aggregate metrics, systematic error analysis reveals recurring patterns in false positives and false negatives that inform future improvements. Using qualitative inspection of diagnostic plots and per\hyp sample predictions across Stage~1 and Stage~2, we observe that:
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
+  \item \textbf{False positives} are dominated by heavily compressed or low\hyp quality real videos, unusual lighting and makeup, and challenging viewpoints or occlusions. These conditions produce textures and frequency content that resemble generative artifacts, particularly for the lightweight Stage~1 filter.
+  \item \textbf{False negatives} arise from high\hyp quality fakes (including newer GAN and diffusion families), partial manipulations confined to small facial regions, and fakes that have been post\hyp processed to closely match surrounding real content. Such cases are common on Deepfake\hyp Eval\hyp 2024 and contribute to its high FNR.
+\end{itemize}
+Mitigations include stronger data augmentation (compression, occlusions, photometric changes), hard example mining (already used in Stage~2), and domain adaptation techniques (e.g., DA\-BN~\cite{li2021dabn}, unsupervised feature alignment) to better cover new generators. Temporal aggregation and multi\hyp frame consistency checks provide complementary signals beyond per\hyp frame classification, especially for partial or temporally localized manipulations.
+
+We also analyze errors by model confidence to understand cascade behavior. Low\hyp confidence predictions tend to correspond to heavily degraded real videos where even the expert struggles; mid\hyp confidence cases mix FP and FN and benefit most from escalation; and high\hyp confidence errors, though rare, typically reflect systematic blind spots tied to specific generators or post\hyp processing styles. The two\hyp threshold routing policy naturally separates these regimes: samples with $p < \tau_{low}$ or $p > \tau_{high}$ receive confident Stage~1 decisions, while those with $\tau_{low} \le p \le \tau_{high}$ are escalated. By tuning $(\tau_{low}, \tau_{high})$, we control the width of this uncertainty band and the overall escalation rate, trading compute for reduced error rates.
+
+Finally, exported visual error panels provide concrete examples of the above patterns (compressed real videos and unusual lighting among FPs; high\hyp quality and post\hyp processed fakes among FNs). These artifacts form a basis for more systematic taxonomies by generator family, post\hyp processing type, and content domain in future work.

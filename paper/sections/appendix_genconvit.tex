@@ -1,0 +1,20 @@
+% A.X Alternative Architectures Explored: GenConViT
+
+\subsection*{A.X Alternative Architectures Explored: GenConViT}
+
+Beyond the EfficientNetV2\hyp B3 expert used in our final cascade, we explored GenConViT as a transformer\hyp style Stage~2 expert. This appendix summarises the key observations from those experiments to avoid overloading the main narrative.
+
+\paragraph{Integration Setup.}
+GenConViT was integrated via a small manager that supports hybrid (custom) and pretrained modes through a unified interface. In hybrid mode, we initialise the backbone and train end\hyp to\hyp end on our combined manifest; in pretrained mode, we adapt publicly available weights~\cite{genconvit_github} and fine\hyp tune only the final layers. Both modes share the same data pipeline, augmentation strategy, and evaluation protocol as EfficientNetV2\hyp B3.
+
+\paragraph{Training Behaviour.}
+Hybrid GenConViT runs exhibited slower and less stable convergence than EfficientNetV2\hyp B3, with larger variance across seeds and folds. Pretrained runs converged more reliably but showed signs of domain\hyp specific bias: validation performance was sensitive to the mix of datasets and to the presence of certain manipulation families. In practice, we often observed small oscillations in validation AUC and F1 late in training, making robust model selection harder than for EfficientNetV2\hyp B3.
+
+\paragraph{Validation Performance.}
+Across the combined validation split, our best GenConViT configurations matched or slightly underperformed the EfficientNetV2\hyp B3 expert in terms of AUC and F1, while requiring substantially longer wall\hyp clock training and higher peak GPU memory. Per\hyp dataset breakdowns showed similar patterns: GenConViT did not consistently outperform EfficientNetV2 on any single benchmark under our settings, though some manipulations exhibited marginal gains that were within run\hyp to\hyp run variance.
+
+\paragraph{Impact on Cascade and Meta\hyp Model.}
+We also evaluated GenConViT features within the LightGBM meta\hyp model (Stage~3). While adding GenConViT embeddings provided additional feature channels, the resulting meta\hyp model metrics were comparable to, or slightly worse than, the best EfficientNetV2\hyp only configuration (see Table~\ref{tab:stage2_stage3} and Table~\ref{tab:ablation_metamodel}). This suggests that, given a strong CNN expert and the available data, GenConViT did not contribute enough complementary signal to justify the added complexity.
+
+\paragraph{Takeaways.}
+Overall, our experiments indicate that, in this setting, a well\hyp tuned EfficientNetV2\hyp B3 expert strikes a better balance between accuracy, stability, and deployability than the more complex GenConViT architecture. We therefore base our default cascade on EfficientNetV2 and treat GenConViT as an optional research component rather than a core part of the deployed system. Future work could revisit transformer\hyp style experts with larger datasets, different pretraining regimes, or architectures explicitly optimised for mobile inference.

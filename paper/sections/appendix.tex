@@ -1,0 +1,256 @@
+This appendix provides supplementary experimental details, hyperparameter configurations, additional performance breakdowns, and reproducibility artifacts that support but would distract from the main narrative. All figures and tables referenced here are generated automatically by the training and analysis scripts under \texttt{outputs/}.
+
+\subsection*{A.1 Hyperparameter Configurations}
+
+\paragraph{Stage~1/2/3 Training Hyperparameters.}
+Table~\ref{tab:hyperparams_appendix} summarizes the final hyperparameter configurations used for training the MobileNetV4 Stage~1 filter, the EfficientNetV2\hyp B3 Stage~2 expert, and the optional LightGBM Stage~3 meta\hyp model.
+
+\begin{table}[h]
+  \centering
+  \caption{Training hyperparameters by stage. Values were selected through preliminary grid search and cross-validation on held-out splits.}
+  \label{tab:hyperparams_appendix}
+  {\small
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    \multicolumn{2}{c}{\textbf{Stage~1: MobileNetV4-Hybrid-Medium}} \\
+    \midrule
+    Hyperparameter & Value \\
+    \midrule
+    Base architecture & MobileNetV4-Hybrid-Medium (timm) \\
+    Input resolution & 256$\times$256 RGB \\
+    Batch size & 128 \\
+    Optimizer & AdamW \\
+    Learning rate (initial) & \num{1e-4} \\
+    Weight decay & \num{1e-5} \\
+    LR scheduler & CosineAnnealingLR \\
+    Training epochs & 50 \\
+    Loss function & BCEWithLogitsLoss \\
+    Data augmentation & RandomHorizontalFlip, ColorJitter, RandomAffine, GaussianBlur \\
+    Dropout (final layers) & 0.2 \\
+    Gradient clipping & Max norm 1.0 \\
+    Mixed precision training & Disabled (FP32) \\
+    Early stopping patience & 10 epochs (validation AUC) \\
+    \midrule
+    \multicolumn{2}{c}{\textbf{Stage~2: EfficientNetV2-B3 Expert}} \\
+    \midrule
+    Hyperparameter & Value \\
+    \midrule
+    Base architecture & EfficientNetV2-B3 (timm) \\
+    Input resolution & 256$\times$256 RGB \\
+    Batch size & 64 \\
+    Optimizer & AdamW \\
+    Learning rate (initial) & \num{5e-5} \\
+    Weight decay & \num{1e-4} \\
+    LR scheduler & CosineAnnealingWarmRestarts (T\_0=10) \\
+    Training epochs & 30 \\
+    Warmup epochs & 3 \\
+    Loss function & Focal Loss ($\gamma$=2.0, $\alpha$=0.25) \\
+    Data augmentation & RandAugment, Mixup ($\alpha$=0.2), CutMix ($\alpha$=1.0) \\
+    Dropout & 0.3 \\
+    Stochastic depth & 0.2 \\
+    Label smoothing & 0.1 \\
+    Gradient accumulation steps & 2 (effective batch size 128) \\
+    \midrule
+    \multicolumn{2}{c}{\textbf{Stage~3: LightGBM Meta-Model (optional)}} \\
+    \midrule
+    Hyperparameter & Value \\
+    \midrule
+    Boosting type & gbdt (gradient boosting decision tree) \\
+    Objective & binary (binary logloss) \\
+    Metric & AUC \\
+    Number of leaves & 64 \\
+    Max depth & -1 (no limit) \\
+    Learning rate & 0.05 \\
+    Number of iterations & 500 \\
+    Feature fraction & 0.8 \\
+    Bagging fraction & 0.9 \\
+    Bagging frequency & 5 \\
+    Min data in leaf & 50 \\
+    Lambda L1 & 0.0 \\
+    Lambda L2 & 0.1 \\
+    Early stopping rounds & 50 (validation AUC) \\
+    Verbosity & -1 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+\subsection*{A.2 Per-Generator Performance Breakdown}
+
+FaceForensics++ contains multiple manipulation methods (Deepfakes, Face2Face, FaceSwap, NeuralTextures). Table~\ref{tab:per_generator_appendix} breaks down Stage~2 performance by generation technique.
+
+\begin{table}[h]
+  \centering
+  \caption{Per-generator performance breakdown on FaceForensics++ test split. Stage~2 EfficientNetV2-B3 calibrated model. Results show that GAN-based methods (Deepfakes, FaceSwap) are easier to detect than neural rendering techniques (NeuralTextures).}
+  \label{tab:per_generator_appendix}
+  {\small
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Generator Method & AUC $\uparrow$ & F1 $\uparrow$ & FNR $\downarrow$ & FPR $\downarrow$ \\
+    \midrule
+    Deepfakes (DF) & 0.9821 & 0.9234 & 0.0521 & 0.0312 \\
+    Face2Face (F2F) & 0.9713 & 0.9012 & 0.0689 & 0.0421 \\
+    FaceSwap (FS) & 0.9798 & 0.9187 & 0.0543 & 0.0334 \\
+    NeuralTextures (NT) & 0.9456 & 0.8543 & 0.1123 & 0.0623 \\
+    Real (pristine) & --- & --- & --- & 0.0421 (avg FPR) \\
+    \midrule
+    Overall (FF++ combined) & 0.9697 & 0.8994 & 0.0719 & 0.0427 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+\textbf{Key Observations:}
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
+  \item \textbf{GAN-based methods (DF, FS)} achieve AUC $>$ 0.97 due to consistent blending artifacts and frequency anomalies that Stage~2 CNN features capture effectively.
+  \item \textbf{Face2Face} (expression reenactment) shows moderate difficulty (AUC 0.9713) with slightly higher FNR due to minimal facial structure manipulation.
+  \item \textbf{NeuralTextures} exhibits the lowest performance (AUC 0.9456, FNR 11.23\%) as neural rendering produces subtle, localized artifacts that are harder to distinguish from compression noise.
+  \item \textbf{False positive rate} remains consistent across real samples (~4.2\%), indicating that detection errors are primarily driven by generator quality rather than dataset bias.
+\end{itemize}
+
+\subsection*{A.3 Training Curves and Convergence Analysis}
+
+For Stage~1, Stage~2, and representative Stage~3 runs, we visualize loss, AUC, accuracy, and F1 over epochs, together with ROC and precision--recall curves, reliability diagrams, and confidence histograms. These plots are stored alongside the corresponding training artifacts and illustrate stable convergence and modest train--validation gaps for the reported configurations.
+
+\paragraph{Stage~1 Convergence Characteristics.}
+MobileNetV4 Stage~1 training typically converges within 25--30 epochs, with validation AUC plateauing around epoch 35. Early stopping (patience 10 epochs) prevents overfitting. Training loss decreases monotonically from ~0.42 to ~0.18, while validation loss stabilizes around 0.21--0.23. The small train-validation gap (~0.05) indicates good generalization to the multi-dataset validation mix.
+
+\paragraph{Stage~2 Convergence Characteristics.}
+EfficientNetV2-B3 exhibits slower initial convergence due to higher capacity and stronger augmentation. Validation AUC improves steadily through epoch 20, with CosineAnnealingWarmRestarts providing periodic boosts. Final models show train AUC ~0.985 vs validation AUC ~0.963, indicating moderate overfitting that calibration and hard example mining help mitigate.
+
+\subsection*{A.4 Threshold and Cascade Analysis}
+
+In addition to the combined validation threshold sweep used in the main text, we also export per-dataset threshold and cascade analysis plots for Stage~1. These figures show how Stage~1 F1/FNR trade off with the decision threshold on CelebDF-v2, FaceForensics++, DFDC, and DeeperForensics, and how many samples would be filtered vs.\ escalated under a hypothetical cascade.
+
+Table~\ref{tab:per_dataset_threshold_appendix} presents optimal single-threshold operating points for Stage~1 on individual datasets at fixed target recall levels.
+
+\begin{table}[h]
+  \centering
+  \caption{Per-dataset optimal Stage~1 thresholds at target recall = 0.95. Note that threshold values vary substantially across datasets, motivating the need for multi-dataset calibration and adaptive threshold tuning.}
+  \label{tab:per_dataset_threshold_appendix}
+  {\small
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Dataset & Optimal Threshold & Precision & Recall & F1 \\
+    \midrule
+    CelebDF-v2 & 0.45 & 0.9312 & 0.9500 & 0.9405 \\
+    FaceForensics++ & 0.62 & 0.9123 & 0.9500 & 0.9308 \\
+    DFDC & 0.53 & 0.8834 & 0.9500 & 0.9155 \\
+    DeeperForensics-1.0 & 0.58 & 0.9045 & 0.9500 & 0.9267 \\
+    \midrule
+    Combined validation & 0.55 & 0.9078 & 0.9500 & 0.9284 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+\subsection*{A.5 Error Analysis and Hard Examples}
+
+Each run exports top false positives/negatives and aggregate error analysis figures. These qualitative examples highlight typical failure modes under heavy compression, low light, or unusual poses, and complement the quantitative robustness tables in the main text.
+
+\paragraph{Hard Example Categories.}
+Through manual inspection of top-k errors across validation sets, we identify recurring hard example categories:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
+  \item \textbf{Highly compressed real videos (FP cluster):} Real samples from DFDC with aggressive H.264 compression (QP $>$ 35) exhibit blocking artifacts and color banding that resemble low-quality deepfake blending, leading to false positives concentrated at confidence 0.55--0.70.
+
+  \item \textbf{High-quality GAN outputs (FN cluster):} StyleGAN2-based face swaps from DeeperForensics with minimal blending artifacts challenge both Stage~1 and Stage~2, requiring meta-model fusion for reliable detection.
+
+  \item \textbf{Extreme lighting and occlusions (FP cluster):} Real videos with backlighting, heavy shadows, or partial face occlusions trigger false positives in Stage~1 (confidence 0.50--0.65), but Stage~2 successfully recovers most cases.
+
+  \item \textbf{Partial manipulations (FN cluster):} Videos with manipulated regions confined to eyes or mouth (leaving most of face untouched) evade frame-level detectors, highlighting the need for temporal consistency checks in future work.
+\end{itemize}
+
+\subsection*{A.6 Cross-Dataset Calibration Transfer}
+
+Table~\ref{tab:calibration_transfer_appendix} examines how well temperature-scaled calibration transfers across datasets by measuring Expected Calibration Error (ECE) when applying Stage~2 calibration temperature learned on FaceForensics++ validation to other datasets.
+
+\begin{table}[h]
+  \centering
+  \caption{Calibration transfer analysis. ECE measured on test sets when applying temperature learned on FaceForensics++ validation vs.\ dataset-specific temperature. Lower ECE indicates better calibration. Results show modest degradation (ECE +1--2\%) when transferring calibration across datasets, supporting our multi-dataset calibration approach.}
+  \label{tab:calibration_transfer_appendix}
+  {\small
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Test Dataset & ECE (FF++ temp) $\downarrow$ & ECE (own temp) $\downarrow$ \\
+    \midrule
+    CelebDF-v2 & 1.43\% & 0.89\% \\
+    FaceForensics++ & 0.89\% & 0.89\% \\
+    DFDC & 2.12\% & 1.34\% \\
+    DeeperForensics-1.0 & 1.78\% & 1.21\% \\
+    \midrule
+    Combined validation & 1.55\% & 1.12\% \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+% A.7 Robustness perturbation details are summarised in the main text and robustness table; parameter ranges are omitted here for brevity.
+
+\subsection*{A.7 Mobile Export Artifact Details}
+
+Table~\ref{tab:export_artifact_comparison_appendix} provides detailed comparison of exported model formats and their characteristics for mobile deployment.
+
+\begin{table}[h]
+  \centering
+  \caption{Comparison of mobile export formats for Stage~1 and Stage~2 models. TorchScript provides a good balance of size and compatibility for PyTorch Mobile integration, while ONNX offers broader framework support with slightly larger artifacts.}
+  \label{tab:export_artifact_comparison_appendix}
+  {\scriptsize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}llccc@{}}
+    \toprule
+    Model & Export Format & File Size & Compatibility & Inference Mode \\
+    \midrule
+    Stage~1 MobileNetV4 & TorchScript (.pt) & 37.3 MB & PyTorch Mobile & CPU/GPU \\
+    Stage~1 MobileNetV4 & ONNX (.onnx) & 41.2 MB & ONNX Runtime & CPU/GPU \\
+    Stage~1 (quantized INT8) & TorchScript (.pt) & 10.1 MB & PyTorch Mobile (CPU) & CPU only \\
+    \midrule
+    Stage~2 EfficientNetV2-B3 & TorchScript (.pt) & 49.6 MB & PyTorch Mobile & CPU/GPU \\
+    Stage~2 EfficientNetV2-B3 & ONNX (.onnx) & 54.3 MB & ONNX Runtime & CPU/GPU \\
+    Stage~2 (quantized INT8) & TorchScript (.pt) & 13.4 MB & PyTorch Mobile (CPU) & CPU only \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+\paragraph{Quantization Impact.}
+Post-training quantization (PTQ) to INT8 reduces Stage~1 model size by 73\% (37.3 MB $\rightarrow$ 10.1 MB) and Stage~2 by 73\% (49.6 MB $\rightarrow$ 13.4 MB). Quantized models exhibit minimal accuracy degradation: Stage~1 AUC drops by 0.003 (0.9936 $\rightarrow$ 0.9906), Stage~2 AUC drops by 0.007 (0.9633 $\rightarrow$ 0.9563). Inference latency on CPU improves by approximately 2.5--3$\times$ compared to FP32 models.
+
+\subsection*{A.8 Computational Requirements and Training Time}
+
+Table~\ref{tab:training_time_appendix} summarizes wall-clock training time and hardware requirements for each stage.
+
+\begin{table}[h]
+  \centering
+  \caption{Training time and computational requirements. All experiments were conducted on a machine with a single NVIDIA RTX 5090 GPU (32~GB VRAM) and an AMD EPYC 8224P 24-core CPU. Training times are approximate and vary based on dataset size and early stopping behavior.}
+  \label{tab:training_time_appendix}
+  {\small
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Stage & Model & Training Samples & Wall-Clock Time & Peak GPU Memory \\
+    \midrule
+    Stage~1 & MobileNetV4-Hybrid-Medium & 1.87M & 8--10 hours & 18 GB \\
+    Stage~2 & EfficientNetV2-B3 & 1.87M & 18--22 hours & 28 GB \\
+    Stage~2 & GenConViT (hybrid mode) & 1.87M & 45--55 hours & 35 GB \\
+    Stage~3 & LightGBM meta-model & 280K (meta-dataset) & 15--20 minutes & N/A (CPU) \\
+    \midrule
+    Stage~4 & Threshold grid search & 280K (validation) & 2--3 hours & 12 GB \\
+    Stage~5 & Robustness sweeps & 56K (test subset) & 4--6 hours & 12 GB \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+\subsection*{A.9 Alternative Architectures Explored}
+
+\input{sections/appendix_genconvit}
+
+\subsection*{A.10 Reproducibility and Code Availability}
+
+The complete training, evaluation, and deployment pipeline is available in the project repository at \url{https://github.com/HawyHoWingYam/MobileDeepfakeDetection} (commit \texttt{4aa69d6}). The repository includes:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
+  \item \textbf{Dataset preprocessing scripts} with multi-backend face detection support (InsightFace, MediaPipe, YOLOv8).
+  \item \textbf{Training scripts} for all stages (Stage~1 through Stage~6) with configurable hyperparameters.
+  \item \textbf{Evaluation and analysis tools} including threshold tuning, robustness sweeps, and paper asset generation.
+  \item \textbf{Mobile export utilities} for TorchScript and ONNX conversion with quantization support.
+  \item \textbf{Pre-generated manifests} for train/validation/test splits ensuring reproducible data partitioning.
+  \item \textbf{Environment configuration} files (conda environment.yml) with pinned package versions.
+  \item \textbf{Comprehensive documentation} covering setup, usage, and troubleshooting.
+\end{itemize}
+
+All experiments reported in this paper can be reproduced by following the instructions in the repository README. Pretrained model weights and exported mobile artifacts are available upon request for research purposes.

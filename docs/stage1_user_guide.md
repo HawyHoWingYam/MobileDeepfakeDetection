@@ -95,10 +95,14 @@ train_transforms = transforms.Compose([
 
 ### Basic Usage
 ```bash
-# Run calibration using the best model from training
+# Run calibration using the best model from training (using repository manifests)
 python src/stage1/calibrate_model.py \
     --model_path output/stage1/best_model.pth \
-    --data_dir processed_data
+    --data_dir . \
+    --val_manifest manifests/faceforensics_val_balanced.csv \
+    --output_dir output/stage1 \
+    --num_workers 0 \
+    --batch_size 32
 ```
 
 ### Advanced Configuration
@@ -106,8 +110,8 @@ python src/stage1/calibrate_model.py \
 # Custom calibration with specific validation set
 python src/stage1/calibrate_model.py \
     --model_path output/stage1/best_model.pth \
-    --data_dir processed_data \
-    --val_manifest processed_data/manifests/val_manifest.csv \
+    --data_dir . \
+    --val_manifest manifests/faceforensics_val_balanced.csv \
     --output_dir output/stage1 \
     --method temperature_scaling \
     --optimize_metric nll
@@ -154,8 +158,10 @@ calibrated_probs = torch.sigmoid(calibrated_logits)
 # Comprehensive evaluation with calibrated model
 python src/stage1/evaluate_stage1.py \
     --model_path output/stage1/best_model.pth \
-    --temp_file output/stage1/calibration_temp.json \
-    --data_dir processed_data
+    --data_dir . \
+    --test_manifest manifests/faceforensics_test_balanced.csv \
+    --use_calibration \
+    --calibration_file output/stage1/calibration_temp.json
 ```
 
 ### Advanced Configuration
@@ -163,9 +169,10 @@ python src/stage1/evaluate_stage1.py \
 # Custom evaluation with specific test set
 python src/stage1/evaluate_stage1.py \
     --model_path output/stage1/best_model.pth \
-    --temp_file output/stage1/calibration_temp.json \
-    --data_dir processed_data \
-    --test_manifest processed_data/manifests/val_manifest.csv \
+    --data_dir . \
+    --test_manifest manifests/faceforensics_test_balanced.csv \
+    --use_calibration \
+    --calibration_file output/stage1/calibration_temp.json \
     --output_dir output/stage1 \
     --cascade_thresholds 0.9,0.95,0.98,0.99 \
     --save_predictions
@@ -231,13 +238,16 @@ python src/stage1/train_stage1.py \
 echo "Starting Probability Calibration..."
 python src/stage1/calibrate_model.py \
     --model_path output/stage1/best_model.pth \
-    --data_dir processed_data
+    --data_dir . \
+    --val_manifest manifests/faceforensics_val_balanced.csv
 
 echo "Starting Performance Evaluation..."
 python src/stage1/evaluate_stage1.py \
     --model_path output/stage1/best_model.pth \
-    --temp_file output/stage1/calibration_temp.json \
-    --data_dir processed_data
+    --data_dir . \
+    --test_manifest manifests/faceforensics_test_balanced.csv \
+    --use_calibration \
+    --calibration_file output/stage1/calibration_temp.json
 
 echo "Stage 1 Pipeline Complete!"
 ```

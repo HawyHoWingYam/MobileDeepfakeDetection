@@ -31,6 +31,7 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, roc_curve, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
+from tqdm import tqdm
 
 # Import from stage1 utils
 import sys
@@ -249,11 +250,12 @@ def evaluate_model(model, dataloader, device, temperature=1.0):
     all_logits = []
     
     with torch.no_grad():
-        for images, labels in dataloader:
+        progress = tqdm(dataloader, desc="Eval [batches]", unit="batch")
+        for images, labels in progress:
             images, labels = images.to(device), labels.to(device)
-            
+
             logits = model(images).squeeze(1)
-            
+
             all_logits.append(logits.cpu())
             all_labels.append(labels.cpu())
     

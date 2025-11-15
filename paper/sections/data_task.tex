@@ -1,9 +1,12 @@
-% Dataset summary – counts from manifests
+% Dataset summary – counts from manifests and unified task definition
 
-\begin{table}[h]
+\paragraph{Task Definition.} We frame deepfake detection as binary classification at the frame/image level: \emph{real} (\texttt{label=0}) vs.\ \emph{fake} (\texttt{label=1}). For videos, our manifests reference extracted face crops; training and evaluation operate at the frame/image granularity to maximise sample size and label fidelity, while downstream applications may aggregate predictions per video (e.g., majority vote or max probability) if needed. This choice keeps the core task simple and aligns with common evaluation practice on FF++/CelebDF/DFDC \cite{rossler2019faceforensicspp,li2020celebdf,dolhansky2020dfdc}.
+
+\begin{table}[htbp]
   \centering
-  \caption{Dataset sizes by split (rows extracted from manifests).}
+  \caption{Dataset sizes by split (rows counted from manifests).}
   \label{tab:dataset_sizes}
+  {\small
   \begin{tabular}{lrr}
     \toprule
     Split & Dataset & Rows \\
@@ -11,47 +14,84 @@
     Train & CelebDF-v2 & 83{,}599 \\
           & DeeperForensics & 844{,}396 \\
           & DFDC & 721{,}946 \\
-          & FaceForensics & 223{,}653 \\
+          & FaceForensics++ & 223{,}653 \\
     Val   & CelebDF-v2 & 17{,}478 \\
           & DeeperForensics & 165{,}854 \\
           & DFDC & 154{,}919 \\
-          & FaceForensics & 50{,}945 \\
+          & FaceForensics++ & 50{,}945 \\
     Test  & CelebDF-v2 & 18{,}037 \\
           & DeeperForensics & 172{,}894 \\
           & DFDC & 154{,}511 \\
-          & FaceForensics & 47{,}430 \\
+          & FaceForensics++ & 47{,}430 \\
     \midrule
     Val   & Deepfake-Eval-2024 & 451{,}917 \\
     Test  & Deepfake-Eval-2024 & 402{,}413 \\
     \bottomrule
-  \end{tabular}
+  \end{tabular}}
 \end{table}
+\FloatBarrier
 
-\paragraph{Task Definition.} We consider binary classification at the frame/image level: \emph{real} (\texttt{label=0}) vs. \emph{fake} (\texttt{label=1}). For videos, our manifests reference extracted frames; predictions can be aggregated per video in downstream applications, but all training and evaluation here operate at the frame/image granularity to maximize sample size and label fidelity.
+\begin{table}[htbp]
+  \centering
+  \caption{Per-dataset class balance by split (rows and real/fake counts from balanced manifests).}
+  \label{tab:dataset_balance}
+  {\small
+  \begin{tabular}{llrrr}
+    \toprule
+    Split & Dataset & Rows & Real & Fake \\
+    \midrule
+    Train & CelebDF-v2 & 83{,}599 & 41{,}674 & 41{,}925 \\
+          & DeeperForensics & 844{,}396 & 414{,}512 & 429{,}884 \\
+          & DFDC & 721{,}946 & 361{,}229 & 360{,}717 \\
+          & FaceForensics++ & 223{,}653 & 111{,}161 & 112{,}492 \\
+    Val   & CelebDF-v2 & 17{,}478 & 8{,}765 & 8{,}713 \\
+          & DeeperForensics & 165{,}854 & 87{,}807 & 78{,}047 \\
+          & DFDC & 154{,}919 & 77{,}350 & 77{,}569 \\
+          & FaceForensics++ & 50{,}945 & 26{,}351 & 24{,}594 \\
+    Test  & CelebDF-v2 & 18{,}037 & 9{,}118 & 8{,}919 \\
+          & DeeperForensics & 172{,}894 & 89{,}253 & 83{,}641 \\
+          & DFDC & 154{,}511 & 77{,}109 & 77{,}402 \\
+          & FaceForensics++ & 47{,}430 & 23{,}502 & 23{,}928 \\
+    \midrule
+    Val   & Deepfake-Eval-2024 & 451{,}917 & 302{,}369 & 149{,}548 \\
+    Test  & Deepfake-Eval-2024 & 402{,}413 & 216{,}288 & 186{,}125 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+\FloatBarrier
 
-\paragraph{Datasets.} We train on four academic datasets---CelebDF\,v2, FaceForensics++, DeeperForensics, and DFDC---using balanced train/val/test manifests stored under \verb|MobileDeepfakeDetection/manifests|. The \emph{Deepfake\hyp Eval\hyp 2024} corpus is held out for cross\hyp dataset validation/testing. This dataset contains diverse in\hyp the\hyp wild content across 88 websites and 52 languages and is used strictly for generalization analysis.
+\paragraph{Datasets.} We train on four academic datasets---CelebDF\,v2, FaceForensics++, DeeperForensics\,1.0, and DFDC---and hold out Deepfake\hyp Eval\hyp 2024 as an out\hyp of\hyp distribution (OOD) benchmark. CelebDF\,v2 provides high\hyp quality face\hyp swap videos of celebrities designed to challenge detectors \cite{li2020celebdf}; FaceForensics++ aggregates multiple manipulation methods (DeepFakes, Face2Face, FaceSwap, NeuralTextures, etc.) under controlled conditions \cite{rossler2019faceforensicspp}; DFDC is a large\hyp scale crowd\hyp sourced dataset with diverse actors and compression pipelines \cite{dolhansky2020dfdc}; DeeperForensics\,1.0 emphasises real\hyp world perturbations and challenging textures \cite{jiang2020deeperforensics}. Deepfake\hyp Eval\hyp 2024 adds contemporary in\hyp the\hyp wild content collected from TrueMedia.org and social media platforms in 2024, covering 88 websites and 52 languages \cite{deepeval2024}. We use Deepfake\hyp Eval\hyp 2024 strictly for cross\hyp dataset validation/testing.
 
-\paragraph{Split Protocol and Leakage Checks.} All manifests include only relative paths and labels. The dataset class performs optional path\hyp leakage checks to prevent label indicators in paths from biasing metrics (disabled by default for organized corpora). For multi\hyp dataset training, we employ equal\hyp by\hyp dataset sampling via a \verb|WeightedRandomSampler| to avoid over\hyp representing the largest source (cf. \verb|train_mobilenet.py:create_multi_dataset_loader|).
+\paragraph{Preprocessing Pipeline.} All video datasets are preprocessed into face\hyp crop images using a configurable pipeline (cf.\ \cite{rossler2019faceforensicspp,li2020celebdf,jacob2017integeronly} for similar face\hyp crop protocols). Frames are sampled at a fixed interval (\verb|frame_interval=10|), faces are detected with MTCNN (minimum face size \verb|min_face_size=20|, thresholds \mbox{$[0.6,0.7,0.7]$}), cropped around the bounding box with \verb|bbox_scale=1.3|, and resized to $256\times256$ pixels. We cap redundancy by keeping at most 50 faces per video (\verb|max_faces_per_video=50|). These parameters are versioned alongside the manifests so that the training set can be regenerated or audited.
 
-\paragraph{Augmentation and Preprocessing.} Images are resized to \SI{256}{px} on the shorter side and normalized. We use Albumentations for light geometric and photometric augmentation; a small probability of additional augmentation is applied on real samples to mitigate class imbalance effects (\verb|real_aug_prob|).
+The preprocessing stack supports multiple video backends (e.g., OpenCV, TorchVision, Decord) and face detectors (MTCNN, InsightFace, YOLOv8, MediaPipe, RetinaFace), but our final experiments use MTCNN with GPU\hyp accelerated decoding for simplicity and reproducibility. Processed images are organised into train/validation/test splits for each dataset, with separate folders for real and fake faces, and accompanied by CSV manifests that record the necessary metadata for every crop. This layout keeps the underlying file structure simple while making manifests the primary interface for training, evaluation, and audit.
 
-\paragraph{OOD Generalization.} Following Stage~5, we evaluate the cascade on Deepfake\hyp Eval\hyp 2024. We report both calibrated cascade results and a Stage~2\,only upper bound (Table~\ref{tab:deepeval_calibrated}, \ref{tab:deepeval_stage2only} from auto\hyp generated tables). The sizable performance gap relative to in\hyp distribution validation underscores the importance of robustness studies and future domain adaptation.
+\paragraph{Manifest Generation and Structure.} After preprocessing, we generate CSV manifests that serve as the canonical index for all experiments. Each manifest row corresponds to a single face image and includes at least \texttt{image\_path}, \texttt{label}, \texttt{split}, and \texttt{dataset}; additional fields such as \texttt{md5}, \texttt{valid}, \texttt{width}, \texttt{height}, and \texttt{file\_size} facilitate integrity checks. Table~\ref{tab:dataset_sizes} is computed directly from these manifests. All sampling, hard\hyp example mining, and evaluation components operate on manifest rows rather than raw folders, making it easy to extend the pipeline to new datasets by regenerating manifests.
 
-\subsection*{Dataset Characteristics}
+\paragraph{Split Protocol and Balancing.} We adopt a simple and reproducible split protocol. For each dataset, preprocessed faces are partitioned into train/val/test splits according to configuration ratios, preserving official test lists when available (e.g., CelebDF\,v2 and FF++). We then construct balanced manifests per dataset and split by sampling equal numbers of real/fake faces. For multi\hyp dataset training, we concatenate these manifests and treat each dataset as a source domain; the combined manifest is approximately balanced both by class and by dataset, so Stage~1 and Stage~2 loaders can rely on standard shuffling rather than complex per\hyp batch reweighting. An earlier weighted sampler remains available in the codebase but is not used in our final experiments.
+
+To guard against trivial path\hyp based leakage, the manifest pipeline can optionally sanitise or reject samples with tell\hyp tale substrings (e.g., directory names that encode \verb|/fake/| or \verb|/real/|). These checks are primarily useful when integrating new corpora; for the curated datasets considered here, manifests are derived from neutral directory layouts and the leakage check is disabled by default.
+
+\paragraph{Augmentation and Normalization.} Stage~1 employs a compact torchvision transform pipeline that resizes images to \SI{256}{px}, applies random horizontal flip, colour jitter, small random affine transformations, and a light Gaussian blur, and normalises with ImageNet statistics. Augmentation is symmetric across classes, with a modest probability of colour/geometry perturbations. This design follows contemporary data augmentation practice for image classification while avoiding heavy corruptions that could distort robustness analysis~\cite{buslaev2018albumentations,pei2024deepfakesurvey}. Stage~2 uses slightly stronger geometric and colour jitter when beneficial; all stages share the same input resolution and normalisation to simplify deployment and quantization.
+
+\paragraph{OOD Evaluation Protocol.} For cross\hyp dataset evaluation, we follow Stage~5 and treat Deepfake\hyp Eval\hyp 2024 as a held\hyp out OOD benchmark \cite{deepeval2024}. We evaluate (i) a calibrated two\hyp stage cascade (Stage~1 + Stage~2 + thresholds tuned on the in\hyp distribution validation set) and (ii) a Stage~2\hyp only upper bound that bypasses Stage~1 and uses the expert on all samples. The auto\hyp generated tables (Table~\ref{tab:deepeval_calibrated}, \ref{tab:deepeval_stage2only}) summarise accuracy, F1, FNR, FPR, and Stage~2 rate on the Deepfake\hyp Eval\hyp 2024 val/test splits. The sizable performance gap relative to in\hyp distribution validation underscores the importance of robustness studies and future domain adaptation; in this work we focus on low\hyp friction mitigations such as temperature scaling and threshold sweeps~\cite{guo2017calibration,minderer2021revisiting}, and avoid OOD\hyp specific fine\hyp tuning unless justified by target data.
+
+\paragraph{Dataset Characteristics.} Table~\ref{tab:dataset_characteristics} summarises qualitative properties of each dataset to motivate our protocol design.
 \begin{table}[h]
   \centering
-  \caption{Qualitative characteristics (to motivate protocol design).}
+  \caption{Qualitative characteristics of datasets (informal summary).}
   \label{tab:dataset_characteristics}
+  {\small
   \begin{tabular}{lllll}
     \toprule
     Dataset & Generation & Quality & Source & Notes \\
     \midrule
     CelebDF\,v2 & Face\hyp swap & High & YouTube & Celebrities; curated videos \\
-    FaceForensics++ & Multiple & Mid & Actors & Diverse manipulations \\
-    DFDC & Multiple & Mid\,–\,Low & Internet & Large\,–\,scale, mixed quality \\
-    DeeperForensics & Multiple & Mid & Lab & Hard cases; challenging textures \\
-    Deepfake\hyp Eval\hyp 2024 & Multiple & Mid\,–\,Low & Web & In\hyp the\hyp wild, multi\hyp source \\
+    FaceForensics++ & Multiple & Mid & Actors & Multiple manipulation families \\
+    DFDC & Multiple & Mid--Low & Internet & Large\hyp scale, mixed quality \\
+    DeeperForensics\,1.0 & Multiple & Mid & Lab & Realistic perturbations, hard cases \\
+    Deepfake\hyp Eval\hyp 2024 & Multiple & Mid--Low & Web & In\hyp the\hyp wild, multi\hyp source, 2024 media \\
     \bottomrule
-  \end{tabular}
+  \end{tabular}}
 \end{table}
-These traits justify balanced sampling across sources and holding out an OOD\,set.
+These traits justify balanced sampling across sources and the use of a dedicated OOD set to probe generalization under realistic distribution shift.

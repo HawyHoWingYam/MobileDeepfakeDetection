@@ -38,7 +38,12 @@
       "Bash(git checkout:*)",
       "Bash(gh issue comment:*)",
       "Bash(ls:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(tree:*)",
+      "Bash(cat:*)",
+      "Bash(xargs:*)",
+      "Bash(pdflatex:*)"
     ],
     "deny": []
   }

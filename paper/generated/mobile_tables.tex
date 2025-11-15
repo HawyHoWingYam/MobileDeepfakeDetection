@@ -2,10 +2,13 @@
 \begin{table}[h]
   \centering
   \caption{Exported on-device artifacts (auto).}\label{tab:mobile_artifacts_auto}
-  {\small\begin{tabular}{lp{0.58\linewidth}c}\toprule
- Artifact & Path & Size (MB) \\ \midrule
-  Stage~1 TS & \texttt{\detokenize{/workspace/MobileDeepfakeDetection/outputs/stage6/export_ts/stage1_mobilenetv4_ts.pt}} & 37.30 \\ 
-  Stage~2 TS & \texttt{\detokenize{/workspace/MobileDeepfakeDetection/outputs/stage6/export_ts/stage2_efficientnetv2_ts.pt}} & 49.55 \\ 
-  Bundle meta & \texttt{\detokenize{/workspace/MobileDeepfakeDetection/outputs/stage6/export_ts/bundle_meta.json}} & 0.00 \\ 
-  \bottomrule\end{tabular}}
+  {\small
+  \begin{tabular}{lcc}
+  \toprule
+ Artifact & Location & Size (MB) \\ \midrule
+  Stage~1 TS & Bundle & 37.11 \\ 
+  Stage~2 TS & Bundle & 49.55 \\ 
+  Bundle meta JSON & Bundle & $<\!0.01$ \\ 
+  \bottomrule
+  \end{tabular}}
 \end{table}

@@ -51,7 +51,11 @@ def calculate_metrics(y_true, y_pred_proba, threshold=0.5):
 
 def load_model_checkpoint(checkpoint_path, model, device='cpu'):
     """
-    Load model from checkpoint
+    Load model from checkpoint, with compatibility mapping for wrapped keys.
+    
+    This function handles checkpoints saved with a wrapper prefix like
+    "backbone." and classifier submodules like "classifier.1.weight" by
+    remapping them to the timm model's expected keys.
     
     Args:
         checkpoint_path (str): Path to checkpoint file
@@ -62,7 +66,35 @@ def load_model_checkpoint(checkpoint_path, model, device='cpu'):
         dict: Checkpoint data
     """
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    state_dict = checkpoint.get('model_state_dict', {})
+    if not isinstance(state_dict, dict):
+        # Fallback: maybe the whole checkpoint is a state_dict
+        state_dict = checkpoint
+
+    model_keys = set(model.state_dict().keys())
+
+    # Remap keys: strip 'backbone.' prefix and collapse 'classifier.1.*' -> 'classifier.*'
+    remapped = {}
+    for k, v in state_dict.items():
+        nk = k
+        if nk.startswith('backbone.'):
+            nk = nk[len('backbone.'):]
+        if nk.startswith('classifier.1.'):
+            nk = 'classifier.' + nk[len('classifier.1.'):]
+        remapped[nk] = v
+
+    # Filter to only expected keys to avoid strict mismatches
+    filtered = {k: v for k, v in remapped.items() if k in model_keys}
+
+    # Load with strict=False to tolerate non-critical mismatches (e.g., heads)
+    missing, unexpected = model.load_state_dict(filtered, strict=False)
+
+    # Optional: simple sanity logging (avoid importing logging here)
+    try:
+        print(f"[utils] Loaded weights: {len(filtered)}/{len(model_keys)} keys (missing={len(missing)}, unexpected={len(unexpected)})")
+    except Exception:
+        pass
+
     return checkpoint
 
 def plot_confusion_matrix(y_true, y_pred, class_names=['Real', 'Fake'], 

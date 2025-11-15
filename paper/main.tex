@@ -10,9 +10,12 @@
 \usepackage{subcaption}
 \usepackage{amsmath}
 \usepackage{enumitem}
+\usepackage{placeins} % for \FloatBarrier to keep figures near text
+% Lightly relax badness to avoid minor overfull boxes in tight paragraphs
+\setlength{\emergencystretch}{2em}
 
 \title{MobileDeepfake: A Lightweight Cascaded Deepfake Detection System for Mobile Deployment}
-\author{Wing Yam Ho \\ The Hong Kong Polytechnic Universiry \\ \texttt{23041062}}
+\author{Wing Yam Ho \\ The Hong Kong Polytechnic University \\ \texttt{23041062}}
 \date{\today}
 
 \begin{document}
@@ -40,6 +43,9 @@
 \section{Results and Analysis}
 \input{sections/results}
 
+\section{Ablation Studies}
+\input{sections/ablation_studies}
+
 \section{Mobile Deployment}
 \input{sections/mobile}
 
@@ -51,6 +57,12 @@
 
 \section{Conclusion}
 \input{sections/conclusion}
+
+\section*{Appendix}
+\input{sections/appendix}
+
+\section*{Code Availability}
+The full training, tuning, and deployment scripts, along with pinned dependencies and instructions, are available in the project repository: \url{https://github.com/HawyHoWingYam/MobileDeepfakeDetection} (commit \texttt{4aa69d6}).
 
 % \bibliographystyle{ieeetr}
 % \bibliography{references}

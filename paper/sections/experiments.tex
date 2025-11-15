@@ -1,20 +1,47 @@
-\textbf{Environment.} Training and analysis use PyTorch~2.1+ \cite{paszke2019pytorch}, timm, Albumentations \cite{buslaev2018albumentations}, and scikit\-learn \cite{pedregosa2011sklearn}. Scripts and requirements are provided in the repository (\verb|requirements.txt|). All runs produce a timestamped directory under \verb|outputs/| with logs (\verb|log.md|), CSV metrics, summary JSON, and plots.
+\textbf{Environment.} Training and analysis use PyTorch~2.1+\ \cite{paszke2019pytorch}, timm, torchvision, and scikit\-learn \cite{pedregosa2011sklearn}. Detailed setup instructions, including CUDA and driver versions, are provided in the project documentation; we treat the provided environment configuration as the source of truth for package versions rather than inlining them here. Earlier prototypes used Albumentations \cite{buslaev2018albumentations}, but the final Stage~1 pipeline relies on torchvision transforms for simplicity and tight coupling to PyTorch data loaders. All runs produce a timestamped directory under \verb|outputs/| with logs, CSV metrics, summary JSON, and plots.
 
-\textbf{Datasets.} We train on CelebDF-v2, FaceForensics, DeeperForensics, and DFDC using balanced manifests; Deepfake-Eval-2024 is held out for validation/test. Table~\ref{tab:dataset_sizes} reports split sizes. We employ equal-by-dataset sampling during Stage~1 and difficult-subset mining for Stage~3 to focus on ambiguous patterns.
+\textbf{Datasets.} We train on CelebDF-v2, FaceForensics++, DeeperForensics\,1.0, and DFDC using balanced manifests; Deepfake-Eval-2024 is held out for validation/test (Table~\ref{tab:dataset_sizes}). Data preparation and manifest generation follow the protocol in Section~\ref{tab:dataset_sizes}, and the same manifest format is used throughout training, ablations, and evaluation so that all scripts operate on the same splits.
 
-% Key command examples are intentionally omitted here to avoid partial, non-executable snippets; see repository scripts under \verb|src/| for end-to-end entry points with full arguments.
+\textbf{Hyperparameters.} Unless noted, Stage~1 (MobileNetV4 filter) is trained with AdamW, cosine learning rate decay, and early stopping based on validation AUC at an input resolution of \SI{256}{px}; Stage~2 EfficientNetV2-B3 experts use a smaller batch size, lower learning rate, and stronger augmentation (RandAugment, Mixup, CutMix) to improve generalization; Stage~3 (LightGBM, optional) tunes tree depth, learning rate, and regularisation via cross\-validation on the meta\-dataset. Full hyperparameter configurations for all stages are summarised in Appendix~A.1 (Table~\ref{tab:hyperparams_appendix}). Hyperparameters for robustness sweeps and cascade tuning (e.g., threshold grids, perturbation levels) follow a fixed protocol across runs.
 
-\textbf{Hyperparameters.} Unless noted, Stage~1 uses LR=\num{1e-4}, batch=\num{256}, epochs=\num{15}, AdamW, WD=\num{1e-4}, image size \SI{256}{px}. Stage~3 (b3) uses batch=\num{256}, LR=\num{1e-4}, dropout=0.3, label smoothing=0.05, AMP on, early stopping with patience 4. We freeze/unfreeze the backbone during warm-up when beneficial and monitor gradient norms.
+\begin{table}[h]
+  \centering
+  \caption{Representative training configurations by stage (summary; full configurations are logged per run).}
+  \label{tab:training_configs}
+  {\scriptsize
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{llll}
+    \toprule
+    Stage & Backbone / Model & Batch / Epochs & Optimizer / LR \\
+    \midrule
+    1 & MobileNetV4\hyp Hybrid\hyp Medium & $\approx$\num{256} / $\le$\num{15} (early stop) & AdamW, LR~\num{1e-4} \\
+    2 & EfficientNetV2\hyp B3 & \num{28} / \num{50} & AdamW, LR~\num{5e-5} \\
+    2 (opt.) & GenConViT & \num{16} / \num{30} (typical) & AdamW, LR~\num{1e-4} \\
+    3 & LightGBM meta\-model & -- / CV folds & Tree\hyp based, LR tuned \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
 
-\textbf{Metrics.} We report AUC, F1, Accuracy, Precision/Recall, FNR/FPR, and Stage~2 escalation rate. For deployment, we additionally measure per-frame latency and APK size and account for the fraction of samples that require Stage~2 on device. We apply temperature scaling for probability calibration when appropriate, following \cite{guo2017calibration}, and compare calibrated vs. uncalibrated results; we also reference observations on calibration trends in modern architectures \cite{minderer2021revisiting} to guide expectations under distribution shift.
+\textbf{Metrics.} We report AUC, F1, Accuracy, Precision/Recall, FNR/FPR, and Stage~2 escalation rate. For deployment, we additionally measure per\-frame latency and model size and account for the fraction of samples that require Stage~2 on device. We apply temperature scaling for probability calibration when appropriate, following \cite{guo2017calibration}, and compare calibrated vs.\ uncalibrated results; we also reference observations on calibration trends in modern architectures \cite{minderer2021revisiting} to guide expectations under distribution shift.
 
-\textbf{Reproducibility.} All scripts are in \verb|src/| with pinned dependencies. We fix random seeds where applicable, snapshot configs, and log artifacts under \verb|outputs/|. Paper tables are auto-generated from CSV/JSON via \verb|tools/generate_paper_assets.py|; robustness curves/tables use \verb|tools/analyze_robustness.py| and \verb|tools/robustness_threshold_sweep.py|. For Overleaf compilation, either mirror the \verb|outputs/| structure or copy referenced figures to \verb|paper/figures| and update paths.
+\textbf{Reproducibility.} All core scripts live under \verb|src/| with pinned dependencies. We fix random seeds where applicable, snapshot configs, and log artifacts under \verb|outputs/|. At a high level, the pipeline (i) preprocesses raw videos into face crops and manifests; (ii) trains Stage~1 on the combined manifest; (iii) trains Stage~2 experts on the same manifest with stronger augmentation; (iv) optionally builds and fits a Stage~3 meta\-model on K\-fold meta\-datasets; and (v) performs cascade tuning and robustness sweeps that export cached logits, metrics, and LaTeX snippets for the paper. Paper tables are auto\-generated from CSV/JSON by analysis tools; robustness curves and tables are produced by dedicated robustness scripts. For Overleaf compilation, we either mirror the \verb|outputs/| structure or copy referenced figures to \verb|paper/figures|.
 
 \subsection*{Cross-Dataset Generalization Protocol}
-We evaluate models in two regimes: (i) combined validation across training sources; (ii) per\hyp dataset validation to expose source\hyp specific gaps; and (iii) OOD validation/test on Deepfake\hyp Eval\hyp 2024. Optional leave\hyp one\hyp source\hyp out runs (train on three, test on the fourth) provide tighter estimates of generalization (protocol) \cite{wilddeepfake2021}. These setups follow common OOD practice for separating in\hyp distribution vs. out\hyp of\-distribution behavior (baseline) \cite{hendrycks2017baseline}.
+We evaluate models in three regimes: (i) combined validation across training sources; (ii) per\hyp dataset validation to expose source\hyp specific gaps; and (iii) OOD validation/test on Deepfake\hyp Eval\hyp 2024. Optional leave\hyp one\hyp source\hyp out runs (train on three, test on the fourth) provide tighter estimates of generalization (protocol) \cite{wilddeepfake2021}. These setups follow common OOD practice for separating in\hyp distribution vs. out\hyp of\-distribution behavior (baseline) \cite{hendrycks2017baseline}. For each regime we report both single\hyp model baselines and cascaded operating points, so that gains and trade\hyp offs can be interpreted relative to familiar detectors.
+
+\subsection*{Experimental Questions}
+Our experiments are organised around three questions:
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Q1:} How much does the cascade improve recall (lower FNR) compared to the strongest single expert, under bounded Stage~2 escalation?
+  \item \textbf{Q2:} How do thresholds and calibration behave when transferring from in\hyp distribution validation to Deepfake\hyp Eval\hyp 2024, and what leakage/escalation profiles arise?
+  \item \textbf{Q3:} What is the contribution of balanced sampling and hard\hyp example mining to combined performance across datasets?
+\end{itemize}
+The metrics and protocol described above are chosen to answer these questions under a fixed compute budget, rather than to chase marginal improvements on a single benchmark.
 
 \subsection*{Balanced Sampling and Ablations}
-Stage~1 uses an equal\hyp by\hyp dataset \verb|WeightedRandomSampler| with per\hyp dataset weights $w_k\propto 1/n_k$. We ablate (a) no balancing, (b) equal by dataset, and (c) capped contributions per epoch. For Stage~3, hard\hyp subset training is validated on the full combined validation set to mitigate selection bias.
+Stage~1 operates on pre\hyp balanced manifests, and the final training loader uses \verb|shuffle=True| without an explicit weighted sampler. Earlier experiments evaluated three regimes: (a) no rebalancing at all (strong bias toward the largest corpus), (b) explicit equal\hyp by\hyp dataset \verb|WeightedRandomSampler| with per\hyp dataset weights $w_k\propto 1/n_k$, and (c) capped contributions per epoch. We observed that manifest\hyp level balancing with simple shuffling matched the performance of (b) while simplifying implementation and logging. For Stage~3, hard\hyp subset training is validated on the full combined validation set to mitigate selection bias; ablations include training the meta\hyp model on all samples vs. on hard subsets only.
 
+\FloatBarrier
 \subsection*{Augmentation Rationale}
-Light geometric/photometric augmentation improves robustness; a small real\hyp class augmentation probability reduces asymmetry in error gradients. Additional perturbation sweeps (JPEG/noise/blur/brightness) are reported separately to avoid conflating training augmentation with robustness evaluation. We implement these augmentations with Albumentations \cite{buslaev2018albumentations} for speed and flexibility.
+Light geometric/photometric augmentation improves robustness; a small real\hyp class augmentation probability reduces asymmetry in error gradients. Stage~1 uses torchvision transforms (resize, flip, colour jitter, affine, blur) with ImageNet normalization, while validation uses only resizing and normalization. Additional perturbation sweeps (JPEG/noise/blur/brightness) are reported separately to avoid conflating training augmentation with robustness evaluation.
+\paragraph{Threshold Tuning Grid.} Unless otherwise stated, we apply a simple grid with step size 0.01 over low/high thresholds and select Pareto points that satisfy escalation\-rate budgets.

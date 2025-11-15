@@ -11,12 +11,15 @@ MobileDeepfakeDetection implements a multi-stage cascade architecture for effici
 - **Claude Code Integration**: Full AI-driven development workflow enabled
 
 ### Core Architecture (Current Implementation)
-1. **Stage 1 - Fast Filter**: MobileNetV4-Hybrid-Medium with temperature scaling calibration (✅ Complete)
-2. **Stage 2-5 - Advanced Analyzers**: Heterogeneous ensemble, cross-attention fusion, temporal analysis (🔄 Planned)
+1. **Stage 1 — Fast Filter**: MobileNetV4-Hybrid-Medium with temperature scaling calibration (✅ Complete)
+2. **Stage 2 — Expert Feature Extractors**: EfficientNetV2-B3 (CNN expert) + GenConViT (Transformer expert, dual-mode hybrid/pretrained manager) (✅ Complete)
+3. **Stage 3 — Meta-Model Integration**: K-fold meta-dataset + LightGBM stacking/fusion (✅ Complete)
+4. **Stage 4 — Cascade Tuning**: Threshold grid search under escalation-rate budget (✅ Complete)
+5. **Stage 5 — Evaluation & Robustness**: Cross-dataset, perturbation sweeps, calibration (✅ Complete)
+6. **Stage 6 — Mobile Export**: Quantization and artifact bundling for Android integration (✅ Complete)
 
 ### Current Status
-- ✅ **Stage 1 Complete**: Training, calibration, and evaluation pipeline implemented
-- 🔄 **Stages 2-5**: Advanced ensemble analyzers in development
+- ✅ Stage 1–6 pipelines implemented; Stage 2 includes GenConViT dual-mode manager; Stage 3 uses LightGBM as meta-model
 
 ## Environment Setup
 
@@ -47,11 +50,22 @@ The current implementation uses MobileNetV4-Hybrid-Medium from the timm library:
 # Task 1.1: Train MobileNetV4-Hybrid-Medium model
 python src/stage1/train_stage1.py --data_dir processed_data --epochs 50 --batch_size 32 --lr 1e-4
 
-# Task 1.2: Calibrate model probabilities using temperature scaling
-python src/stage1/calibrate_model.py --model_path output/stage1/best_model.pth --data_dir processed_data
+# Task 1.2: Calibrate model probabilities using temperature scaling (using repository manifests)
+python src/stage1/calibrate_model.py \
+  --model_path output/stage1/best_model.pth \
+  --data_dir . \
+  --val_manifest manifests/faceforensics_val_balanced.csv \
+  --output_dir output/stage1 \
+  --num_workers 0 \
+  --batch_size 32
 
-# Task 1.3: Comprehensive performance evaluation 
-python src/stage1/evaluate_stage1.py --model_path output/stage1/best_model.pth --temp_file output/stage1/calibration_temp.json
+# Task 1.3: Comprehensive performance evaluation (with calibrated temperature)
+python src/stage1/evaluate_stage1.py \
+  --model_path output/stage1/best_model.pth \
+  --data_dir . \
+  --test_manifest manifests/faceforensics_test_balanced.csv \
+  --use_calibration \
+  --calibration_file output/stage1/calibration_temp.json
 ```
 
 ### Data Preprocessing
@@ -80,7 +94,44 @@ python src/stage1/calibrate_model.py --help  # View calibration options
 python src/stage1/evaluate_stage1.py --help  # View evaluation options
 
 # Comprehensive Stage 1 evaluation with metrics
-python src/stage1/evaluate_stage1.py --model_path output/stage1/best_model.pth --temp_file output/stage1/calibration_temp.json
+python src/stage1/evaluate_stage1.py \
+  --model_path output/stage1/best_model.pth \
+  --data_dir . \
+  --test_manifest manifests/faceforensics_test_balanced.csv \
+  --use_calibration \
+  --calibration_file output/stage1/calibration_temp.json
+
+### Stage 2: Experts (EfficientNetV2 + GenConViT)
+```bash
+# Train EfficientNetV2-B3 expert
+python src/training/train_efficientnet.py --model_name tf_efficientnetv2_b3 --epochs 20 --batch_size 256
+
+# Train GenConViT expert (dual-mode manager)
+python src/stage2/train_stage2_genconvit.py --mode auto --variant ED --epochs 20
+```
+
+### Stage 3: Meta-Model (LightGBM)
+```bash
+# Create K-fold meta dataset from expert predictions/features
+python src/stage3/create_meta_dataset.py --folds 5 --out meta_data
+
+# Train LightGBM meta-model
+python src/stage3/train_meta_model.py --meta_dir meta_data --num_leaves 64 --learning_rate 0.05 --max_depth -1
+
+# Evaluate meta-model
+python src/stage3/evaluate_stage3.py --meta_dir meta_data --model_path output/stage3/best_lgbm.txt
+```
+
+### Stage 4: Cascade Tuning & Benchmark
+```bash
+python src/tools/tune_cascade_system.py --search_grid default --budget 0.02
+python src/stage4/benchmark_cascade.py --benchmark_all
+```
+
+### Stage 6: Mobile Export
+```bash
+python src/tools/export_torchscript.py --out outputs/stage6/export_ts
+```
 ```
 
 ## Code Architecture
@@ -89,7 +140,13 @@ python src/stage1/evaluate_stage1.py --model_path output/stage1/best_model.pth -
 - **src/stage1/train_stage1.py**: Stage 1 model training with MobileNetV4-Hybrid-Medium
 - **src/stage1/calibrate_model.py**: Temperature scaling calibration for probability reliability
 - **src/stage1/evaluate_stage1.py**: Comprehensive performance evaluation with reliability diagrams
-- **src/stage1/utils.py**: Shared utility functions for Stage 1 pipeline
+- **src/stage2/genconvit_manager.py**: GenConViT dual-mode manager (hybrid/pretrained)
+- **src/stage2/train_stage2_genconvit.py**: GenConViT training entry
+- **src/stage3/create_meta_dataset.py**: Build K-fold meta dataset from expert outputs
+- **src/stage3/train_meta_model.py**: LightGBM meta-model training
+- **src/stage3/evaluate_stage3.py**: Meta-model evaluation
+- **src/stage4/cascade_detector.py**: Unified cascade with routing thresholds
+- **src/stage4/benchmark_cascade.py**: Cascade benchmarking utilities
 - **src/utils/dataset_config.py**: Dataset configuration management class
 - **scripts/preprocess_datasets_v2.py**: Multi-threaded GPU-accelerated data preprocessing
 - **scripts/setup_dataset_config.py**: Interactive dataset configuration setup

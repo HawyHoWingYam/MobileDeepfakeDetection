@@ -3,44 +3,46 @@ Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
 The top-level auxiliary file: main.aux
 The style file: ieeetr.bst
 Database file #1: references.bib
-You've used 6 entries,
+Warning--I didn't find a database entry for "chandra2024dfeval"
+You've used 105 entries,
             1876 wiz_defined-function locations,
-            503 strings with 4029 characters,
-and the built_in function-call counts, 868 in all, are:
-= -- 68
-> -- 34
+            898 strings with 22414 characters,
+and the built_in function-call counts, 20229 in all, are:
+= -- 1347
+> -- 1524
 < -- 0
-+ -- 14
-- -- 8
-* -- 44
-:= -- 127
-add.period$ -- 6
-call.type$ -- 6
-change.case$ -- 6
++ -- 544
+- -- 439
+* -- 1566
+:= -- 3381
+add.period$ -- 105
+call.type$ -- 105
+change.case$ -- 105
 chr.to.int$ -- 0
-cite$ -- 6
-duplicate$ -- 47
-empty$ -- 120
-format.name$ -- 8
-if$ -- 216
+cite$ -- 105
+duplicate$ -- 1146
+empty$ -- 2107
+format.name$ -- 439
+if$ -- 4597
 int.to.chr$ -- 0
-int.to.str$ -- 6
-missing$ -- 3
-newline$ -- 21
-num.names$ -- 4
-pop$ -- 40
+int.to.str$ -- 105
+missing$ -- 104
+newline$ -- 318
+num.names$ -- 105
+pop$ -- 573
 preamble$ -- 1
 purify$ -- 0
 quote$ -- 0
-skip$ -- 21
+skip$ -- 226
 stack$ -- 0
-substring$ -- 0
-swap$ -- 3
+substring$ -- 60
+swap$ -- 146
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
 type$ -- 0
 warning$ -- 0
-while$ -- 4
-width$ -- 7
-write$ -- 48
+while$ -- 113
+width$ -- 108
+write$ -- 860
+(There was 1 warning)
