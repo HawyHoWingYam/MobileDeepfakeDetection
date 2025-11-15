@@ -11,3 +11,5 @@ outputs/
 outputs_all.zip
 manifests/
 weights/
+.claude/
+CLAUDE.md
