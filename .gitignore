@@ -4,3 +4,9 @@ processed_data/*
 */__pycache__/*
 test/output/*
 output/*
+
+# Large data files
+Deepfake-Eval-2024/
+outputs/
+outputs_all.zip
+manifests/
