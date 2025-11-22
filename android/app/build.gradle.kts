@@ -71,8 +71,8 @@ dependencies {
     // ViewModel Compose
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
 
-    // ONNX Runtime
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.0")
+    // ONNX Runtime (Android) - upgrade to support newer ONNX IR
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.0")
 
     // Image loading - Coil
     implementation("io.coil-kt:coil-compose:2.5.0")

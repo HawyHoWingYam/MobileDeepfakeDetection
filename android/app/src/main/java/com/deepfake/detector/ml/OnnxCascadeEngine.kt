@@ -8,8 +8,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
+import java.nio.FloatBuffer
 import kotlin.math.exp
 
 /**
@@ -60,8 +59,8 @@ class OnnxCascadeEngine(
 
             isInitialized = true
             Log.d(tag, "ONNX Runtime initialized successfully")
-            Log.d(tag, "Stage 1 model loaded: ${stage1Model.length / 1024 / 1024} MB")
-            Log.d(tag, "Stage 2 model loaded: ${stage2Model.length / 1024 / 1024} MB")
+            Log.d(tag, "Stage 1 model loaded: ${stage1Model.size / 1024 / 1024} MB")
+            Log.d(tag, "Stage 2 model loaded: ${stage2Model.size / 1024 / 1024} MB")
 
         } catch (e: Exception) {
             Log.e(tag, "Failed to initialize ONNX Runtime", e)
@@ -150,7 +149,8 @@ class OnnxCascadeEngine(
 
         // Create input tensor
         val inputShape = longArrayOf(1, 3, 256, 256)
-        val inputTensor = OnnxTensor.createTensor(env, inputArray, inputShape)
+        val inputBuffer = FloatBuffer.wrap(inputArray)
+        val inputTensor = OnnxTensor.createTensor(env, inputBuffer, inputShape)
 
         // Run inference
         val outputs = session.run(mapOf("input" to inputTensor))
@@ -177,7 +177,8 @@ class OnnxCascadeEngine(
 
         // Create input tensor
         val inputShape = longArrayOf(1, 3, 256, 256)
-        val inputTensor = OnnxTensor.createTensor(env, inputArray, inputShape)
+        val inputBuffer = FloatBuffer.wrap(inputArray)
+        val inputTensor = OnnxTensor.createTensor(env, inputBuffer, inputShape)
 
         // Run inference
         val outputs = session.run(mapOf("input" to inputTensor))

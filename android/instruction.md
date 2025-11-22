@@ -1,339 +1,329 @@
-Android Deepfake Detection Testing App – 实施计划（最终版）
-======================================================
+Android Deepfake Detection Testing App – 实施计划
+==============================================
 
-本文件是 `MobileDeepfakeDetection/android` 目录下的统一实施说明，用于指导后续在 Android 上实现和测试两阶段级联深度伪造检测系统。
+本说明文档用于指导 `MobileDeepfakeDetection/android` 子项目的开发与使用，统一记录：
 
-下文在参考已有长计划的基础上，结合当前代码仓库实际情况（Stage1/Stage2 模型、Stage4 导出工具等），做了整理和调整。
+- 当前 Android App 的实现状态（V0）。
+- PC 端模型导出 → Android 集成的关键步骤。
+- 后续阶段的开发路线与任务清单。
+
+文档只描述本仓库 **已经存在的代码与脚本**，不再重复无关的泛泛建议。
 
 ---
 
-## 1. 目标与范围
+## 1. 当前状态概览
 
-- 构建一个 **Android 测试应用**，用于验证和演示仓库中的两阶段级联深度伪造检测系统：
+子项目路径：`D:\work\MobileDeepfakeDetection\android`
+
+已完成内容（V0）：
+
+- 使用 **ONNX Runtime** 集成两阶段级联深度伪造检测：
   - Stage 1：MobileNetV4 快速过滤器。
   - Stage 2：EfficientNetV2-B3 精细分析器。
-- 支持 **单张人脸图片检测** 为第一优先目标（V0），在此基础上逐步扩展：
-  - 批量图片测试。
-  - 性能指标展示（推理耗时、Stage2 使用率等）。
-  - 结果导出（CSV/JSON）。
-- 推理引擎：
-  - **首选 ONNX Runtime**（与 `src/stage4/mobile_deployment/onnx_exporter.py` 对齐）。
-  - PyTorch Mobile / TorchScript 作为后续扩展，用于对比不同移动推理方案。
-- 人脸检测：
-  - V0 版本假定输入为预裁剪人脸（与训练数据同规格）。
-  - 后续阶段集成 **MediaPipe Face Detection**，自动从任意图片中裁出 256×256 人脸。
+- 实现了 **单张图片检测**：
+  - 从相册选择图片。
+  - 对图片做 256×256 + ImageNet 归一化预处理。
+  - Stage1 → 级联逻辑（`tau_low=0.02`, `tau_high=0.98`）→ 必要时 Stage2。
+  - 显示标签（REAL/FAKE）、置信度、使用的 Stage、预处理/推理耗时。
+- 工程结构、Gradle 配置、说明文档（`README.md`、`PROJECT_SUMMARY.md`、`SETUP_GUIDE.md`）均已齐全，可在 Android Studio 中直接打开运行。
+
+尚未实现（规划中的后续阶段）：
+
+- MediaPipe 人脸检测与裁剪。
+- 批量图片测试与统计。
+- 结果导出（CSV/JSON）。
+- PyTorch Mobile / TorchScript 引擎对比。
+- 视频抽帧与视频级聚合。
 
 ---
 
-## 2. 技术栈与工程约定
+## 2. 模型与脚本（PC 端）
 
-- **语言**：Kotlin。
-- **UI 框架**：Jetpack Compose（Material Design 3）。
-- **架构**：简单 MVVM，按模块划分包结构即可，无需过度复杂的 Clean Architecture。
-- **推理引擎**：
-  - `onnxruntime-android`（V0 必选）。
-  - `org.pytorch:pytorch_android`（V2 可选）。
-- **人脸检测**：`com.google.mediapipe:tasks-vision`（后续阶段引入）。
-- **异步**：Kotlin Coroutines + Flow。
-- **依赖注入**：可选 Hilt；若初版只做单 Activity，也可以先用手动依赖注入，之后再引入 Hilt。
+PC 端根目录：`D:\work\MobileDeepfakeDetection`
 
-建议 Gradle 主要依赖（版本可按当时最新稳定版本微调）：
+### 2.1 模型来源
 
-```gradle
-dependencies {
-    // Compose
-    implementation "androidx.compose.ui:ui:<latest>"
-    implementation "androidx.compose.material3:material3:<latest>"
-    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:<latest>"
+- Stage 1（MobileNetV4）：
+  - `outputs/stage1/run_20251023_034316/best_model.pth`
+- Stage 2（EfficientNetV2-B3）：
+  - `outputs/stage5/finetune_s2_b3_r2/run_20251109_161118/best_model.pth`
 
-    // ONNX Runtime
-    implementation "com.microsoft.onnxruntime:onnxruntime-android:1.16.0"
+说明：`outputs/stage3/...` 是 LightGBM 元模型，不参与当前 Android 主线部署。
 
-    // PyTorch Mobile（后续扩展）
-    implementation "org.pytorch:pytorch_android:1.13.1"
-    implementation "org.pytorch:pytorch_android_torchvision:1.13.1"
+### 2.2 ONNX 导出
 
-    // MediaPipe Face Detection（后续扩展）
-    implementation "com.google.mediapipe:tasks-vision:0.10.8"
+相关脚本位于 `scripts/`：
 
-    // 图片加载
-    implementation "io.coil-kt:coil-compose:2.5.0"
+- `scripts/export_mobile_cascade_onnx.py`
+  - 使用 `src/stage4/mobile_deployment/onnx_exporter.py` 将 Stage1/Stage2 导出为 ONNX。
+  - 输出目录：`android/mobile_bundle/`：
+    - `aware_cascade_stage1.onnx`
+    - `aware_cascade_stage2.onnx`
+    - `aware_cascade_manifest.json`
+    - `cascade_config.json`
 
-    // 协程
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+- `scripts/validate_onnx_models.py`
+  - 使用 ONNX Runtime 对比 PyTorch 与 ONNX 输出，验证导出正确性。
 
-    // CSV / 导出工具（可选）
-    implementation "com.opencsv:opencsv:5.8"
-}
-```
+Android 工程中实际使用的模型文件已从 `android/mobile_bundle/` 拷贝到：
 
----
+- `android/app/src/main/assets/models/`
 
-## 3. 模型准备（PC 端）
+### 2.3 配置文件（级联参数）
 
-所有模型导出操作在 `D:\work\MobileDeepfakeDetection` 根目录下完成。
+`android/app/src/main/assets/models/cascade_config.json` 主要包含：
 
-### 3.1 选定模型来源
+- `input_size`: `[1, 3, 256, 256]`
+- `mean` / `std`: ImageNet 归一化参数。
+- `tau_low`: 0.02
+- `tau_high`: 0.98
+- `stage2_threshold`: 0.5
+- 模型元信息与预期性能说明。
 
-- **Stage 1（MobileNetV4 快速过滤器）**  
-  - 推荐：`outputs/stage1/run_20251023_034316/best_model.pth`。
-- **Stage 2（EfficientNetV2-B3 精细分析器）**  
-  - 推荐：`outputs/stage5/finetune_s2_b3_r2/run_20251109_161118/best_model.pth`  
-    （这是 Stage2 的 finetune 结果，而不是 LightGBM 的 Stage3）。
-
-> 说明：原先长计划中提到的 `outputs/stage3/.../best_model.pth` 在本仓库中属于 Stage3 元模型，与本文的移动端部署主线不完全匹配，这里统一改为使用 Stage5 中的 EfficientNetV2-B3 finetune 模型。
-
-### 3.2 TorchScript 导出（预留给 PyTorch Mobile）
-
-首版 Android App 可以 **不依赖 PyTorch Mobile**，只使用 ONNX Runtime。为了未来对比测试，这里规划好 TorchScript 导出步骤，但可以在后续阶段再实现。
-
-建议新建脚本（示例名）：`scripts/export_mobile_torchscript.py`，主要工作：
-
-1. 使用 `timm.create_model(...)` 重建 Stage1、Stage2 模型结构。
-2. 加载上面选定的 `best_model.pth` 权重。
-3. 如有需要，应用 `torch.quantization.quantize_dynamic` 对线性层做 INT8 动态量化。
-4. 使用 `torch.jit.trace` 或 `torch.jit.script` 导出：
-   - `android/models/stage1_mobilenetv4.ts`
-   - `android/models/stage2_efficientnetv2.ts`
-5. 用少量测试图片在 PC 上验证 TorchScript 输出与原模型一致（误差在可接受范围内）。
-
-### 3.3 ONNX 导出（首选路径）
-
-ONNX 导出直接利用仓库已有的工具：`src/stage4/mobile_deployment/onnx_exporter.py`。
-
-建议新建脚本：`scripts/export_mobile_cascade_onnx.py`，大致流程：
-
-1. 构造并加载两个 PyTorch 模型：
-   - Stage1：`mobilenetv4_hybrid_medium.ix_e550_r256_in1k`，`num_classes=1`。
-   - Stage2：`tf_efficientnetv2_b3.in21k_ft_in1k`，`num_classes=1`。
-2. 加载对应 `best_model.pth` 的 `model_state_dict`。
-3. 使用 `ONNXExporter`：
-
-   ```python
-   from src.stage4.mobile_deployment.onnx_exporter import ONNXExporter
-   from pathlib import Path
-
-   output_dir = Path("android/mobile_bundle")
-   exporter = ONNXExporter()
-   bundle = exporter.export_cascade_bundle(
-       models={
-           "stage1": stage1_model,
-           "stage2": stage2_model,
-       },
-       output_dir=output_dir,
-       bundle_name="aware_cascade",
-   )
-   print(bundle)
-   ```
-
-4. 生成输出（预期在 `android/mobile_bundle/`）：
-   - `aware_cascade_stage1.onnx`
-   - `aware_cascade_stage2.onnx`
-   - `aware_cascade_manifest.json`（由导出器自动生成）。
-
-### 3.4 级联参数与配置文件
-
-为了让 Android 端完全自包含，建议生成一个简单的配置文件，例如：`android/mobile_bundle/cascade_config.json`：
-
-```json
-{
-  "input_size": [1, 3, 256, 256],
-  "mean": [0.485, 0.456, 0.406],
-  "std": [0.229, 0.224, 0.225],
-  "tau_low": 0.02,
-  "tau_high": 0.98,
-  "stage2_threshold": 0.5
-}
-```
-
-其中：
-
-- `tau_low` / `tau_high`：Stage1 fake 概率 `p1` 的两阈值：
-  - `p1 < tau_low` → 直接判 real。
-  - `p1 > tau_high` → 直接判 fake。
-  - 中间区域 → 升级到 Stage2。
-- `stage2_threshold`：Stage2 fake 概率 `p2` 的判决阈值（通常 0.5）。
-
-具体数值可以在 PC 上使用 `benchmark_cascade.py` 做网格搜索后更新，这里先给出一个与 Stage4 文档相符的保守默认值。
+当前代码中的 `CascadeConfig.default()` 与该 JSON 内容保持一致，但尚未动态解析 JSON（见第 6 节改进建议）。
 
 ---
 
-## 4. Android 工程结构建议
+## 3. Android 工程结构
 
-在 `D:\work\MobileDeepfakeDetection\android` 目录下创建 Android Studio 工程，推荐结构：
+关键结构如下（只列出与深伪检测相关部分）：
 
 ```text
 android/
-  instruction.md                 # 本文件
-  mobile_bundle/                 # PC 端导出的 ONNX 模型与配置
-    aware_cascade_stage1.onnx
-    aware_cascade_stage2.onnx
-    aware_cascade_manifest.json
-    cascade_config.json
-
   app/
     src/main/
-      java/com/yourname/deepfakedetector/
+      java/com/deepfake/detector/
+        MainActivity.kt            # 入口 Activity，承载 Compose UI
         ml/
-          inference/            # 推理引擎封装（ONNX / PyTorch）
-          preprocessing/        # Bitmap → Tensor 预处理
-          facedetection/        # MediaPipe 人脸检测（后续）
-        presentation/
-          main/                 # 主界面（导航）
-          detection/            # 单图检测界面（V0）
-          batch/                # 批量测试界面（后续）
-          metrics/              # 性能指标展示（后续）
-          components/           # 通用 Compose 组件
-        data/                   # 如需持久化/导出，可在此放 Repository
+          OnnxCascadeEngine.kt     # 两阶段 ONNX 级联引擎
+          ImagePreprocessor.kt     # Bitmap → NCHW float 预处理
+          CascadeResult.kt         # CascadeResult / DetectionStage / CascadeConfig
+        ui/
+          DetectionScreen.kt       # 单图检测界面（Compose）
+          DetectionViewModel.kt    # ViewModel + StateFlow 状态
+          theme/
+            Color.kt
+            Theme.kt
+            Type.kt
       assets/models/
         aware_cascade_stage1.onnx
         aware_cascade_stage2.onnx
-        aware_cascade_manifest.json
         cascade_config.json
+        README.md
+      res/
+        values/strings.xml
+        values/themes.xml
+        xml/backup_rules.xml
+        xml/data_extraction_rules.xml
+    build.gradle.kts               # app 模块配置（Compose + ONNX Runtime）
+  build.gradle.kts                 # 顶层 Gradle 配置
+  settings.gradle.kts              # modules 配置
+  README.md                        # Android App 使用说明
+  PROJECT_SUMMARY.md               # Android 项目总结
+  SETUP_GUIDE.md                   # 环境/构建/运行指南
+  instruction.md                   # 当前文档（实施计划）
 ```
 
-> 说明：包结构可以按实际开发习惯调整，不强制使用完整的 Clean Architecture。优先保证 **ml 模块与 UI 解耦**，方便后续替换推理引擎。
+---
+
+## 4. 已实现功能（V0 详细说明）
+
+### 4.1 ML 管线
+
+**ImagePreprocessor.kt**
+
+- 输入：任意 `Bitmap`。
+- 操作：
+  - resize 到 256×256。
+  - 读取像素，拆分 R/G/B 三通道。
+  - 按 ImageNet 均值/方差归一化。
+  - 按 NCHW 排列为 `FloatArray`，shape = `1×3×256×256`。
+
+**OnnxCascadeEngine.kt**
+
+- 初始化：
+  - 创建 `OrtEnvironment`。
+  - 从 `assets/models/` 加载 ONNX 模型为 `stage1Session` / `stage2Session`。
+  - 使用 `CascadeConfig.default()` 设置级联参数（目前与 JSON 一致）。
+
+- `detect(bitmap: Bitmap): CascadeResult`：
+  - 预处理：
+    - 调用 `ImagePreprocessor.preprocess()`。
+    - 记录预处理耗时。
+  - Stage1：
+    - 构建输入张量，Run Session。
+    - 取输出 logit，手动应用 sigmoid 得到 fake 概率 `p1 ∈ (0,1)`。
+  - 级联决策：
+    - 若 `p1 < tau_low`（0.02）：直接判 REAL，`stage=STAGE1_REAL`。
+    - 若 `p1 > tau_high`（0.98）：直接判 FAKE，`stage=STAGE1_FAKE`。
+    - 否则：
+      - 调用 Stage2，得到 fake 概率 `p2`。
+      - 若 `p2 > stage2_threshold`（0.5）→ FAKE，否则 REAL，`stage=STAGE2`。
+  - 返回 `CascadeResult`，包含：
+    - `isDeepfake` / `confidence` / `stage`。
+    - `preprocessingTimeMs` / `inferenceTimeMs` / `totalTimeMs`。
+
+**CascadeResult.kt**
+
+- 封装级联结果：
+  - `label`: REAL/FAKE。
+  - `confidencePercent`: 置信度百分比字符串。
+  - `DetectionStage`: `STAGE1_REAL` / `STAGE1_FAKE` / `STAGE2`。
+  - `CascadeConfig.default()`: 当前使用的固定配置。
+
+### 4.2 UI 与交互
+
+**DetectionViewModel.kt**
+
+- `AndroidViewModel`，内部持有一个 `OnnxCascadeEngine`。
+- 状态流：
+  - `DetectionUiState`：
+    - `Idle` → `Initializing` → `Ready` → `Processing` → `Success(result)` / `Error(message)`。
+- 初始化时：
+  - 在 `viewModelScope.launch` 中调用 `engine.initialize()`。
+  - 成功后设置状态为 `Ready`。
+- 检测流程：
+  - 保存用户选择的 `Uri`。
+  - 在 `detectDeepfake()` 中：
+    - 通过 `MediaStore.Images.Media.getBitmap()` 加载 Bitmap。
+    - 调用 `engine.detect(bitmap)`。
+    - 更新 UI 状态为 `Success(result)`，异常时为 `Error(...)`。
+
+**DetectionScreen.kt**
+
+- 使用 `Scaffold + TopAppBar` 布局。
+- 使用 `rememberLauncherForActivityResult(ActivityResultContracts.GetContent())` 选择图片。
+- 展示：
+  - 状态卡片（当前引擎状态）。
+  - 图片预览。
+  - “Select Image” / “Detect” 按钮。
+  - 成功结果卡片（带颜色与图标的 REAL/FAKE 提示，以及详细 metrics）。
+  - 错误卡片（错误信息）。
+
+> 总结：V0 已实现“单图 → 两阶段 ONNX 级联 → 结果 + 性能显示”的完整闭环，可以直接用于功能与性能验证。
 
 ---
 
-## 5. 分阶段实施计划
+## 5. 后续阶段计划（Phase 2+）
 
-### Phase 0 – 准备与验证（PC 端）
+以下阶段尚未实现，是在 V0 基础上逐步增加的功能。
 
-- [ ] 确认 Stage1/Stage2 模型训练完好，能在 Python 端跑通单图推理。
-- [ ] 完成 ONNX 导出脚本 `export_mobile_cascade_onnx.py` 并生成 `android/mobile_bundle/*`。
-- [ ] 在 Python 中使用 ONNX Runtime 对若干张测试图片跑级联推理，确认结果与 PyTorch 版本一致。
+### Phase 2：人脸检测 + 批量测试 + 导出
 
-### Phase 1 – V0：单图 ONNX 级联 Demo（优先实现）
+1. **MediaPipe 人脸检测**
+   - 引入 `com.google.mediapipe:tasks-vision`。
+   - 新增 `ml/facedetection/FaceDetector.kt`：
+     - 对任意图片检测所有人脸 bounding boxes。
+     - 选择面积最大或置信度最高的人脸。
+     - 按检测框裁剪，再 resize→256×256，交给 `ImagePreprocessor`。
+   - UI 上增加简单的人脸框可视化（可选）。
 
-目标：**不做人脸检测、不做批量测试，先把“单张 256×256 人脸图片 → 级联判决”跑通。**
-
-实现要点：
-
-1. **工程初始化**
-   - 使用 Android Studio 创建 “Empty Compose Activity” 工程。
-   - 按第 2 节添加 ONNX Runtime 和 Compose 依赖。
-   - 将 `android/mobile_bundle/*` 拷贝到 `app/src/main/assets/models/`。
-
-2. **预处理模块（`ImagePreprocessor.kt`）**
-   - 函数：`fun preprocess(bitmap: Bitmap): FloatArray`。
-   - 步骤：
-     - resize 到 256×256。
-     - 转换为 `FloatArray`，范围 [0,1]。
-     - 按 `cascade_config.json` 中的 mean/std 做归一化。
-     - 组织成 NCHW（1×3×256×256）格式，供 ONNX Runtime 使用。
-
-3. **ONNX 推理封装（`OnnxCascadeEngine.kt`）**
-   - 加载两个 `OrtSession`：Stage1 & Stage2。
-   - 级联逻辑：
-     - Stage1 输出 logits → 手动 sigmoid 得到 fake 概率 `p1`。
-     - 对比 `tau_low` 和 `tau_high`：
-       - `p1 < tau_low` → 直接返回 real，stage=`stage1`。
-       - `p1 > tau_high` → 直接返回 fake，stage=`stage1`。
-       - 否则：送入 Stage2，得到 `p2`；`p2 > 0.5` → fake，否则 real。
-   - 统计单次推理的耗时（预处理时间 + 推理时间）。
-
-4. **统一接口（`InferenceEngine.kt`）**
-
-   ```kotlin
-   data class CascadeResult(
-       val label: String,         // "real" or "fake"
-       val confidence: Float,     // 最终阶段的概率（fake 或 real）
-       val stage: String,         // "stage1" 或 "stage2"
-       val preprocessMs: Long,
-       val inferenceMs: Long
-   )
-
-   interface InferenceEngine {
-       suspend fun predict(bitmap: Bitmap): CascadeResult
-       fun release()
-   }
-   ```
-
-5. **UI：单图检测界面（`DetectionScreen.kt`）**
-   - 功能：
-     - 从相册选择图片（可先不支持相机）。
-     - 显示选中的图片缩略图。
-     - 点击 “检测” 按钮后调用 `OnnxCascadeEngine.predict()`。
-     - 使用卡片显示：
-       - Real / Fake（颜色区分）。
-       - 置信度（百分比）。
-       - 使用的 Stage（Stage1 或 Stage2）。
-       - 耗时信息。
-
-> 完成本阶段后，Android 端就能对单张预裁剪人脸图片做两级联深度伪造检测，是整个项目最关键的里程碑。
-
-### Phase 2 – 扩展：人脸检测 + 批量测试
-
-在 V0 基础上扩展功能。
-
-1. **MediaPipe 人脸检测（`FaceDetector.kt`）**
-   - 集成 `tasks-vision` 中的 Face Detection。
-   - 对任意输入图片：
-     - 检测所有人脸边界框。
-     - 根据面积/置信度选择一个主脸。
-     - 从原始 Bitmap 中裁出人脸区域，resize 到 256×256，传入预处理模块。
-   - 提供简单可视化（在 UI 上绘制边框）。
-
-2. **批量测试界面（`BatchTestScreen.kt`）**
-   - 支持从相册多选图片（例如最多 50 张）。
-   - 对每张图片依次运行：人脸检测 → 级联推理。
-   - 显示：处理进度、每张图片的结果列表（缩略图 + label + stage + 耗时）。
-   - 汇总统计：
-     - 总数量 / Real / Fake 数量。
-     - 平均推理时间。
-     - Stage2 触发比例。
+2. **批量测试界面**
+   - 新增 `ui/BatchTestScreen.kt` + 对应 ViewModel。
+   - 支持从相册多选图片（例如 ≤ 50 张）。
+   - 对每张图片执行：人脸检测 → 级联推理。
+   - 展示：
+     - 列表：缩略图、标签、置信度、Stage、耗时。
+     - 汇总：Real/Fake 数量、平均耗时、Stage2 使用率等。
 
 3. **结果导出**
-   - 使用 `opencsv` 或简单字符串拼接，将批量测试结果导出为 CSV：
-     - `image_name,is_deepfake,confidence,stage,inference_time_ms,engine`。
-   - 文件保存到 `Downloads` 目录，便于从手机拷回到 PC 分析。
+   - 使用 `opencsv` 或 Kotlin 字符串拼接，将批量测试结果导出为 CSV/JSON。
+   - 文件保存到 `Downloads` 目录。
 
-### Phase 3 – 引入 PyTorch Mobile（可选，但建议）
+### Phase 3：PyTorch Mobile 引擎（对比实验）
 
-在 ONNX 路线稳定后，可以增加一个 PyTorch Mobile 推理引擎，以便：
+1. 使用 `scripts/export_mobile_torchscript.py` 导出 TorchScript 模型（规划中）。
+2. 在 `app/build.gradle.kts` 中加入 PyTorch Mobile 依赖。
+3. 新增 `ml/PyTorchInferenceEngine.kt`：
+   - 接口与 `OnnxCascadeEngine` 一致。
+   - 复用 `ImagePreprocessor` 与 `CascadeConfig`。
+4. UI 中增加引擎选择：
+   - ONNX / PyTorch / 双引擎对比。
+5. 对比不同引擎的：
+   - 平均耗时。
+   - Stage2 使用率。
+   - 精度差异。
 
-- 对比 TorchScript 与 ONNX 在不同设备上的性能与包体大小。
-- 为未来可能的 TorchScript-only 部署做准备。
+### Phase 4：性能视图与设置界面
 
-主要工作：
-
-1. 将前文导出的 `stage1_mobilenetv4.ts` / `stage2_efficientnetv2.ts` 放入 `assets/models/`。
-2. 添加 `PyTorchInferenceEngine.kt`，实现与 `OnnxCascadeEngine` 相同的接口和级联逻辑。
-3. 在 UI 中加入 “推理引擎选择器”（ONNX / PyTorch / 双引擎对比）。
-4. 如有需要，在性能对比页面展示两者的平均耗时、内存占用等。
-
-### Phase 4 – 性能视图与高级功能
-
-当核心功能（单图 + 批量 + MediaPipe + 双引擎）稳定后，可进一步增加：
-
-- 性能对比界面：展示 ONNX vs PyTorch 的平均推理时间、内存占用、Stage2 使用率等。
+- 性能视图（Performance Screen）：
+  - 显示最近 N 次检测的耗时、Stage 分布等。
+  - 可能结合简单图表（柱状/折线）。
 - 设置界面：
-  - 阈值调节（`tau_low` / `tau_high` / `stage2_threshold`）。
-  - 选择默认引擎。
-  - 切换 MediaPipe 开关和 NNAPI 加速开关（ONNX）。
-- 错误处理与提示：无人脸、模型加载失败、内存不足等情况的用户友好提示。
+  - 动态调整 `tau_low` / `tau_high` / `stage2_threshold`。
+  - 切换默认推理引擎。
+  - 开关 MediaPipe 与 NNAPI 等。
 
-   
-这部分不影响当前研究作业的核心交付，可以作为后续实验性功能：
+### Phase 5：视频支持（长期扩展）
 
-- 使用 `MediaMetadataRetriever` 或 `MediaCodec` 对视频抽帧。
-- 对每帧或每 N 帧运行人脸检测 + 级联推理。
-- 将帧级结果聚合为视频级判决（多数投票或时间段分析）。
+- 使用 `MediaMetadataRetriever` / `MediaCodec` 抽帧。
+- 对每 N 帧执行人脸检测 + 级联推理。
+- 将帧级结果聚合成视频级判决：
+  - 多数投票。
+  - 时间轴上标出伪造片段。
 
 ---
 
-## 6. 当前状态与下一步建议
+## 6. 已知改进点（不影响 V0 运行）
 
-截至目前（依据仓库内容）：
+当前代码可直接运行，但有若干可以优化的点：
 
-- Stage1/Stage2 已经在 PC 端训练完毕，有多个 `best_model.pth` 版本可选。
-- Stage4 中已经实现了部分移动端导出工具（ONNXExporter、MobileOptimizer 等）。
+1. **配置来源一致化**
+   - 现在 `CascadeConfig.default()` 与 `cascade_config.json` 的数值保持一致，但代码中并未真正解析 JSON。
+   - 中期建议：
+     - 新建 `ConfigLoader`，使用 `kotlinx-serialization-json` 从 `cascade_config.json` 读取配置。
+     - 用读取结果构造 `CascadeConfig`，替换硬编码默认值。
 
-**推荐的下一步具体动作**：
+2. **Deprecated API**
+   - `DetectionViewModel` 中使用了 `MediaStore.Images.Media.getBitmap()`（新 API 中已 deprecated）。
+   - 建议：
+     - 在 Android 10+ 使用 `ImageDecoder.decodeBitmap()`。
+     - 保留 `getBitmap` 作为旧系统 fallback。
 
-1. 在 PC 端完成 `scripts/export_mobile_cascade_onnx.py`，生成 `android/mobile_bundle/*`。
-2. 在 `android/` 下创建 Android Studio 工程，并完成 Phase 1 的 V0 单图 ONNX Demo。
-3. 用少量 `processed_data` 中的 256×256 PNG 测试图片，对比 Android 结果和 Python 结果（确保推理一致）。
-4. 确认 V0 稳定后，再按本说明推进 MediaPipe、人脸裁剪、批量测试和 PyTorch Mobile 扩展。
+3. **缺少单元测试**
+   - 测试依赖已配置，但尚无实际测试用例。
+   - 建议优先补充：
+     - `ImagePreprocessorTest`：验证输出形状与归一化正确。
+     - `CascadeResultTest`：验证 label / confidence / totalTime 逻辑。
+     - 对级联逻辑可以用 fake 模型或 mock 替换真 ONNX，以测试决策路径。
+
+以上均为质量和可维护性提升，不影响当前 Demo 的正常运行。
+
+---
+
+## 7. 使用指南（V0）
+
+1. 在 Android Studio 中打开 `D:\work\MobileDeepfakeDetection\android`。
+2. 校验 `local.properties` 中 SDK 路径正确，点击 Sync Gradle。
+3. 确认 `app/src/main/assets/models/` 下存在：
+   - `aware_cascade_stage1.onnx`
+   - `aware_cascade_stage2.onnx`
+   - `cascade_config.json`
+4. 连接真机或启动模拟器（建议真机，≥2GB RAM）。
+5. 运行 `app` 模块：
+   - 等待模型初始化完成（状态显示 Ready）。
+   - 点击 “Select Image”，从相册选择一张人脸图片（最好是 256×256 的预裁剪 PNG）。
+   - 点击 “Detect”，查看结果卡片中的标签、置信度与耗时。
+
+如需与 Python 端对齐，可在 PC 上使用相同图片，比较最终标签与概率值。
+
+---
+
+## 8. 下一步应该做什么？
+
+在当前 V0 已经稳定可用的基础上，建议按照优先级推进：
+
+1. **（小步改进）让配置真正来自 `cascade_config.json`**
+   - 编写一个简单的配置加载器，从 `assets/models/cascade_config.json` 中读取参数，构造 `CascadeConfig`。
+   - 在 `OnnxCascadeEngine` 中使用该配置，而不是 `CascadeConfig.default()`。
+   - 好处：之后调阈值不需要改代码，只用改 JSON。
+
+2. **（功能扩展）集成 MediaPipe 人脸检测**
+   - 新增 `FaceDetector`，对任意图片裁剪出主脸后再送入当前级联逻辑。
+   - 这一步完成后，应用可以对任意手机照片直接检测，而不再依赖预裁剪人脸。
+
+3. **（实验性）设计批量测试界面**
+   - 支持多选图片，跑一轮，导出 CSV，便于你用 Python / Excel 做进一步分析。
+
+如果你希望先从某一步开始（例如：先做配置加载，或直接上 MediaPipe），我可以按你选的方向帮你具体设计代码改动方案。 
 

@@ -1,176 +1,207 @@
-# Deepfake Detector - Android App
+# Deepfake Detector – Android App
 
-Android application for real-time deepfake detection using a two-stage cascade system.
+Android application for two‑stage cascade deepfake detection, built on top of the `MobileDeepfakeDetection` research project.
 
-## Features
+This README 面向“如何跑起来 / 怎么用”，更详细的整体规划与阶段目标请看：
 
-- **Two-Stage Cascade Detection**
-  - Stage 1: MobileNetV4 fast filter (37.45 MB)
-  - Stage 2: EfficientNetV2-B3 precision analyzer (52.45 MB)
-- **ONNX Runtime** for efficient mobile inference
-- **Jetpack Compose** modern UI
-- **Performance Metrics** display (inference time, stage used)
-- **Single Image Detection** (V0)
+- `android/instruction.md`
 
-## Architecture
+---
+
+## Features (V0)
+
+- **Two‑Stage Cascade Detection (ONNX)**
+  - Stage 1: MobileNetV4 fast filter.
+  - Stage 2: EfficientNetV2‑B3 precision analyzer.
+  - Static cascade thresholds: `tau_low=0.02`, `tau_high=0.98`, `stage2_threshold=0.5`.
+- **ONNX Runtime** for on‑device inference.
+- **Jetpack Compose** modern UI + MVVM.
+- **Single Image Detection**
+  - Pick an image from gallery.
+  - Run Stage1+Stage2 cascade.
+  - Show label (Real/Fake), confidence, stage used, preprocessing/inference time.
+
+> 当前版本是 **V0 单图检测 Demo**，后续扩展（批量测试、MediaPipe 人脸检测、视频等）见 `instruction.md`。
+
+---
+
+## Architecture Overview
 
 ### ML Pipeline
-```
-Input Image (256x256)
+
+```text
+Input Image (assumed 256×256 face crop)
     ↓
-ImagePreprocessor (ImageNet normalization)
+ImagePreprocessor (resize + ImageNet normalization, NCHW)
     ↓
-Stage 1 (MobileNetV4)
+Stage 1 (MobileNetV4 ONNX)
     ↓
 Cascade Logic (tau_low=0.02, tau_high=0.98)
     ↓
-Stage 2 (EfficientNetV2-B3) [if needed]
+Stage 2 (EfficientNetV2‑B3 ONNX, only if needed)
     ↓
-Result (Real/Fake + Confidence)
+Result (Real/Fake + Confidence + Timing)
 ```
 
-### Project Structure
+### Project Structure (simplified)
+
+```text
+android/
+  app/
+    src/main/
+      java/com/deepfake/detector/
+        MainActivity.kt              # Entry point (Compose)
+        ml/
+          OnnxCascadeEngine.kt       # ONNX cascade engine
+          ImagePreprocessor.kt       # Bitmap → NCHW float
+          CascadeResult.kt           # Data models & config
+        ui/
+          DetectionScreen.kt         # Main detection UI
+          DetectionViewModel.kt      # ViewModel (StateFlow)
+          theme/                     # Material 3 theme
+      assets/models/
+        aware_cascade_stage1.onnx    # Stage 1 model
+        aware_cascade_stage2.onnx    # Stage 2 model
+        cascade_config.json          # Cascade parameters (doc only; code currently uses defaults)
+      res/
+        values/strings.xml
+        values/themes.xml
+        xml/backup_rules.xml
+        xml/data_extraction_rules.xml
 ```
-app/src/main/
-├── java/com/deepfake/detector/
-│   ├── MainActivity.kt                 # Main entry point
-│   ├── ml/
-│   │   ├── OnnxCascadeEngine.kt       # ONNX inference engine
-│   │   ├── ImagePreprocessor.kt       # Image preprocessing
-│   │   └── CascadeResult.kt           # Data models
-│   └── ui/
-│       ├── DetectionScreen.kt         # Main UI (Compose)
-│       ├── DetectionViewModel.kt      # ViewModel
-│       └── theme/                     # Material 3 theme
-└── assets/models/
-    ├── aware_cascade_stage1.onnx      # Stage 1 model
-    ├── aware_cascade_stage2.onnx      # Stage 2 model
-    └── cascade_config.json            # Configuration
-```
+
+---
 
 ## Requirements
 
-- **Android Studio**: Hedgehog (2023.1.1) or later
-- **Minimum SDK**: API 24 (Android 7.0)
-- **Target SDK**: API 34 (Android 14)
+- **Android Studio**: Hedgehog (2023.1.1) or later.
+- **Android SDK**:
+  - Min SDK: 24 (Android 7.0)
+  - Target/Compile SDK: 34
 - **Gradle**: 8.2
 - **Kotlin**: 1.9.20
+- Device recommendation:
+  - Android 7.0+ real device.
+  - ≥ 2 GB RAM for stable ONNX inference.
 
-## Setup
+---
 
-### 1. Open in Android Studio
+## Setup & Run
+
+### 1. Clone & Open
+
 ```bash
 cd D:\work\MobileDeepfakeDetection\android
-# Open this directory in Android Studio
 ```
 
-### 2. Sync Gradle
-Android Studio will automatically download dependencies:
-- ONNX Runtime Android (1.16.0)
-- Jetpack Compose (BOM 2023.10.01)
-- Coil for image loading
-- Kotlin Coroutines
+在 Android Studio 中选择该目录作为工程根目录打开。
 
-### 3. Build and Run
-1. Connect an Android device or start an emulator
-2. Click "Run" (Shift+F10)
-3. Grant storage permissions when prompted
+### 2. Check SDK & Gradle
+
+- 确认 `local.properties` 中的 `sdk.dir` 指向有效的 Android SDK。
+- 首次打开时点击 “Sync Project with Gradle Files”，等待依赖下载完成：
+  - ONNX Runtime Android 1.16.0
+  - Jetpack Compose BOM 2023.10.01
+  - Coil 2.5.0
+  - Coroutines 1.7.3
+
+### 3. Confirm Model Files
+
+确保以下文件已经存在（通常由 `scripts/export_mobile_cascade_onnx.py` 生成并拷贝）：
+
+```text
+android/app/src/main/assets/models/
+  aware_cascade_stage1.onnx
+  aware_cascade_stage2.onnx
+  cascade_config.json
+```
+
+如果缺失，可从 `android/mobile_bundle/` 复制，或重新运行 PC 端导出脚本。
+
+### 4. Build & Run
+
+1. 连接真机或启动模拟器（推荐真机）。
+2. 在 Android Studio 中选择 `app` 配置，点击 Run（Shift+F10）。
+3. 首次运行如需存储权限，请允许访问图片。
+
+---
 
 ## Usage
 
-1. **Launch App**: Open "Deepfake Detector"
-2. **Wait for Initialization**: Models load on startup (~2-3 seconds)
-3. **Select Image**: Tap "Select Image" to choose from gallery
-4. **Detect**: Tap "Detect" to run inference
-5. **View Results**:
-   - Prediction: Real or Fake
-   - Confidence: Percentage
-   - Stage: Which model made the decision
-   - Timing: Preprocessing and inference time
+1. 启动应用 “Deepfake Detector”。
+2. 顶部状态显示 “Initializing models...” 时为模型加载阶段（约 2–3 秒）。
+3. 状态变为 “Ready” 后：
+   - 点击 “Select Image”，从相册选择一张人脸图片（最好是 256×256 预裁剪的 face crop）。
+   - 点击 “Detect”。
+4. 结果卡片将显示：
+   - 预测：REAL 或 FAKE。
+   - 置信度：0–100%。
+   - Stage：由 Stage 1 或 Stage 2 决策。
+   - Timing：预处理时间、推理时间、总时间。
 
-## Performance
+---
 
-### Expected Performance (Mid-range Device)
-- **Stage 1 Inference**: 5-10 ms
-- **Stage 2 Inference**: 15-25 ms (only for ambiguous cases)
-- **Preprocessing**: 2-5 ms
-- **Total Time**: 10-30 ms per image
-- **Stage 2 Rate**: 1-5% (most images decided by Stage 1)
+## Performance (Expected, Mid‑range Device)
 
-### Model Sizes
-- **Stage 1**: 37.45 MB (ONNX)
-- **Stage 2**: 52.45 MB (ONNX)
-- **Total APK**: ~100-120 MB (with dependencies)
+大致预期（Release 构建 + 真机）：
 
-## Configuration
+- Stage 1 inference：5–10 ms。
+- Stage 2 inference：15–25 ms（仅在模糊样本时触发）。
+- Preprocessing：2–5 ms。
+- Total time：10–30 ms / image。
+- Stage 2 usage rate：约 1–5%（大部分样本由 Stage 1 决策）。
 
-Edit `assets/models/cascade_config.json` to adjust thresholds:
+实际数值会随设备性能和图像大小略有浮动。
 
-```json
-{
-  "tau_low": 0.02,      // Stage 1 real threshold
-  "tau_high": 0.98,     // Stage 1 fake threshold
-  "stage2_threshold": 0.5  // Stage 2 decision threshold
-}
-```
+---
 
 ## Troubleshooting
 
 ### Models Not Loading
-- Ensure ONNX files are in `app/src/main/assets/models/`
-- Check file sizes: Stage1 ~37MB, Stage2 ~52MB
-- Verify `cascade_config.json` exists
 
-### Out of Memory
-- Test on device with 2GB+ RAM
-- Close other apps before running
-- Consider using Stage 1 only for low-end devices
+- 检查 `app/src/main/assets/models/` 下 ONNX 文件是否存在，文件大小是否合理（~38 MB / ~53 MB）。
+- Clean & Rebuild：
+
+```bash
+./gradlew clean
+./gradlew assembleDebug
+```
+
+### Out of Memory (OOM) / Crash
+
+- 尽量使用真机而非低配模拟器。
+- 确保设备 RAM ≥ 2 GB。
+- 关闭其他占用内存较大的应用。
 
 ### Slow Inference
-- Enable NNAPI acceleration (experimental)
-- Use release build instead of debug
-- Test on device with ARM64 processor
 
-## Development
+- 使用 Release 构建（Build Variants 选择 `release`）。
+- 在真机而非模拟器上测试。
+- 确认设备为 ARM64 架构。
 
-### Adding New Features
+---
 
-**Batch Processing**:
-```kotlin
-// In DetectionViewModel.kt
-suspend fun detectBatch(uris: List<Uri>): List<CascadeResult> {
-    return uris.map { uri ->
-        val bitmap = loadBitmap(uri)
-        engine.detect(bitmap)
-    }
-}
-```
+## Development Notes
 
-**Video Support**:
-```kotlin
-// Extract frames using MediaMetadataRetriever
-// Process each frame with engine.detect()
-// Aggregate results
-```
+- 更详细的开发计划与后续功能（MediaPipe、批量测试、PyTorch Mobile、视频等）请参考：
+  - `android/instruction.md`
+- 当前 `CascadeConfig` 在代码中使用的是默认参数，尚未动态读取 `cascade_config.json`；如需通过配置文件调整阈值，可以在后续迭代中添加 JSON 解析逻辑。
 
 ### Testing
 
-Run unit tests:
+单元测试与仪器测试命令（未来添加测试代码后使用）：
+
 ```bash
-./gradlew test
+./gradlew test                # Unit tests
+./gradlew connectedAndroidTest  # Instrumented tests (需要连接设备)
 ```
 
-Run instrumented tests:
-```bash
-./gradlew connectedAndroidTest
-```
-
-## License
-
-This project is part of the MobileDeepfakeDetection research.
+---
 
 ## References
 
 - ONNX Runtime: https://onnxruntime.ai/
 - Jetpack Compose: https://developer.android.com/jetpack/compose
-- Research Paper: See `../paper/main.pdf`
+- Kotlin Coroutines: https://kotlinlang.org/docs/coroutines-overview.html
+- Research Paper: `../paper/main.pdf`
+

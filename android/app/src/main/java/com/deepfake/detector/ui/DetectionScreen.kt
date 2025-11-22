@@ -26,6 +26,7 @@ import coil.compose.rememberAsyncImagePainter
 /**
  * Main detection screen
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetectionScreen(
     viewModel: DetectionViewModel = viewModel()
