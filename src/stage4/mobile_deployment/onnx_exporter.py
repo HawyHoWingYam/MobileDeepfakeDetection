@@ -23,6 +23,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List, Tuple
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -30,7 +31,14 @@ import onnx
 import onnxruntime as ort
 import numpy as np
 from onnx import helper, version_converter
-from onnxsim import simplify
+
+# Make onnxsim optional
+try:
+    from onnxsim import simplify
+    ONNXSIM_AVAILABLE = True
+except ImportError:
+    ONNXSIM_AVAILABLE = False
+    logging.warning("onnx-simplifier not installed. Model optimization will be skipped.")
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -48,12 +56,12 @@ class ONNXExporter:
         if verbose:
             self.logger.setLevel(logging.INFO)
     
-    def export_model(self, 
+    def export_model(self,
                     model: nn.Module,
                     output_path: Union[str, Path],
                     input_shape: Tuple[int, ...] = (1, 3, 256, 256),
                     dynamic_axes: Optional[Dict[str, Dict[int, str]]] = None,
-                    opset_version: int = 11,
+                    opset_version: int = 14,
                     model_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Export PyTorch model to ONNX format
@@ -119,7 +127,7 @@ class ONNXExporter:
                 'input_shape': input_shape,
                 'opset_version': opset_version,
                 'optimization_applied': self.optimize_for_mobile,
-                'export_timestamp': torch.datetime.now().isoformat()
+                'export_timestamp': datetime.now().isoformat()
             })
             
             export_results = {
@@ -146,29 +154,34 @@ class ONNXExporter:
     def _optimize_onnx_model(self, model_path: Union[str, Path]) -> Path:
         """Optimize ONNX model for mobile deployment"""
         self.logger.info("🔧 Optimizing ONNX model for mobile deployment...")
-        
+
+        # Check if onnxsim is available
+        if not ONNXSIM_AVAILABLE:
+            self.logger.warning("⚠️ onnx-simplifier not available, skipping optimization")
+            return Path(model_path)
+
         try:
             # Load original model
             model = onnx.load(str(model_path))
-            
+
             # Simplify model using onnx-simplifier
             model_simplified, check = simplify(model)
-            
+
             if check:
                 # Save optimized model
                 optimized_path = Path(str(model_path).replace('.onnx', '_optimized.onnx'))
                 onnx.save(model_simplified, str(optimized_path))
-                
+
                 # Compare sizes
                 original_size = os.path.getsize(model_path) / (1024 * 1024)
                 optimized_size = os.path.getsize(optimized_path) / (1024 * 1024)
-                
+
                 self.logger.info(f"✅ Model optimized: {original_size:.2f}MB → {optimized_size:.2f}MB")
-                
+
                 # Replace original with optimized
                 os.remove(model_path)
                 os.rename(optimized_path, model_path)
-                
+
             else:
                 self.logger.warning("⚠️ Model simplification failed, keeping original")
             
@@ -286,22 +299,37 @@ class ONNXExporter:
                     total_size_mb += result['model_size_mb']
             
             # Create bundle manifest
+            # Convert numpy types and bools to JSON-serializable types
+            def make_json_serializable(obj):
+                if isinstance(obj, dict):
+                    return {k: make_json_serializable(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [make_json_serializable(item) for item in obj]
+                elif isinstance(obj, (np.bool_, bool)):
+                    return bool(obj)
+                elif isinstance(obj, (np.integer, np.floating)):
+                    return float(obj)
+                elif isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                else:
+                    return obj
+
             manifest = {
                 'bundle_name': bundle_name,
-                'models': export_results,
-                'total_size_mb': total_size_mb,
-                'export_timestamp': torch.datetime.now().isoformat(),
+                'models': make_json_serializable(export_results),
+                'total_size_mb': float(total_size_mb),
+                'export_timestamp': datetime.now().isoformat(),
                 'deployment_instructions': {
                     'load_order': list(models.keys()),
                     'input_preprocessing': 'Resize to 256x256, normalize with ImageNet stats',
                     'output_postprocessing': 'Apply sigmoid for probability conversion'
                 }
             }
-            
+
             # Save manifest
             manifest_path = output_dir / f"{bundle_name}_manifest.json"
-            with open(manifest_path, 'w') as f:
-                json.dump(manifest, f, indent=2)
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                json.dump(manifest, f, indent=2, ensure_ascii=False)
             
             # Create deployment package
             self._create_deployment_package(output_dir, bundle_name)

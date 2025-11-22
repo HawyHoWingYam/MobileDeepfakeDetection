@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Deepfake Detector</string>
+    <string name="select_image">Select Image</string>
+    <string name="detect">Detect Deepfake</string>
+    <string name="processing">Processing…</string>
+    <string name="result_real">Authentic</string>
+    <string name="result_fake">Deepfake Detected</string>
+    <string name="confidence">Confidence: %1$s%%</string>
+    <string name="stage">Stage: %1$s</string>
+    <string name="inference_time">Inference Time: %1$d ms</string>
+    <string name="no_image_selected">No image selected</string>
+    <string name="error_loading_model">Error loading model</string>
+    <string name="error_processing_image">Error processing image</string>
+</resources>
