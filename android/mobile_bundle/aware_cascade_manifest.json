@@ -3,12 +3,12 @@
   "models": {
     "stage1": {
       "success": true,
-      "output_path": "D:\\work\\MobileDeepfakeDetection\\android\\mobile_bundle\\aware_cascade_stage1.onnx",
+      "output_path": "C:\\Work\\MobileDeepfakeDetection\\android\\mobile_bundle\\aware_cascade_stage1.onnx",
       "model_size_mb": 37.45206928253174,
       "validation_results": {
         "outputs_match": false,
-        "max_difference": 0.013902664184570312,
-        "mean_difference": 0.013902664184570312,
+        "max_difference": 0.005834102630615234,
+        "mean_difference": 0.005834102630615234,
         "tolerance": 1e-05,
         "pytorch_output_shape": [
           1,
@@ -40,12 +40,12 @@
     },
     "stage2": {
       "success": true,
-      "output_path": "D:\\work\\MobileDeepfakeDetection\\android\\mobile_bundle\\aware_cascade_stage2.onnx",
-      "model_size_mb": 52.45443058013916,
+      "output_path": "C:\\Work\\MobileDeepfakeDetection\\android\\mobile_bundle\\aware_cascade_stage2.onnx",
+      "model_size_mb": 51.891998291015625,
       "validation_results": {
         "outputs_match": false,
-        "max_difference": 164.05035400390625,
-        "mean_difference": 164.05035400390625,
+        "max_difference": 2118.50830078125,
+        "mean_difference": 2118.50830078125,
         "tolerance": 1e-05,
         "pytorch_output_shape": [
           1,
@@ -76,8 +76,8 @@
       "opset_version": 14
     }
   },
-  "total_size_mb": 89.9064998626709,
-  "export_timestamp": "2025-11-22T11:50:00.836384",
+  "total_size_mb": 89.34406757354736,
+  "export_timestamp": "2025-11-24T22:45:59.047182",
   "deployment_instructions": {
     "load_order": [
       "stage1",

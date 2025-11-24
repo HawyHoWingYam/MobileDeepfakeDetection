@@ -335,7 +335,7 @@ def main():
     cascade_config = create_cascade_config()
     config_path = output_dir / "cascade_config.json"
 
-    with open(config_path, 'w') as f:
+    with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(cascade_config, f, indent=2)
 
     logger.info(f"✅ Configuration saved: {config_path}")

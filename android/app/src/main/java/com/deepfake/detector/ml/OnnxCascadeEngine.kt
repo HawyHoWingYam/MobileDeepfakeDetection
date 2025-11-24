@@ -25,7 +25,7 @@ import kotlin.math.exp
  */
 class OnnxCascadeEngine(
     private val context: Context,
-    private val config: CascadeConfig = CascadeConfig.default()
+    private val config: CascadeConfig = CascadeConfigLoader.load(context)
 ) {
     private val tag = "OnnxCascadeEngine"
 
@@ -35,6 +35,9 @@ class OnnxCascadeEngine(
     private val preprocessor = ImagePreprocessor(config)
 
     private var isInitialized = false
+
+    val cascadeConfig: CascadeConfig
+        get() = config
 
     /**
      * Initialize ONNX Runtime and load models
