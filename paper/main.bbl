@@ -87,6 +87,15 @@ Y.~Chen, W.~Yang, and K.-Y. Liao, ``A contemporary survey on deepfake
   detection: Datasets, algorithms, and challenges,'' {\em Electronics},
   vol.~13, no.~3, p.~585, 2024.
 
+\bibitem{yang2019exposing}
+X.~Yang, Y.~Li, and S.~Lyu, ``Exposing deepfakes with inconsistent head
+  poses,'' in {\em ICASSP}, 2019.
+
+\bibitem{cozzolino2019noiseprint}
+D.~Cozzolino, G.~Poggi, and L.~Verdoliva, ``Noiseprint: a cnn-based camera
+  model fingerprint,'' {\em IEEE Transactions on Information Forensics and
+  Security}, 2019.
+
 \bibitem{dolhansky2020dfdc}
 B.~Dolhansky, J.~Bitton, B.~Pflaum, J.~Lu, R.~Howes, M.~Wang, and
   C.~Canton~Ferrer, ``The deepfake detection challenge (dfdc) dataset,'' {\em
@@ -96,52 +105,33 @@ B.~Dolhansky, J.~Bitton, B.~Pflaum, J.~Lu, R.~Howes, M.~Wang, and
 M.~Tan and Q.~Le, ``Efficientnet: Rethinking model scaling for convolutional
   neural networks,'' {\em arXiv preprint arXiv:1905.11946}, 2019.
 
-\bibitem{zhao2022mobilenet_lstm}
-T.~Zhao, X.~Xu, X.~Zou, and J.~Zhang, ``Real-time deepfake detection using a
-  hybrid mobilenet-lstm model for image and video analysis,'' {\em arXiv
-  preprint arXiv:2209.12960}, 2022.
+\bibitem{howard2017mobilenetv1}
+A.~Howard, M.~Zhu, B.~Chen, D.~Kalenichenko, {\em et~al.}, ``Mobilenets:
+  Efficient convolutional neural networks for mobile vision applications,''
+  {\em arXiv preprint arXiv:1704.04861}, 2017.
 
-\bibitem{liu2024lightfakedetect}
-Y.~Liu, H.~Zhang, and Y.~Wang, ``Lightfakedetect: A lightweight model for
-  deepfake detection in videos that focuses on facial regions,'' {\em
-  Mathematics}, vol.~13, no.~19, p.~3088, 2024.
+\bibitem{sandler2018mobilenetv2}
+M.~Sandler, A.~Howard, M.~Zhu, A.~Zhmoginov, and L.-C. Chen, ``Mobilenetv2:
+  Inverted residuals and linear bottlenecks,'' in {\em CVPR}, 2018.
 
 \bibitem{howard2019mobilenetv3}
 A.~Howard, M.~Sandler, G.~Chu, L.-C. Chen, B.~Chen, M.~Tan, W.~Wang, Y.~Zhu,
   R.~Pang, V.~Vasudevan, Q.~V. Le, and H.~Adam, ``Searching for mobilenetv3,''
   in {\em ICCV}, 2019.
 
-\bibitem{he2016resnet}
-K.~He, X.~Zhang, S.~Ren, and J.~Sun, ``Deep residual learning for image
-  recognition,'' in {\em CVPR}, 2016.
-
 \bibitem{luo2024freqnet}
 Y.~Luo, S.~Zhang, W.~Zhao, and Z.~Sun, ``Frequency-aware deepfake detection:
   Improving generalizability through frequency space learning,'' in {\em AAAI},
   2024.
-
-\bibitem{zhang2024frequency_dcT}
-T.~Zhang, X.~Chen, and Y.~Li, ``Fighting deepfakes by detecting dct frequency
-  anomalies,'' {\em Multimedia Tools and Applications}, 2024.
-
-\bibitem{jablonski2024dft}
-M.~Jabłoński, B.~Giżycka, D.~Dutka, and J.~Nalepa, ``Discrete fourier
-  transform in unmasking deepfake images: A comparative study of stylegan
-  creations,'' {\em Information}, vol.~15, no.~11, p.~711, 2024.
 
 \bibitem{wang2022afd}
 N.~Wang, Y.~Bai, K.~Yu, Y.~Jiang, S.-t. Xia, and Y.~Wang, ``Adaptive frequency
   learning in two-branch face forgery detection,'' {\em arXiv preprint
   arXiv:2203.14315}, 2022.
 
-\bibitem{khan2024vit_survey}
-S.~A. Khan, D.-T. Dang-Nguyen, and C.~Gurrin, ``A timely survey on vision
-  transformer for deepfake detection,'' {\em arXiv preprint arXiv:2405.08463},
-  2024.
-
-\bibitem{zhang2022uiavit}
-W.~Zhang, Z.~Zhao, and J.~Li, ``Uia-vit: Uncertainty-informed attention vision
-  transformer for deepfake detection,'' in {\em ICASSP}, 2022.
+\bibitem{zhang2024frequency_dcT}
+T.~Zhang, X.~Chen, and Y.~Li, ``Fighting deepfakes by detecting dct frequency
+  anomalies,'' {\em Multimedia Tools and Applications}, 2024.
 
 \bibitem{coccomini2022efficientnet_vit}
 D.~A. Coccomini, N.~Messina, C.~Gennaro, and F.~Falchi, ``Combining
@@ -155,6 +145,133 @@ S.~A. Khan and D.-T. Dang-Nguyen, ``Hybrid transformer network for deepfake
 \bibitem{genconvit_github}
 Y.~Heo and contributors, ``Genconvit: Generative and consistency-aware vision
   transformer.'' \url{https://github.com/erprogs/GenConViT}, 2024.
+
+\bibitem{tran2015c3d}
+D.~Tran, L.~Bourdev, R.~Fergus, L.~Torresani, and M.~Paluri, ``Learning
+  spatiotemporal features with 3d convolutional networks,'' in {\em ICCV},
+  2015.
+
+\bibitem{carreira2017i3d}
+J.~Carreira and A.~Zisserman, ``Quo vadis, action recognition? a new model and
+  the kinetics dataset,'' in {\em CVPR}, 2017.
+
+\bibitem{zhao2022mobilenet_lstm}
+T.~Zhao, X.~Xu, X.~Zou, and J.~Zhang, ``Real-time deepfake detection using a
+  hybrid mobilenet-lstm model for image and video analysis,'' {\em arXiv
+  preprint arXiv:2209.12960}, 2022.
+
+\bibitem{xception_convlstm2022}
+J.~Li, H.~Xie, J.~Li, Z.~Wang, and Y.~Zhang, ``Detecting deepfake videos based
+  on spatiotemporal attention and convolutional lstm,'' {\em Information
+  Sciences}, vol.~601, pp.~58--70, 2022.
+
+\bibitem{bertasius2021timesformer}
+G.~Bertasius, H.~Wang, and L.~Torresani, ``Is space-time attention all you need
+  for video understanding?,'' in {\em ICCV}, 2021.
+
+\bibitem{han2015learningboth}
+S.~Han, J.~Pool, J.~Tran, and W.~Dally, ``Learning both weights and connections
+  for efficient neural network,'' in {\em NeurIPS}, 2015.
+
+\bibitem{han2016deepcompression}
+S.~Han, H.~Mao, and W.~J. Dally, ``Deep compression: Compressing deep neural
+  networks with pruning, trained quantization and huffman coding,'' in {\em
+  ICLR}, 2016.
+
+\bibitem{blalock2020pruningsurvey}
+D.~Blalock, J.~J. Gonzalez~Ortiz, J.~Frankle, and J.~Guttag, ``What is the
+  state of neural network pruning?,'' {\em Proceedings of Machine Learning and
+  Systems}, 2020.
+
+\bibitem{jacob2017integeronly}
+B.~Jacob, S.~Kligys, B.~Chen, M.~Zhu, M.~Tang, A.~Howard, H.~Adam, and
+  D.~Kalenichenko, ``Quantization and training of neural networks for efficient
+  integer-arithmetic-only inference,'' {\em arXiv preprint arXiv:1712.05877},
+  2017.
+
+\bibitem{esser2020lsq}
+S.~K. Esser, J.~L. McKinstry, D.~Bablani, R.~Appuswamy, and D.~S. Modha,
+  ``Learned step size quantization,'' {\em ICLR}, 2020.
+
+\bibitem{gholami2021quant_survey}
+A.~Gholami, S.~Kim, Z.~Dong, Z.~Yao, M.~W. Mahoney, and K.~Keutzer, ``A survey
+  of quantization methods for efficient neural network inference,'' {\em arXiv
+  preprint arXiv:2103.13630}, 2021.
+
+\bibitem{hinton2015distilling}
+G.~Hinton, O.~Vinyals, and J.~Dean, ``Distilling the knowledge in a neural
+  network,'' {\em arXiv preprint arXiv:1503.02531}, 2015.
+
+\bibitem{romero2015fitnets}
+A.~Romero, N.~Ballas, S.~E. Kahou, A.~Chassang, C.~Gatta, and Y.~Bengio,
+  ``Fitnets: Hints for thin deep nets,'' in {\em ICLR}, 2015.
+
+\bibitem{gou2021kdsurvey}
+J.~Gou, B.~Yu, S.~J. Maybank, and D.~Tao, ``Knowledge distillation: A survey,''
+  {\em International Journal of Computer Vision}, 2021.
+
+\bibitem{han2024earlyexit_survey}
+S.~Han, J.~Lee, and Y.~Kim, ``Early-exit deep neural network: A comprehensive
+  survey,'' {\em ACM Computing Surveys}, 2024.
+
+\bibitem{viola2001rapid}
+P.~Viola and M.~Jones, ``Rapid object detection using a boosted cascade of
+  simple features,'' in {\em CVPR}, 2001.
+
+\bibitem{graves2016act}
+A.~Graves, ``Adaptive computation time for recurrent neural networks,'' {\em
+  arXiv preprint arXiv:1603.08983}, 2016.
+
+\bibitem{wang2018skipnet}
+X.~Wang, F.~Yu, Z.-Y. Dou, T.~Darrell, and J.~E. Gonzalez, ``Skipnet: Learning
+  dynamic routing in convolutional networks,'' {\em arXiv preprint
+  arXiv:1711.09485}, 2018.
+
+\bibitem{guo2017calibration}
+C.~Guo, G.~Pleiss, Y.~Sun, and K.~Q. Weinberger, ``On calibration of modern
+  neural networks,'' in {\em ICML}, 2017.
+
+\bibitem{minderer2021revisiting}
+M.~Minderer, J.~Djolonga, R.~Romijnders, F.~Hubis, X.~Zhai, N.~Houlsby,
+  D.~Tran, and M.~Lucic, ``Revisiting the calibration of modern neural
+  networks,'' {\em NeurIPS}, 2021.
+
+\bibitem{ganin2016dann}
+Y.~Ganin and V.~Lempitsky, ``Domain-adversarial training of neural networks,''
+  {\em Journal of Machine Learning Research}, 2016.
+
+\bibitem{li2021dabn}
+Y.~Li, M.-C. Chang, and S.~Lyu, ``Improving the generalization of deepfake
+  detection with domain adaptive batch normalization,'' in {\em ACM Workshop on
+  Information Hiding and Multimedia Security}, 2021.
+
+\bibitem{liu2025unsupervised_da}
+Z.~Liu, Z.~Wang, Y.~Li, and Z.~Zhao, ``Towards open-world generalized deepfake
+  detection: General feature extraction via unsupervised domain adaptation,''
+  {\em arXiv preprint arXiv:2505.12339}, 2025.
+
+\bibitem{liu2024lightfakedetect}
+Y.~Liu, H.~Zhang, and Y.~Wang, ``Lightfakedetect: A lightweight model for
+  deepfake detection in videos that focuses on facial regions,'' {\em
+  Mathematics}, vol.~13, no.~19, p.~3088, 2024.
+
+\bibitem{he2016resnet}
+K.~He, X.~Zhang, S.~Ren, and J.~Sun, ``Deep residual learning for image
+  recognition,'' in {\em CVPR}, 2016.
+
+\bibitem{jablonski2024dft}
+M.~Jabłoński, B.~Giżycka, D.~Dutka, and J.~Nalepa, ``Discrete fourier
+  transform in unmasking deepfake images: A comparative study of stylegan
+  creations,'' {\em Information}, vol.~15, no.~11, p.~711, 2024.
+
+\bibitem{khan2024vit_survey}
+S.~A. Khan, D.-T. Dang-Nguyen, and C.~Gurrin, ``A timely survey on vision
+  transformer for deepfake detection,'' {\em arXiv preprint arXiv:2405.08463},
+  2024.
+
+\bibitem{zhang2022uiavit}
+W.~Zhang, Z.~Zhao, and J.~Li, ``Uia-vit: Uncertainty-informed attention vision
+  transformer for deepfake detection,'' in {\em ICASSP}, 2022.
 
 \bibitem{naz2023coatnet}
 S.~Naz, A.~Irtaza, A.~Javed, and M.~T. Mahmood, ``An ensemble of cnns with
@@ -185,24 +302,10 @@ Y.~Zhang, H.~Liu, and X.~Chen, ``Research and performance evaluation of
   deepfake video detection method integrated spatio-temporal attention
   mechanism,'' in {\em ICAIP}, 2024.
 
-\bibitem{xception_convlstm2022}
-J.~Li, H.~Xie, J.~Li, Z.~Wang, and Y.~Zhang, ``Detecting deepfake videos based
-  on spatiotemporal attention and convolutional lstm,'' {\em Information
-  Sciences}, vol.~601, pp.~58--70, 2022.
-
 \bibitem{undercover2023}
 S.~Saha, R.~Perera, S.~Seneviratne, T.~Malepathirana, S.~Rasnayaka,
   D.~Geethika, T.~Sim, and S.~Halgamuge, ``Undercover deepfakes: Detecting fake
   segments in videos,'' {\em arXiv preprint arXiv:2305.06564}, 2023.
-
-\bibitem{tran2015c3d}
-D.~Tran, L.~Bourdev, R.~Fergus, L.~Torresani, and M.~Paluri, ``Learning
-  spatiotemporal features with 3d convolutional networks,'' in {\em ICCV},
-  2015.
-
-\bibitem{carreira2017i3d}
-J.~Carreira and A.~Zisserman, ``Quo vadis, action recognition? a new model and
-  the kinetics dataset,'' in {\em CVPR}, 2017.
 
 \bibitem{zhou2023resnext_lstm}
 J.~Zhou, X.~Li, and Y.~Wang, ``Deepfake video detection using lstm and
@@ -212,31 +315,9 @@ J.~Zhou, X.~Li, and Y.~Wang, ``Deepfake video detection using lstm and
 Y.~Wang, L.~Zhang, and M.~Chen, ``Deepfake detection using efficientnet-b0 and
   gru,'' {\em IJERT}, 2024.
 
-\bibitem{bertasius2021timesformer}
-G.~Bertasius, H.~Wang, and L.~Torresani, ``Is space-time attention all you need
-  for video understanding?,'' in {\em ICCV}, 2021.
-
 \bibitem{liu2023deepfake_adapter}
 R.~Shao, T.~Wu, L.~Nie, and Z.~Liu, ``Deepfake-adapter: Dual-level adapter for
   deepfake detection,'' {\em arXiv preprint arXiv:2306.00863}, 2023.
-
-\bibitem{yang2019exposing}
-X.~Yang, Y.~Li, and S.~Lyu, ``Exposing deepfakes with inconsistent head
-  poses,'' in {\em ICASSP}, 2019.
-
-\bibitem{cozzolino2019noiseprint}
-D.~Cozzolino, G.~Poggi, and L.~Verdoliva, ``Noiseprint: a cnn-based camera
-  model fingerprint,'' {\em IEEE Transactions on Information Forensics and
-  Security}, 2019.
-
-\bibitem{howard2017mobilenetv1}
-A.~Howard, M.~Zhu, B.~Chen, D.~Kalenichenko, {\em et~al.}, ``Mobilenets:
-  Efficient convolutional neural networks for mobile vision applications,''
-  {\em arXiv preprint arXiv:1704.04861}, 2017.
-
-\bibitem{sandler2018mobilenetv2}
-M.~Sandler, A.~Howard, M.~Zhu, A.~Zhmoginov, and L.-C. Chen, ``Mobilenetv2:
-  Inverted residuals and linear bottlenecks,'' in {\em CVPR}, 2018.
 
 \bibitem{iandola2016squeezenet}
 F.~N. Iandola, S.~Han, M.~W. Moskewicz, K.~Ashraf, W.~J. Dally, and K.~Keutzer,
@@ -256,39 +337,13 @@ R.~Lanzino, F.~Carrara, F.~Falchi, G.~Amato, and C.~Gennaro, ``Faster than
   lies: Real-time deepfake detection using binary neural networks,'' in {\em
   CVPR Workshops}, 2024.
 
-\bibitem{blalock2020pruningsurvey}
-D.~Blalock, J.~J. Gonzalez~Ortiz, J.~Frankle, and J.~Guttag, ``What is the
-  state of neural network pruning?,'' {\em Proceedings of Machine Learning and
-  Systems}, 2020.
-
-\bibitem{han2015learningboth}
-S.~Han, J.~Pool, J.~Tran, and W.~Dally, ``Learning both weights and connections
-  for efficient neural network,'' in {\em NeurIPS}, 2015.
-
-\bibitem{han2016deepcompression}
-S.~Han, H.~Mao, and W.~J. Dally, ``Deep compression: Compressing deep neural
-  networks with pruning, trained quantization and huffman coding,'' in {\em
-  ICLR}, 2016.
-
 \bibitem{frankle2019lottery}
 J.~Frankle and M.~Carbin, ``The lottery ticket hypothesis: Finding sparse,
   trainable neural networks,'' in {\em ICLR}, 2019.
 
-\bibitem{hinton2015distilling}
-G.~Hinton, O.~Vinyals, and J.~Dean, ``Distilling the knowledge in a neural
-  network,'' {\em arXiv preprint arXiv:1503.02531}, 2015.
-
-\bibitem{romero2015fitnets}
-A.~Romero, N.~Ballas, S.~E. Kahou, A.~Chassang, C.~Gatta, and Y.~Bengio,
-  ``Fitnets: Hints for thin deep nets,'' in {\em ICLR}, 2015.
-
 \bibitem{furlanello2018bornagain}
 T.~Furlanello, Z.~C. Lipton, M.~Tschannen, L.~Itti, and A.~Anandkumar, ``Born
   again neural networks,'' in {\em ICML}, 2018.
-
-\bibitem{gou2021kdsurvey}
-J.~Gou, B.~Yu, S.~J. Maybank, and D.~Tao, ``Knowledge distillation: A survey,''
-  {\em International Journal of Computer Vision}, 2021.
 
 \bibitem{zhao2023kd_edge}
 Z.~Zhao, D.~Wu, T.~Nie, Q.~Gao, and W.~Zhang, ``Model compression via
@@ -301,25 +356,10 @@ Y.~Liu, J.~Shen, N.~Alsubaie, M.~Hamdi, and Z.~Al-Makhadmeh, ``Compressing
   distillation,'' {\em Journal of King Saud University - Computer and
   Information Sciences}, 2023.
 
-\bibitem{jacob2017integeronly}
-B.~Jacob, S.~Kligys, B.~Chen, M.~Zhu, M.~Tang, A.~Howard, H.~Adam, and
-  D.~Kalenichenko, ``Quantization and training of neural networks for efficient
-  integer-arithmetic-only inference,'' {\em arXiv preprint arXiv:1712.05877},
-  2017.
-
-\bibitem{esser2020lsq}
-S.~K. Esser, J.~L. McKinstry, D.~Bablani, R.~Appuswamy, and D.~S. Modha,
-  ``Learned step size quantization,'' {\em ICLR}, 2020.
-
 \bibitem{wang2019haq}
 H.~Wang, Z.~Wu, Z.~Liu, H.~Cai, L.~Zhu, C.~Gan, and S.~Han, ``Haq:
   Hardware-aware automated quantization with mixed precision,'' {\em arXiv
   preprint arXiv:1811.08886}, 2019.
-
-\bibitem{gholami2021quant_survey}
-A.~Gholami, S.~Kim, Z.~Dong, Z.~Yao, M.~W. Mahoney, and K.~Keutzer, ``A survey
-  of quantization methods for efficient neural network inference,'' {\em arXiv
-  preprint arXiv:2103.13630}, 2021.
 
 \bibitem{frantar2023gptq}
 E.~Frantar, S.~Ashkboos, T.~Hoefler, and D.~Alistarh, ``Gptq: Accurate
@@ -330,19 +370,6 @@ E.~Frantar, S.~Ashkboos, T.~Hoefler, and D.~Alistarh, ``Gptq: Accurate
 Z.~Yao, R.~Y. Aminabadi, M.~Zhang, X.~Wu, C.~Li, and Y.~He, ``Zeroquant:
   Efficient and affordable post-training quantization for large-scale
   transformers,'' in {\em NeurIPS}, 2022.
-
-\bibitem{han2024earlyexit_survey}
-S.~Han, J.~Lee, and Y.~Kim, ``Early-exit deep neural network: A comprehensive
-  survey,'' {\em ACM Computing Surveys}, 2024.
-
-\bibitem{graves2016act}
-A.~Graves, ``Adaptive computation time for recurrent neural networks,'' {\em
-  arXiv preprint arXiv:1603.08983}, 2016.
-
-\bibitem{wang2018skipnet}
-X.~Wang, F.~Yu, Z.-Y. Dou, T.~Darrell, and J.~E. Gonzalez, ``Skipnet: Learning
-  dynamic routing in convolutional networks,'' {\em arXiv preprint
-  arXiv:1711.09485}, 2018.
 
 \bibitem{xia2023window_cascade}
 G.~Xia and C.-S. Bouganis, ``Window-based early-exit cascades for uncertainty
@@ -370,10 +397,6 @@ S.~Laskaridis, S.~I. Venieris, M.~Almeida, I.~Leontiadis, and N.~D. Lane,
   ``Spinn: Synergistic progressive inference of neural networks over device and
   cloud,'' in {\em MobiCom}, 2020.
 
-\bibitem{viola2001rapid}
-P.~Viola and M.~Jones, ``Rapid object detection using a boosted cascade of
-  simple features,'' in {\em CVPR}, 2001.
-
 \bibitem{snoek2012bayesopt}
 J.~Snoek, H.~Larochelle, and R.~P. Adams, ``Practical bayesian optimization of
   machine learning algorithms,'' in {\em NIPS}, 2012.
@@ -383,16 +406,6 @@ Z.~Zhang, Y.~Sun, T.~Shen, , B.~Li, {\em et~al.}, ``Deepfakebench: A
   comprehensive benchmark of deepfake detection,'' in {\em NeurIPS Datasets and
   Benchmarks Track}, 2023.
 
-\bibitem{li2021dabn}
-Y.~Li, M.-C. Chang, and S.~Lyu, ``Improving the generalization of deepfake
-  detection with domain adaptive batch normalization,'' in {\em ACM Workshop on
-  Information Hiding and Multimedia Security}, 2021.
-
-\bibitem{liu2025unsupervised_da}
-Z.~Liu, Z.~Wang, Y.~Li, and Z.~Zhao, ``Towards open-world generalized deepfake
-  detection: General feature extraction via unsupervised domain adaptation,''
-  {\em arXiv preprint arXiv:2505.12339}, 2025.
-
 \bibitem{wang2025spatial_freq}
 J.~Wang, S.~Chen, and H.~Li, ``Towards generalizable deepfake detection with
   spatial-frequency collaborative learning and hierarchical cross-modal
@@ -401,10 +414,6 @@ J.~Wang, S.~Chen, and H.~Li, ``Towards generalizable deepfake detection with
 \bibitem{wang2018deepDA_survey}
 M.~Wang and W.~Deng, ``Deep visual domain adaptation: A survey,'' {\em
   Neurocomputing}, 2018.
-
-\bibitem{ganin2016dann}
-Y.~Ganin and V.~Lempitsky, ``Domain-adversarial training of neural networks,''
-  {\em Journal of Machine Learning Research}, 2016.
 
 \bibitem{zhang2024fairness_generalization}
 Y.~Zhang, Y.~Liu, and X.~Chen, ``Data-driven fairness generalization for
@@ -442,15 +451,6 @@ K.~Gupta, A.~Joshi, and G.~Kaushik, ``A survey on multimedia-enabled deepfake
   detection: State-of-the-art tools and techniques, emerging trends, current
   challenges and limitations, and future directions,'' {\em Discover
   Computing}, 2025.
-
-\bibitem{guo2017calibration}
-C.~Guo, G.~Pleiss, Y.~Sun, and K.~Q. Weinberger, ``On calibration of modern
-  neural networks,'' in {\em ICML}, 2017.
-
-\bibitem{minderer2021revisiting}
-M.~Minderer, J.~Djolonga, R.~Romijnders, F.~Hubis, X.~Zhai, N.~Houlsby,
-  D.~Tran, and M.~Lucic, ``Revisiting the calibration of modern neural
-  networks,'' {\em NeurIPS}, 2021.
 
 \bibitem{naskar2024ensemble}
 G.~Naskar, S.~Mohiuddin, S.~Malakar, E.~Cuevas, and R.~Sarkar, ``Deepfake

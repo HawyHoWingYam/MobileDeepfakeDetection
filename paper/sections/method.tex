@@ -1,4 +1,65 @@
-We adopt a six-stage pipeline designed for both accuracy and deployability. The core decision stack in our final system has two modeling stages (Stage~1–2), followed by tuning (Stage~4), robustness and cross\hyp dataset evaluation (Stage~5), and mobile deployment (Stage~6). Stage~3 explores an optional meta\hyp model that we do \emph{not} deploy by default but keep as a research tool for fusion analysis.
+\subsection{Problem Formulation}
+\label{sec:problem_formulation}
+
+\paragraph{Binary Classification Task.}
+We frame deepfake detection as binary classification over face images. Given an input image $x \in \mathcal{X} = \mathbb{R}^{H \times W \times 3}$ (where $H=W=256$ in our pipeline), the task is to predict a label $y \in \{0, 1\}$ where $y=0$ denotes real and $y=1$ denotes fake. Our training data comprises $\mathcal{D} = \{(x_i, y_i, d_i)\}_{i=1}^N$, where $d_i$ indexes the source dataset (CelebDF\hyp v2, FaceForensics++, DFDC, or DeeperForensics\hyp 1.0).
+
+\paragraph{Two-Stage Cascade Architecture.}
+Our deployed system consists of two sequential classifiers:
+\begin{itemize}[topsep=4pt,itemsep=2pt]
+  \item \textbf{Stage~1 (Filter):} A lightweight model $f_1: \mathcal{X} \to \mathbb{R}$ producing logit $f_1(x)$ and calibrated probability $p_1(x) = \sigma(f_1(x))$, where $\sigma$ is the sigmoid function.
+  \item \textbf{Stage~2 (Expert):} A higher\hyp capacity model $f_2: \mathcal{X} \to \mathbb{R}$ producing logit $f_2(x)$ and calibrated probability $p_2(x) = \sigma(f_2(x) / t)$, where $t$ is the temperature scaling parameter.
+\end{itemize}
+
+\paragraph{Cascade Decision Policy.}
+The cascade routes samples based on two thresholds $\tau_{\mathrm{low}}, \tau_{\mathrm{high}} \in [0,1]$ with $\tau_{\mathrm{low}} < \tau_{\mathrm{high}}$:
+\begin{equation}
+\label{eq:cascade_policy}
+\hat{y}(x) = \begin{cases}
+0 & \text{if } p_1(x) < \tau_{\mathrm{low}} \\
+1 & \text{if } p_1(x) > \tau_{\mathrm{high}} \\
+\mathbf{1}[p_2(x) > \tau_2] & \text{otherwise}
+\end{cases}
+\end{equation}
+where $\mathbf{1}[\cdot]$ is the indicator function and $\tau_2 \in [0,1]$ is the Stage~2 decision threshold. Samples falling in the interval $[\tau_{\mathrm{low}}, \tau_{\mathrm{high}}]$ are \emph{escalated} to Stage~2, while those outside this band receive immediate Stage~1 predictions.
+
+\paragraph{Evaluation Metrics.}
+We define standard classification metrics on a test set $\mathcal{D}_{\text{test}}$:
+\begin{align}
+\mathrm{FNR}(\tau) &= \frac{\sum_{(x,y) \in \mathcal{D}_{\text{test}}: y=1} \mathbf{1}[\hat{y}(x) = 0]}{\sum_{(x,y) \in \mathcal{D}_{\text{test}}: y=1} 1} \label{eq:fnr} \\
+\mathrm{FPR}(\tau) &= \frac{\sum_{(x,y) \in \mathcal{D}_{\text{test}}: y=0} \mathbf{1}[\hat{y}(x) = 1]}{\sum_{(x,y) \in \mathcal{D}_{\text{test}}: y=0} 1} \label{eq:fpr}
+\end{align}
+The \textbf{Stage~2 escalation rate} measures the fraction of samples requiring expert evaluation:
+\begin{equation}
+\pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}}) = \Pr(\tau_{\mathrm{low}} \le p_1(x) \le \tau_{\mathrm{high}}) \label{eq:escalation_rate}
+\end{equation}
+This metric directly governs computational cost, as Stage~2 inference is significantly more expensive than Stage~1.
+
+\paragraph{Optimization Objective.}
+Our cascade tuning (detailed in subsequent subsections) seeks threshold configurations that minimize FNR subject to an escalation budget:
+\begin{equation}
+\min_{\tau_{\mathrm{low}},\tau_{\mathrm{high}},\tau_2} \mathrm{FNR}(\tau_{\mathrm{low}},\tau_{\mathrm{high}},\tau_2) \quad \text{subject to} \quad \pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}}) \le B
+\label{eq:cascade_objective}
+\end{equation}
+where $B$ is a platform\hyp defined budget (e.g., $B=0.05$ limits escalation to 5\% of samples). This formulation captures the core trade\hyp off between detection quality (low FNR) and inference cost (bounded escalation).
+
+\paragraph{Hard Example Mining.}
+To improve Stage~2 performance on ambiguous cases, we define a margin\hyp based ambiguity set:
+\begin{equation}
+m(x) = |p_1(x) - 0.5|, \quad \mathcal{A}_\delta = \{x : m(x) \le \delta\}
+\label{eq:ambiguity_set}
+\end{equation}
+where $\delta$ is a margin threshold (e.g., $\delta=0.4$ corresponds to $p_1(x) \in [0.1, 0.9]$). The hard example set combines misclassifications and ambiguous samples:
+\begin{equation}
+\mathcal{H} = \{(x,y) \in \mathcal{D} : \mathbf{1}[\hat{y}_1(x) \ne y] \text{ or } x \in \mathcal{A}_\delta\}
+\label{eq:hard_set}
+\end{equation}
+where $\hat{y}_1(x) = \mathbf{1}[p_1(x) > 0.5]$ is the provisional Stage~1 decision. Stage~2 training upweights $\mathcal{H}$ to focus capacity on samples where Stage~1 is uncertain.
+
+\subsection{Pipeline Overview}
+\label{sec:pipeline_overview}
+
+Following the formal setup above, we now describe our six\hyp stage pipeline designed for both accuracy and deployability. The core decision stack in our final system has two modeling stages (Stage~1–2), followed by tuning (Stage~4), robustness and cross\hyp dataset evaluation (Stage~5), and mobile deployment (Stage~6). Stage~3 explores an optional meta\hyp model that we do \emph{not} deploy by default but keep as a research tool for fusion analysis.
 
 \begin{figure}[ht]
   \centering
@@ -88,21 +149,21 @@ This summary formalises the textual description above: training proceeds from da
 \]
 the fraction of fake samples incorrectly accepted by Stage~1, and report it alongside the Stage~2 escalation rate to make the recall\hyp vs\hyp compute trade\hyp off explicit.
 
-\paragraph{Stage~5: Cross-Dataset Evaluation and Robustness.} We evaluate the cascade and Stage~2\hyp only expert on Deepfake\hyp Eval\hyp 2024 and generate robustness curves under JPEG compression, Gaussian noise, motion blur, brightness changes, and additional perturbations (downscale, gamma) using dedicated robustness analysis scripts. These tools load trained checkpoints and thresholds, apply controlled distortions to images from a given manifest, and compute metrics (AUC, F1, Accuracy, FNR/FPR, Stage~2 rate) across perturbation strength. They also sweep $(\tau\_{low},\tau\_{high})$ offline to visualise FNR vs.\ Stage~2 rate trade\hyp offs under each distortion family. Auto\hyp generated LaTeX snippets (tables and figures) are written under \verb|paper/generated/| for seamless inclusion in the paper.
+\paragraph{Stage~5: Cross-Dataset Evaluation and Robustness.} We evaluate the cascade and Stage~2\hyp only expert on Deepfake\hyp Eval\hyp 2024 and generate robustness curves under JPEG compression, Gaussian noise, motion blur, brightness changes, and additional perturbations (downscale, gamma) using dedicated robustness analysis scripts. These tools load trained checkpoints and thresholds, apply controlled distortions to images from a given manifest, and compute metrics (AUC, F1, Accuracy, FNR/FPR, Stage~2 rate) across perturbation strength. They also sweep $(\tau\_{low},\tau\_{high})$ offline to visualise FNR vs.\ Stage~2 rate trade\hyp offs under each distortion family. LaTeX snippets (tables and figures) are written under \verb|paper/generated/| for seamless inclusion in the paper.
 
 \paragraph{Stage~6: Mobile Deployment.} We export TorchScript models for Stage~1 and Stage~2 with dynamic quantization applied to linear layers, and bundle cascade thresholds/temperature in a lightweight JSON metadata file suitable for Android integration. A dedicated export helper produces a directory of quantized artifacts and a bundle manifest for mobile integration; an ONNX exporter can optionally produce ONNX bundles for other runtimes. Table~\ref{tab:mobile_artifacts_auto} summarizes exported artifact sizes. On device we fix thresholds for stability and low jitter, and we keep the runtime logic minimal (single forward pass for Stage~1, optional Stage~2 call for escalated samples).
 
 \subsection*{Hard Example Mining (Formalization)}
-Let $\mathcal{D}=\{(x_i, y_i)\}_{i=1}^N$ be training pairs and $p_1(x)=\sigma(f_1(x))$ be the Stage~1 fake probability. We define a margin $m(x)=\lvert p_1(x)-0.5\rvert$ and an ambiguity band $\mathcal{A}_\delta=\{x: m(x)\le \delta\}$ for $\delta\in(0,0.5)$. In our instantiated hard\hyp subset runs, we use an ambiguity window of $[0.1,0.9]$ around 0.5 and a provisional decision threshold $\tau=0.5$. The \emph{hard set} $\mathcal{H}$ is
+As formulated in Eq.~\ref{eq:ambiguity_set} and Eq.~\ref{eq:hard_set}, we define a margin\hyp based approach to identify samples where Stage~1 is uncertain. Let $\mathcal{D}=\{(x_i, y_i)\}_{i=1}^N$ be training pairs and $p_1(x)=\sigma(f_1(x))$ be the Stage~1 fake probability. We define a margin $m(x)=\lvert p_1(x)-0.5\rvert$ and an ambiguity band $\mathcal{A}_\delta=\{x: m(x)\le \delta\}$ for $\delta\in(0,0.5)$. In our instantiated hard\hyp subset runs, we use an ambiguity window of $[0.1,0.9]$ around 0.5 and a provisional decision threshold $\tau=0.5$. The \emph{hard set} $\mathcal{H}$ is
 \[
 \mathcal{H} = \{(x,y)\in\mathcal{D}: \mathbf{1}[\hat{y}_1(x)\ne y]\ \ \text{or}\ \ x\in\mathcal{A}_\delta\},
 \]
 where $\hat{y}_1(x)=\mathbf{1}[p_1(x)>\tau]$ is a provisional decision at threshold $\tau$. We optionally stratify by dataset label $d(x)$ and cap per\hyp dataset counts to avoid distributional skew. This construction mirrors common hard\hyp example mining strategies while preserving validation on the full multi\hyp dataset split to mitigate bias. The ambiguity band width $\delta$ (and corresponding lower/upper bounds, e.g., 0.1/0.9) is a tunable hyperparameter that trades coverage for purity.
 
 \subsection*{Cascade Optimization (Cost-Sensitive Objective)}
-Let $\tau_{\mathrm{low}}<\tau_{\mathrm{high}}$ be Stage~1 decision thresholds and $\tau_2$ the Stage~2 threshold. Define the Stage~2 escalation rate
-\[ \pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}})=\Pr\big(\tau_{\mathrm{low}}\le p_1(x)\le\tau_{\mathrm{high}}\big). \]
-We optimize for low false negatives under an efficiency budget $B$ (in practice, we target budgets such as $B\in\{0.02,0.05\}$ corresponding to 2--5\% Stage~2 usage, and then inspect tighter points such as the 1.16\% and 1.50\% escalation configurations reported in Table~\ref{tab:cascade_best}):
+This section implements the optimization objective stated in Eq.~\ref{eq:cascade_objective} through grid search over threshold configurations. Let $\tau_{\mathrm{low}}<\tau_{\mathrm{high}}$ be Stage~1 decision thresholds and $\tau_2$ the Stage~2 threshold. Define the Stage~2 escalation rate
+\[ \pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}})=\Pr\big(\tau_{\mathrm{low}}\le p_1(x)\le\tau_{\mathrm{high}}\big), \]
+as formalized in Eq.~\ref{eq:escalation_rate}. We optimize for low false negatives under an efficiency budget $B$ (in practice, we target budgets such as $B\in\{0.02,0.05\}$ corresponding to 2--5\% Stage~2 usage, and then inspect tighter points such as the 1.16\% and 1.50\% escalation configurations reported in Table~\ref{tab:cascade_best}):
 \[
 \min_{\tau_{\mathrm{low}},\tau_{\mathrm{high}},\,\tau_2}\ \mathrm{FNR}\big(\tau_{\mathrm{low}},\tau_{\mathrm{high}},\tau_2\big)\quad\text{s.t.}\quad \pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}})\le B.
 \]

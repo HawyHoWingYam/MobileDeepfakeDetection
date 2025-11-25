@@ -192,9 +192,9 @@ def write_tables_tex() -> None:
     cal = read_summary_csv(ROOT / 'outputs' / 'stage5' / 'evals_calibrated' / 'summary.csv')
     s2o = read_summary_csv(ROOT / 'outputs' / 'stage5' / 'evals_r4_512_s2only' / 'summary.csv')
 
-    # Mobile artifacts sizes
-    a1 = ROOT / 'outputs' / 'stage6' / 'export_ts' / 'stage1_mobilenetv4_ts.pt'
-    a2 = ROOT / 'outputs' / 'stage6' / 'export_ts' / 'stage2_efficientnetv2_ts.pt'
+    # Mobile artifacts sizes (ONNX files used on device)
+    a1 = ROOT / 'android' / 'app' / 'src' / 'main' / 'assets' / 'models' / 'aware_cascade_stage1.onnx'
+    a2 = ROOT / 'android' / 'app' / 'src' / 'main' / 'assets' / 'models' / 'aware_cascade_stage2.onnx'
     meta = ROOT / 'outputs' / 'stage6' / 'export_ts' / 'bundle_meta.json'
     def size_mb(p: Path) -> float:
         return round(os.path.getsize(p) / (1024 * 1024), 2) if p.exists() else 0.0

@@ -3,7 +3,7 @@
 % Overview paragraph
 To enable practical deployment on resource\hyp constrained mobile devices, we developed a native Android application that runs the two\hyp stage cascade entirely on\hyp device. The same Stage~1 (MobileNetV4) and Stage~2 (EfficientNetV2\hyp B3) weights trained on desktop are exported to ONNX format and bundled into the application package. This approach ensures that (1)~user media never leaves the device, preserving privacy; (2)~the cascade thresholds tuned on the PC validation set transfer directly to mobile without re\hyp calibration; and (3)~performance characteristics remain consistent across platforms.
 
-The application supports four detection modes: \emph{single image} selection from the gallery, \emph{batch} processing of multiple selected images, \emph{video} frame\hyp by\hyp frame analysis with configurable sampling rate, and \emph{folder} traversal for automated evaluation of entire directories. All detection results are logged to a structured CSV file that records timing breakdowns and cascade routing decisions, enabling systematic performance analysis.
+The application supports four detection modes: \emph{single image} selection from the gallery, \emph{batch} processing of multiple selected images, \emph{video} frame\hyp by\hyp frame analysis with configurable sampling rate, and \emph{folder} traversal for evaluation of entire directories. All detection results are logged to a structured CSV file that records timing breakdowns and cascade routing decisions, enabling systematic performance analysis.
 
 %----------------------------------------------------------------------
 \paragraph{On-device Pipeline.}
@@ -24,7 +24,7 @@ The Android app provides several detection modes tailored to different use cases
   \item \textbf{Single image}: Select one image from the gallery; the app displays the face crop preview and final result including label, confidence, stage used, and timing breakdown.
   \item \textbf{Batch detection}: Select multiple images for sequential processing; upon completion, a summary shows total count, number of detected deepfakes, Stage~2 usage rate, and average latency per image.
   \item \textbf{Video detection}: The app extracts frames at 1\hyp second intervals (up to 200 frames) and processes each frame independently, reporting the proportion of deepfake frames and average per\hyp frame latency.
-  \item \textbf{Folder detection}: A directory picker allows selecting an entire folder; all images and videos within are processed recursively, enabling automated evaluation of test sets like \texttt{mobile\_eval}.
+  \item \textbf{Folder detection}: A directory picker allows selecting an entire folder; all images and videos within are processed recursively, enabling evaluation of test sets like \texttt{mobile\_eval}.
 \end{itemize}
 
 \paragraph{Detection Logging.}
@@ -91,6 +91,6 @@ The current on\hyp device evaluation has several limitations that suggest direct
   \item \textbf{No hardware acceleration}: The current implementation uses CPU inference only; enabling NNAPI or GPU delegates in ONNX Runtime could reduce latency.
   \item \textbf{Basic face detection}: The Android \texttt{FaceDetector} API is deprecated and less accurate than modern solutions like MediaPipe; integration with a robust face detector would improve preprocessing quality.
   \item \textbf{Energy profiling}: Battery and thermal measurements during continuous detection would provide practical deployment guidance.
-</itemize>
+\end{itemize}
 
 Despite these limitations, the on\hyp device results demonstrate that the two\hyp stage cascade maintains low false\hyp negative rates and practical latency on representative mobile hardware, validating the feasibility of privacy\hyp preserving deepfake detection on consumer smartphones.
