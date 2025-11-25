@@ -45,3 +45,12 @@ Stage~1 operates on pre\hyp balanced manifests, and the final training loader us
 \subsection*{Augmentation Rationale}
 Light geometric/photometric augmentation improves robustness; a small real\hyp class augmentation probability reduces asymmetry in error gradients. Stage~1 uses torchvision transforms (resize, flip, colour jitter, affine, blur) with ImageNet normalization, while validation uses only resizing and normalization. Additional perturbation sweeps (JPEG/noise/blur/brightness) are reported separately to avoid conflating training augmentation with robustness evaluation.
 \paragraph{Threshold Tuning Grid.} Unless otherwise stated, we apply a simple grid with step size 0.01 over low/high thresholds and select Pareto points that satisfy escalation\-rate budgets.
+
+\subsection*{On-device Evaluation Protocol}
+\label{sec:ondevice_protocol}
+All model training, calibration, and threshold selection are performed on desktop hardware using the combined validation set. The on\hyp device evaluation is a separate, downstream step that validates whether the exported models and thresholds transfer correctly to the mobile runtime environment.
+
+The protocol proceeds as follows: (1)~Stage~1 and Stage~2 models are exported from PyTorch to ONNX format using the same weights and input dimensions as the desktop runs; (2)~the ONNX models are bundled into the Android application; (3)~the \texttt{mobile\_eval} subset is transferred to the device; (4)~the app's folder detection mode processes all images and logs results to \texttt{detection\_logs.csv}; (5)~the log file is exported and parsed by the same analysis scripts used for desktop evaluation, computing accuracy, FNR, FPR, and Stage~2 escalation rate.
+
+This protocol ensures that on\hyp device metrics are directly comparable to desktop metrics: both use the same threshold values ($\tau_\mathrm{low}=0.02$, $\tau_\mathrm{high}=0.98$, $\tau_\mathrm{s2}=0.5$), the same input preprocessing, and the same evaluation metrics. Any observed differences reflect platform\hyp specific factors (runtime library, numerical precision, face detection fallback) rather than model or threshold changes.
+

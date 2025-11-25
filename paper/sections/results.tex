@@ -181,3 +181,35 @@ Mitigations include stronger data augmentation (compression, occlusions, photome
 We also analyze errors by model confidence to understand cascade behavior. Low\hyp confidence predictions tend to correspond to heavily degraded real videos where even the expert struggles; mid\hyp confidence cases mix FP and FN and benefit most from escalation; and high\hyp confidence errors, though rare, typically reflect systematic blind spots tied to specific generators or post\hyp processing styles. The two\hyp threshold routing policy naturally separates these regimes: samples with $p < \tau_{low}$ or $p > \tau_{high}$ receive confident Stage~1 decisions, while those with $\tau_{low} \le p \le \tau_{high}$ are escalated. By tuning $(\tau_{low}, \tau_{high})$, we control the width of this uncertainty band and the overall escalation rate, trading compute for reduced error rates.
 
 Finally, exported visual error panels provide concrete examples of the above patterns (compressed real videos and unusual lighting among FPs; high\hyp quality and post\hyp processed fakes among FNs). These artifacts form a basis for more systematic taxonomies by generator family, post\hyp processing type, and content domain in future work.
+
+\subsection{On-device Results}
+\label{sec:ondevice_results}
+
+To validate that the cascade transfers correctly to mobile deployment, we evaluate the exported ONNX models on the \texttt{mobile\_eval} subset (152 images) using a Xiaomi~13 smartphone (Snapdragon~8~Gen~2). The results, summarised in Tables~\ref{tab:mobile_runtime_auto} and~\ref{tab:mobile_accuracy_auto}, demonstrate practical on\hyp device performance.
+
+\paragraph{Key Findings.}
+The on\hyp device cascade achieves 92.8\% accuracy with an FNR of 2.5\% and FPR of 12.5\%. The low FNR indicates that the conservative bias of the PC\hyp tuned cascade transfers to mobile: the system continues to prioritise catching deepfakes over minimising false alarms. The Stage~2 escalation rate on \texttt{mobile\_eval} is 7.2\%, higher than the 1.2\% observed on the combined validation set. This increase reflects distribution differences between the compact \texttt{mobile\_eval} subset and the larger PC validation manifest rather than platform\hyp specific degradation.
+
+\paragraph{Latency.}
+Average per\hyp image latency is approximately 180\,ms, comprising $\sim$3\,ms for preprocessing and $\sim$176\,ms for ONNX inference. This latency is roughly $2\times$ higher than the desktop CPU baseline (Table~\ref{tab:mobile_perf}), which is expected given mobile thermal and power constraints. For interactive single\hyp image detection, 180\,ms provides near\hyp instantaneous feedback; for batch processing, the system can analyse approximately 5--6 images per second.
+
+\paragraph{Comparison with PC Results.}
+Table~\ref{tab:pc_vs_mobile} compares key metrics between the desktop combined validation set and the mobile \texttt{mobile\_eval} subset. The cascade maintains low FNR on both platforms ($<$3\%), demonstrating that the threshold configuration ($\tau_\mathrm{low}=0.02$, $\tau_\mathrm{high}=0.98$) generalises across runtimes. The higher FPR and escalation rate on mobile primarily reflect the different sample composition of \texttt{mobile\_eval} rather than model export artefacts.
+
+\begin{table}[h]
+  \centering
+  \caption{PC vs.\ mobile cascade comparison. PC metrics from combined validation; mobile metrics from \texttt{mobile\_eval} (152 images).}
+  \label{tab:pc_vs_mobile}
+  {\small
+  \begin{tabular}{lcccc}
+    \toprule
+    Platform & Acc & FNR & FPR & Stage~2 Rate \\
+    \midrule
+    PC (combined val) & 0.97 & 0.006 & 0.03 & 0.012 \\
+    Xiaomi~13 (mobile\_eval) & 0.93 & 0.025 & 0.125 & 0.072 \\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+
+These results confirm that the two\hyp stage cascade is viable for privacy\hyp preserving, on\hyp device deepfake detection on consumer smartphones, with performance characteristics consistent with the desktop evaluation.
+

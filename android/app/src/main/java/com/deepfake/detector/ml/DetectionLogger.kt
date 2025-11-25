@@ -25,7 +25,7 @@ class DetectionLogger(private val context: Context) {
         scope.launch {
             try {
                 val file = getLogFileInternal()
-                val isNewFile = !file.exists()
+                val isNewFile = !file.exists() || file.length() == 0L
 
                 FileWriter(file, true).use { writer ->
                     if (isNewFile) {
@@ -47,6 +47,25 @@ class DetectionLogger(private val context: Context) {
     fun getLogFile(): File? {
         val file = getLogFileInternal()
         return if (file.exists()) file else null
+    }
+
+    /**
+     * Clear the detection log file so that future runs start fresh.
+     */
+    fun clearLog() {
+        scope.launch {
+            try {
+                val file = getLogFileInternal()
+                if (file.exists()) {
+                    val deleted = file.delete()
+                    if (!deleted) {
+                        Log.w(tag, "Failed to delete log file, leaving it in place")
+                    }
+                }
+            } catch (exception: Exception) {
+                Log.e(tag, "Failed to clear log file", exception)
+            }
+        }
     }
 
     private fun getLogFileInternal(): File {

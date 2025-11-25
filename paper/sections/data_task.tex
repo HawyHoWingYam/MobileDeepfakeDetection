@@ -95,3 +95,10 @@ To guard against trivial path\hyp based leakage, the manifest pipeline can optio
   \end{tabular}}
 \end{table}
 These traits justify balanced sampling across sources and the use of a dedicated OOD set to probe generalization under realistic distribution shift.
+
+\paragraph{Mobile Evaluation Subset.}
+To evaluate on\hyp device performance without requiring the full multi\hyp gigabyte datasets on a smartphone, we construct a compact \texttt{mobile\_eval} subset. This subset is derived by stratified sampling from the four training datasets (CelebDF\hyp v2, FaceForensics++, DFDC, DeeperForensics\,1.0), selecting representative face crops from each source. The sampling procedure picks 1--2 frames per video across a diverse set of videos, targeting approximately 150--200 images total.
+
+The resulting subset is organised into two directories: \texttt{images\_real/} (approximately 72 images) and \texttt{images\_fake/} (approximately 80 images), with ground\hyp truth labels determined by directory membership. This structure allows the Android app to infer labels from file paths during folder detection, enabling automated accuracy computation without manual annotation.
+
+The \texttt{mobile\_eval} subset serves several purposes: (1)~it enables rapid iteration during app development without transferring large datasets; (2)~it provides a reproducible benchmark for on\hyp device latency and accuracy measurements; (3)~its size is small enough to permit multiple complete runs within a single testing session. The subset intentionally reuses preprocessed face crops from the PC pipeline, ensuring that on\hyp device and desktop evaluations operate on pixel\hyp identical inputs (modulo any JPEG re\hyp encoding during transfer). All on\hyp device metrics reported in Section~\ref{sec:mobile} derive from this subset.

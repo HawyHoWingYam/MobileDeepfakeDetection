@@ -83,6 +83,102 @@ def read_summary_csv(p: Path) -> List[Dict[str, Any]]:
         return [r for r in rdr]
 
 
+def summarize_mobile_detection_logs(log_path: Path) -> Dict[str, Dict[str, float]]:
+    """
+    Summarise on-device detection_logs.csv into simple runtime/use stats.
+
+    We distinguish between image-based detections and video-frame detections
+    using the presence of a `frame=` query parameter in the source URI.
+    """
+    if not log_path.exists():
+        return {}
+
+    with log_path.open() as f:
+        rdr = csv.DictReader(f)
+        rows = list(rdr)
+
+    if not rows:
+        return {}
+
+    groups: Dict[str, List[Dict[str, Any]]] = {'image': [], 'video': []}
+    for r in rows:
+        uri = r.get('source_uri', '') or ''
+        key = 'video' if 'frame=' in uri else 'image'
+        groups.setdefault(key, []).append(r)
+
+    def safe_float(v: Any, default: float = 0.0) -> float:
+        try:
+            return float(v)
+        except Exception:
+            return default
+
+    def safe_int(v: Any, default: int = 0) -> int:
+        try:
+            return int(float(v))
+        except Exception:
+            return default
+
+    stats: Dict[str, Dict[str, float]] = {}
+    for key, items in groups.items():
+        if not items:
+            continue
+        n = len(items)
+        deepfake_count = sum(1 for r in items if safe_int(r.get('is_deepfake', 0)) == 1)
+        stage2_count = sum(1 for r in items if safe_int(r.get('stage2_used', 0)) == 1)
+
+        total_pre = sum(safe_float(r.get('preprocess_ms', 0.0)) for r in items)
+        total_inf = sum(safe_float(r.get('inference_ms', 0.0)) for r in items)
+        total_tot = sum(safe_float(r.get('total_ms', 0.0)) for r in items)
+
+        # Derive ground-truth labels from path when possible
+        tp = tn = fp = fn = 0
+        labeled = 0
+        for r in items:
+            uri = (r.get('source_uri') or '').lower()
+            if 'images_fake' in uri:
+                y = 1
+            elif 'images_real' in uri:
+                y = 0
+            else:
+                continue
+            y_pred = safe_int(r.get('is_deepfake', 0))
+            labeled += 1
+            if y == 1 and y_pred == 1:
+                tp += 1
+            elif y == 0 and y_pred == 0:
+                tn += 1
+            elif y == 1 and y_pred == 0:
+                fn += 1
+            elif y == 0 and y_pred == 1:
+                fp += 1
+
+        def ratio(num: float, den: float) -> float:
+            return num / den if den > 0 else 0.0
+
+        acc = ratio(tp + tn, labeled)
+        fnr = ratio(fn, fn + tp)
+        fpr = ratio(fp, fp + tn)
+        prec = ratio(tp, tp + fp)
+        rec = ratio(tp, tp + fn)
+
+        stats[key] = {
+            'samples': float(n),
+            'samples_labeled': float(labeled),
+            'deepfake_rate': deepfake_count / float(n),
+            'stage2_rate': stage2_count / float(n),
+            'avg_pre_ms': total_pre / float(n),
+            'avg_inf_ms': total_inf / float(n),
+            'avg_total_ms': total_tot / float(n),
+            'accuracy': acc,
+            'fnr': fnr,
+            'fpr': fpr,
+            'precision': prec,
+            'recall': rec,
+        }
+
+    return stats
+
+
 def write_tables_tex() -> None:
     PAPER_GEN.mkdir(parents=True, exist_ok=True)
     # Stage1/Stage2
@@ -141,12 +237,64 @@ def write_tables_tex() -> None:
     with (PAPER_GEN / 'mobile_tables.tex').open('w') as f:
         f.write('% Auto-generated mobile artifact sizes\n')
         f.write('\\begin{table}[h]\n  \\centering\n')
-        f.write('  \\caption{Exported on-device artifacts (auto).}\\label{tab:mobile_artifacts_auto}\n')
-        f.write('  \\begin{tabular}{lcc}\\toprule\n Artifact & Path & Size (MB) \\\\ \\midrule\n')
-        f.write(f'  Stage~1 TS & {a1.as_posix()} & {size_mb(a1):.2f} \\\\ \n')
-        f.write(f'  Stage~2 TS & {a2.as_posix()} & {size_mb(a2):.2f} \\\\ \n')
-        f.write(f'  Bundle meta & {meta.as_posix()} & {size_mb(meta):.2f} \\\\ \n')
+        f.write('  \\caption{Exported on-device model artifacts.}\\label{tab:mobile_artifacts_auto}\n')
+        f.write('  \\begin{tabular}{lcc}\\toprule\n  Artifact & Format & Size (MB) \\\\ \\midrule\n')
+        f.write(f'  Stage~1 (MobileNetV4) & ONNX & {size_mb(a1):.2f} \\\\ \n')
+        f.write(f'  Stage~2 (EfficientNetV2-B3) & ONNX & {size_mb(a2):.2f} \\\\ \n')
+        f.write(f'  \\textbf{{Total}} & -- & \\textbf{{{size_mb(a1) + size_mb(a2):.2f}}} \\\\ \n')
         f.write('  \\bottomrule\\end{tabular}\\end{table}\n')
+
+        # Optional: on-device detection log summary (if available)
+        mobile_log = ROOT / 'ref' / 'detection_logs.csv'
+        stats = summarize_mobile_detection_logs(mobile_log)
+        if stats:
+            mode_labels = {
+                'image': 'Images (single/batch)',
+                'video': 'Video frames',
+            }
+            f.write('\n% Auto-generated on-device detection summary\n')
+            f.write('\\begin{table}[h]\n  \\centering\n')
+            f.write('  \\caption{On-device cascade runtime and usage (auto).}\\label{tab:mobile_runtime_auto}\n')
+            f.write('  \\begin{tabular}{lrrrrrr}\\toprule\n')
+            f.write('  Mode & $N$ & Deepfake Rate & Stage2 Rate & Preproc (ms) & Inference (ms) & Total (ms) \\\\ \\midrule\n')
+            for key in ('image', 'video'):
+                if key not in stats:
+                    continue
+                st = stats[key]
+                f.write(
+                    f"  {mode_labels.get(key, key)} & "
+                    f"{int(st['samples'])} & "
+                    f"{st['deepfake_rate']:.3f} & "
+                    f"{st['stage2_rate']:.3f} & "
+                    f"{st['avg_pre_ms']:.1f} & "
+                    f"{st['avg_inf_ms']:.1f} & "
+                    f"{st['avg_total_ms']:.1f} \\\\ \n"
+                )
+            f.write('  \\bottomrule\\end{tabular}\\end{table}\n')
+
+            # Accuracy / FNR summary (only for samples where labels can be inferred)
+            f.write('\n% Auto-generated on-device accuracy summary (requires folder-structured datasets)\n')
+            f.write('\\begin{table}[h]\n  \\centering\n')
+            f.write('  \\caption{On-device accuracy and error rates (auto).}\\label{tab:mobile_accuracy_auto}\n')
+            f.write('  \\begin{tabular}{lrrrrrrr}\\toprule\n')
+            f.write('  Mode & $N_{lbl}$ & Acc & FNR & FPR & Prec & Rec & Stage2 Rate \\\\ \\midrule\n')
+            for key in ('image', 'video'):
+                if key not in stats:
+                    continue
+                st = stats[key]
+                if st.get('samples_labeled', 0.0) <= 0:
+                    continue
+                f.write(
+                    f"  {mode_labels.get(key, key)} & "
+                    f"{int(st['samples_labeled'])} & "
+                    f"{st['accuracy']:.3f} & "
+                    f"{st['fnr']:.3f} & "
+                    f"{st['fpr']:.3f} & "
+                    f"{st['precision']:.3f} & "
+                    f"{st['recall']:.3f} & "
+                    f"{st['stage2_rate']:.3f} \\\\ \n"
+                )
+            f.write('  \\bottomrule\\end{tabular}\\end{table}\n')
 
     # Robustness table (if metrics CSVs are present)
     rob_dir = ROOT / 'outputs' / 'stage5' / 'robustness'

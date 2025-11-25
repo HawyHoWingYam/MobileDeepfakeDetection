@@ -10,11 +10,14 @@ import androidx.lifecycle.viewModelScope
 import com.deepfake.detector.ml.CascadeResult
 import com.deepfake.detector.ml.DetectionLogger
 import com.deepfake.detector.ml.OnnxCascadeEngine
+import com.deepfake.detector.ml.DetectionStage
+import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /**
  * ViewModel for deepfake detection screen
@@ -182,6 +185,157 @@ class DetectionViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /**
+     * Run detection over all images and videos inside a selected folder.
+     *
+     * Images are treated similarly to batch detection; videos are processed
+     * frame-by-frame with results logged to CSV. The UI shows an aggregate
+     * BatchSummary over all frames and images.
+     */
+    fun runFolderDetection(rootUri: Uri) {
+        viewModelScope.launch {
+            try {
+                _uiState.value = DetectionUiState.Processing
+
+                val app = getApplication<Application>()
+                val rootDoc = DocumentFile.fromTreeUri(app, rootUri)
+                    ?: throw IllegalArgumentException("Unable to access selected folder")
+
+                // Collect supported files (images + videos)
+                val items = mutableListOf<Pair<Uri, String>>() // (uri, kind)
+
+                fun collect(dir: DocumentFile) {
+                    for (doc in dir.listFiles()) {
+                        if (doc.isDirectory) {
+                            collect(doc)
+                        } else if (doc.isFile) {
+                            val mime = doc.type ?: ""
+                            val name = (doc.name ?: "").lowercase(Locale.US)
+                            val isImage = mime.startsWith("image/") ||
+                                    name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png")
+                            val isVideo = mime.startsWith("video/") ||
+                                    name.endsWith(".mp4") || name.endsWith(".mov") || name.endsWith(".avi") || name.endsWith(".mkv")
+                            if (isImage) {
+                                items.add(doc.uri to "image")
+                            } else if (isVideo) {
+                                items.add(doc.uri to "video")
+                            }
+                        }
+                    }
+                }
+
+                collect(rootDoc)
+
+                if (items.isEmpty()) {
+                    _uiState.value = DetectionUiState.Error("No images or videos found in selected folder")
+                    return@launch
+                }
+
+                var processedItems = 0
+                val totalItems = items.size
+
+                var totalSamples = 0
+                var deepfakeCount = 0
+                var stage2Count = 0
+                var totalTimeMs = 0L
+
+                _progress.value = DetectionProgress.Batch(processed = 0, total = totalItems)
+
+                val contentResolver = app.contentResolver
+
+                for ((uri, kind) in items) {
+                    if (kind == "image") {
+                        // Image detection similar to batch mode
+                        val bitmap = MediaStore.Images.Media.getBitmap(contentResolver, uri)
+                        val faceBitmap = faceCropper.cropFace(bitmap)
+                        val result = engine.detect(faceBitmap)
+                        logger.logDetection(uri, result, engine.cascadeConfig)
+
+                        totalSamples += 1
+                        if (result.isDeepfake) {
+                            deepfakeCount += 1
+                        }
+                        if (result.stage == DetectionStage.STAGE2) {
+                            stage2Count += 1
+                        }
+                        totalTimeMs += result.totalTimeMs
+
+                        bitmap.recycle()
+                    } else {
+                        // Video detection: sample frames similarly to detectVideo()
+                        val retriever = MediaMetadataRetriever()
+                        retriever.setDataSource(app, uri)
+
+                        val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            ?.toLongOrNull() ?: 0L
+
+                        val frameIntervalMs = 1000L
+                        val maxFrames = 200
+                        var timeMs = 0L
+                        var frameIndex = 0
+
+                        while (timeMs <= durationMs && frameIndex < maxFrames) {
+                            val frameBitmap = retriever.getFrameAtTime(
+                                timeMs * 1000,
+                                MediaMetadataRetriever.OPTION_CLOSEST
+                            ) ?: break
+
+                            val faceBitmap = faceCropper.cropFace(frameBitmap)
+                            val result = engine.detect(faceBitmap)
+
+                            val frameUri = uri.buildUpon()
+                                .appendQueryParameter("frame", frameIndex.toString())
+                                .build()
+
+                            logger.logDetection(frameUri, result, engine.cascadeConfig)
+
+                            totalSamples += 1
+                            if (result.isDeepfake) {
+                                deepfakeCount += 1
+                            }
+                            if (result.stage == DetectionStage.STAGE2) {
+                                stage2Count += 1
+                            }
+                            totalTimeMs += result.totalTimeMs
+
+                            frameBitmap.recycle()
+
+                            frameIndex += 1
+                            timeMs += frameIntervalMs
+                        }
+
+                        retriever.release()
+                    }
+
+                    processedItems += 1
+                    _progress.value = DetectionProgress.Batch(
+                        processed = processedItems,
+                        total = totalItems
+                    )
+                }
+
+                _progress.value = null
+
+                if (totalSamples > 0) {
+                    val avgTime = totalTimeMs / totalSamples
+                    val summary = BatchSummary(
+                        total = totalSamples,
+                        deepfakeCount = deepfakeCount,
+                        stage2Count = stage2Count,
+                        avgTimeMs = avgTime
+                    )
+                    _uiState.value = DetectionUiState.BatchSuccess(summary)
+                } else {
+                    _uiState.value = DetectionUiState.Ready
+                }
+
+            } catch (e: Exception) {
+                _progress.value = null
+                _uiState.value = DetectionUiState.Error("Folder detection failed: ${e.message}")
+            }
+        }
+    }
+
     fun detectVideo(uri: Uri) {
         viewModelScope.launch {
             try {
@@ -317,6 +471,15 @@ class DetectionViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun getLogFile() = logger.getLogFile()
+
+    /**
+     * Clear the underlying detection log file so that subsequent
+     * detections start from a fresh CSV.
+     */
+    fun clearLogFile() {
+        logger.clearLog()
+        _logPreview.value = null
+    }
 
     override fun onCleared() {
         super.onCleared()

@@ -1,14 +1,28 @@
 % Auto-generated mobile artifact sizes
 \begin{table}[h]
   \centering
-  \caption{Exported on-device artifacts (auto).}\label{tab:mobile_artifacts_auto}
-  {\small
-  \begin{tabular}{lcc}
-  \toprule
- Artifact & Location & Size (MB) \\ \midrule
-  Stage~1 TS & Bundle & 37.11 \\ 
-  Stage~2 TS & Bundle & 49.55 \\ 
-  Bundle meta JSON & Bundle & $<\!0.01$ \\ 
-  \bottomrule
-  \end{tabular}}
-\end{table}
+  \caption{Exported on-device model artifacts.}\label{tab:mobile_artifacts_auto}
+  \begin{tabular}{lcc}\toprule
+  Artifact & Format & Size (MB) \\ \midrule
+  Stage~1 (MobileNetV4) & ONNX & 37.30 \\ 
+  Stage~2 (EfficientNetV2-B3) & ONNX & 49.55 \\ 
+  \textbf{Total} & -- & \textbf{86.85} \\ 
+  \bottomrule\end{tabular}\end{table}
+
+% Auto-generated on-device detection summary
+\begin{table}[h]
+  \centering
+  \caption{On-device cascade runtime and usage (auto).}\label{tab:mobile_runtime_auto}
+  \begin{tabular}{lrrrrrr}\toprule
+  Mode & $N$ & Deepfake Rate & Stage2 Rate & Preproc (ms) & Inference (ms) & Total (ms) \\ \midrule
+  Images (single/batch) & 152 & 0.572 & 0.072 & 3.4 & 176.3 & 179.7 \\ 
+  \bottomrule\end{tabular}\end{table}
+
+% Auto-generated on-device accuracy summary (requires folder-structured datasets)
+\begin{table}[h]
+  \centering
+  \caption{On-device accuracy and error rates (auto).}\label{tab:mobile_accuracy_auto}
+  \begin{tabular}{lrrrrrrr}\toprule
+  Mode & $N_{lbl}$ & Acc & FNR & FPR & Prec & Rec & Stage2 Rate \\ \midrule
+  Images (single/batch) & 152 & 0.928 & 0.025 & 0.125 & 0.897 & 0.975 & 0.072 \\ 
+  \bottomrule\end{tabular}\end{table}

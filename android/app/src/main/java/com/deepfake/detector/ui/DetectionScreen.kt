@@ -65,6 +65,13 @@ fun DetectionScreen(
         uri?.let { viewModel.detectVideo(it) }
     }
 
+    // Folder picker launcher (images + videos)
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.runFolderDetection(it) }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -111,10 +118,16 @@ fun DetectionScreen(
             )
 
               // Batch detection action
-              BatchActionButton(
-                  uiState = uiState,
-                  onRunBatch = { batchImagePickerLauncher.launch("image/*") }
-              )
+            BatchActionButton(
+                uiState = uiState,
+                onRunBatch = { batchImagePickerLauncher.launch("image/*") }
+            )
+
+            // Folder detection action (images + videos)
+            FolderActionButton(
+                uiState = uiState,
+                onSelectFolder = { folderPickerLauncher.launch(null) }
+            )
 
             // Video detection action
             VideoActionButton(
@@ -146,7 +159,8 @@ fun DetectionScreen(
                             )
                         )
                     }
-                }
+                },
+                onClearLog = { viewModel.clearLogFile() }
             )
 
             // Result display
@@ -338,10 +352,27 @@ fun VideoActionButton(
 }
 
 @Composable
+fun FolderActionButton(
+    uiState: DetectionUiState,
+    onSelectFolder: () -> Unit
+) {
+    Button(
+        onClick = onSelectFolder,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        enabled = uiState !is DetectionUiState.Processing && uiState !is DetectionUiState.Initializing
+    ) {
+        Text("Detect Folder (images + videos)")
+    }
+}
+
+@Composable
 fun LogActionButtons(
     uiState: DetectionUiState,
     onViewLog: () -> Unit,
-    onShareLog: () -> Unit
+    onShareLog: () -> Unit,
+    onClearLog: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -362,6 +393,13 @@ fun LogActionButtons(
             enabled = uiState !is DetectionUiState.Processing && uiState !is DetectionUiState.Initializing
         ) {
             Text("Share CSV")
+        }
+        OutlinedButton(
+            onClick = onClearLog,
+            modifier = Modifier.weight(1f),
+            enabled = uiState !is DetectionUiState.Processing && uiState !is DetectionUiState.Initializing
+        ) {
+            Text("Clear Log")
         }
     }
 }
