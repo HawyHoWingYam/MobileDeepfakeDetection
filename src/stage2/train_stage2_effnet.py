@@ -38,6 +38,7 @@ from PIL import Image
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, f1_score, accuracy_score
 import matplotlib.pyplot as plt
+from src.stage2.genconvit.common.losses import ClassificationLoss
 
 # Setup logging
 def setup_logging(output_dir):
@@ -52,6 +53,76 @@ def setup_logging(output_dir):
         ]
     )
     return logging.getLogger(__name__)
+
+
+def mixup_batch(images, labels, alpha):
+    """
+    Apply Mixup augmentation to a batch.
+    
+    Args:
+        images (Tensor): Batch of images [B, C, H, W]
+        labels (Tensor): Batch of scalar labels [B]
+        alpha (float): Beta distribution parameter
+    """
+    if alpha <= 0.0:
+        return images, labels
+    
+    lam = np.random.beta(alpha, alpha)
+    batch_size = images.size(0)
+    index = torch.randperm(batch_size, device=images.device)
+    
+    mixed_images = lam * images + (1.0 - lam) * images[index]
+    mixed_labels = lam * labels + (1.0 - lam) * labels[index]
+    
+    return mixed_images, mixed_labels
+
+
+def _rand_bbox(width, height, lam):
+    """Generate random bounding box for CutMix."""
+    cut_rat = np.sqrt(1.0 - lam)
+    cut_w = int(width * cut_rat)
+    cut_h = int(height * cut_rat)
+    
+    cx = np.random.randint(width)
+    cy = np.random.randint(height)
+    
+    x1 = np.clip(cx - cut_w // 2, 0, width)
+    y1 = np.clip(cy - cut_h // 2, 0, height)
+    x2 = np.clip(cx + cut_w // 2, 0, width)
+    y2 = np.clip(cy + cut_h // 2, 0, height)
+    
+    return x1, y1, x2, y2
+
+
+def cutmix_batch(images, labels, alpha):
+    """
+    Apply CutMix augmentation to a batch.
+    
+    Args:
+        images (Tensor): Batch of images [B, C, H, W]
+        labels (Tensor): Batch of scalar labels [B]
+        alpha (float): Beta distribution parameter
+    """
+    if alpha <= 0.0:
+        return images, labels
+    
+    lam = np.random.beta(alpha, alpha)
+    batch_size, _, h, w = images.size()
+    index = torch.randperm(batch_size, device=images.device)
+    
+    x1, y1, x2, y2 = _rand_bbox(w, h, lam)
+    if x1 == x2 or y1 == y2:
+        return images, labels
+    
+    images[:, :, y1:y2, x1:x2] = images[index, :, y1:y2, x1:x2]
+    
+    # Adjust lambda based on the actually mixed area
+    mixed_area = (x2 - x1) * (y2 - y1)
+    lam_adjusted = 1.0 - mixed_area / float(w * h)
+    mixed_labels = lam_adjusted * labels + (1.0 - lam_adjusted) * labels[index]
+    
+    return images, mixed_labels
+
 
 class DeepfakeDataset(Dataset):
     """
@@ -122,25 +193,27 @@ def get_transforms(input_size=(256, 256)):
         tuple: (train_transform, val_transform)
     """
     
-    # Training transforms with augmentation
+    # Training transforms with stronger augmentation than Stage 1
+    # (RandAugment + standard geometric/photometric jitter)
     train_transform = transforms.Compose([
         transforms.Resize(input_size),
+        transforms.RandAugment(num_ops=2, magnitude=9),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ColorJitter(
-            brightness=0.2, 
-            contrast=0.2, 
-            saturation=0.2, 
+            brightness=0.2,
+            contrast=0.2,
+            saturation=0.2,
             hue=0.1
         ),
         transforms.RandomAffine(
-            degrees=10, 
-            translate=(0.1, 0.1), 
+            degrees=10,
+            translate=(0.1, 0.1),
             scale=(0.9, 1.1)
         ),
         transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
         transforms.ToTensor(),
         transforms.Normalize(
-            mean=[0.485, 0.456, 0.406], 
+            mean=[0.485, 0.456, 0.406],
             std=[0.229, 0.224, 0.225]
         )
     ])
@@ -157,7 +230,13 @@ def get_transforms(input_size=(256, 256)):
     
     return train_transform, val_transform
 
-def create_model(model_name="tf_efficientnetv2_b3", num_classes=1, pretrained=True):
+def create_model(
+    model_name="tf_efficientnetv2_b3",
+    num_classes=1,
+    pretrained=True,
+    drop_rate=0.3,
+    drop_path_rate=0.2,
+):
     """
     Create EfficientNetV2-B3 model for binary classification
     
@@ -172,9 +251,11 @@ def create_model(model_name="tf_efficientnetv2_b3", num_classes=1, pretrained=Tr
     
     # Create model
     model = timm.create_model(
-        model_name, 
-        pretrained=pretrained, 
-        num_classes=num_classes
+        model_name,
+        pretrained=pretrained,
+        num_classes=num_classes,
+        drop_rate=drop_rate,
+        drop_path_rate=drop_path_rate,
     )
     
     logging.info(f"Created model: {model_name}")
@@ -183,7 +264,18 @@ def create_model(model_name="tf_efficientnetv2_b3", num_classes=1, pretrained=Tr
     
     return model
 
-def train_epoch(model, dataloader, criterion, optimizer, device, epoch, total_epochs):
+def train_epoch(
+    model,
+    dataloader,
+    criterion,
+    optimizer,
+    device,
+    epoch,
+    total_epochs,
+    mixup_alpha=0.0,
+    cutmix_alpha=0.0,
+    mixup_prob=0.0,
+):
     """
     Train for one epoch
     
@@ -200,6 +292,17 @@ def train_epoch(model, dataloader, criterion, optimizer, device, epoch, total_ep
     
     for batch_idx, (images, labels) in enumerate(progress_bar):
         images, labels = images.to(device), labels.to(device)
+        
+        # Optional Mixup / CutMix (probability mixup_prob)
+        if mixup_alpha > 0.0 or cutmix_alpha > 0.0:
+            aug_chance = np.random.rand()
+            if aug_chance < mixup_prob:
+                # Randomly choose between Mixup and CutMix when both are enabled
+                use_mixup = (mixup_alpha > 0.0) and (cutmix_alpha <= 0.0 or np.random.rand() < 0.5)
+                if use_mixup and mixup_alpha > 0.0:
+                    images, labels = mixup_batch(images, labels, mixup_alpha)
+                elif cutmix_alpha > 0.0:
+                    images, labels = cutmix_batch(images, labels, cutmix_alpha)
         
         # Zero gradients
         optimizer.zero_grad()
@@ -372,6 +475,14 @@ def main():
                         help='Learning rate (lower for larger model)')
     parser.add_argument('--weight_decay', type=float, default=1e-4,
                         help='Weight decay')
+    parser.add_argument('--mixup_alpha', type=float, default=0.2,
+                        help='Mixup Beta distribution alpha (0 to disable)')
+    parser.add_argument('--cutmix_alpha', type=float, default=1.0,
+                        help='CutMix Beta distribution alpha (0 to disable)')
+    parser.add_argument('--mixup_prob', type=float, default=1.0,
+                        help='Probability of applying Mixup/CutMix per batch')
+    parser.add_argument('--scheduler_t0', type=int, default=10,
+                        help='T0 parameter for CosineAnnealingWarmRestarts')
     parser.add_argument('--num_workers', type=int, default=4,
                         help='Number of data loader workers')
     
@@ -440,16 +551,20 @@ def main():
     model = create_model(args.model_name, num_classes=1, pretrained=True)
     model = model.to(device)
     
-    # Create loss function and optimizer
-    criterion = nn.BCEWithLogitsLoss()
+    # Create loss function and optimizer (Focal Loss with label smoothing)
+    criterion = ClassificationLoss(
+        loss_type='focal',
+        pos_weight=0.25,
+        label_smoothing=0.1,
+    )
     optimizer = optim.AdamW(
         model.parameters(), 
         lr=args.lr, 
         weight_decay=args.weight_decay
     )
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, 
-        T_max=args.epochs
+    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0=args.scheduler_t0
     )
     
     # Training history
@@ -467,7 +582,16 @@ def main():
         
         # Train
         train_metrics = train_epoch(
-            model, train_loader, criterion, optimizer, device, epoch, args.epochs
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            device,
+            epoch,
+            args.epochs,
+            mixup_alpha=args.mixup_alpha,
+            cutmix_alpha=args.cutmix_alpha,
+            mixup_prob=args.mixup_prob,
         )
         
         # Validate

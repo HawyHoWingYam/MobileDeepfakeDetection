@@ -37,19 +37,19 @@ Table~\ref{tab:hyperparams_appendix} summarizes the final hyperparameter configu
     \midrule
     Base architecture & EfficientNetV2-B3 (timm) \\
     Input resolution & 256$\times$256 RGB \\
-    Batch size & 64 \\
+    Batch size & 28 \\
     Optimizer & AdamW \\
     Learning rate (initial) & \num{5e-5} \\
     Weight decay & \num{1e-4} \\
     LR scheduler & CosineAnnealingWarmRestarts (T\_0=10) \\
-    Training epochs & 30 \\
-    Warmup epochs & 3 \\
+    Training epochs & 50 \\
+    Warmup epochs & --- (not used in released script) \\
     Loss function & Focal Loss ($\gamma$=2.0, $\alpha$=0.25) \\
     Data augmentation & RandAugment, Mixup ($\alpha$=0.2), CutMix ($\alpha$=1.0) \\
     Dropout & 0.3 \\
     Stochastic depth & 0.2 \\
     Label smoothing & 0.1 \\
-    Gradient accumulation steps & 2 (effective batch size 128) \\
+    Gradient accumulation steps & 1 (no accumulation) \\
     \midrule
     \multicolumn{2}{c}{\textbf{Stage~3: LightGBM Meta-Model (optional)}} \\
     \midrule

@@ -14,7 +14,7 @@
     \toprule
     Stage & Backbone / Model & Batch / Epochs & Optimizer / LR \\
     \midrule
-    1 & MobileNetV4\hyp Hybrid\hyp Medium & $\approx$\num{256} / $\le$\num{15} (early stop) & AdamW, LR~\num{1e-4} \\
+    1 & MobileNetV4\hyp Hybrid\hyp Medium & \num{128} / $\le$\num{15} (early stop) & AdamW, LR~\num{1e-4} \\
     2 & EfficientNetV2\hyp B3 & \num{28} / \num{50} & AdamW, LR~\num{5e-5} \\
     2 (opt.) & GenConViT & \num{16} / \num{30} (typical) & AdamW, LR~\num{1e-4} \\
     3 & LightGBM meta\-model & -- / CV folds & Tree\hyp based, LR tuned \\
@@ -53,4 +53,3 @@ All model training, calibration, and threshold selection are performed on deskto
 The protocol proceeds as follows: (1)~Stage~1 and Stage~2 models are exported from PyTorch to ONNX format using the same weights and input dimensions as the desktop runs; (2)~the ONNX models are bundled into the Android application; (3)~the \texttt{mobile\_eval} subset is transferred to the device; (4)~the app's folder detection mode processes all images and logs results to \texttt{detection\_logs.csv}; (5)~the log file is exported and parsed by the same analysis scripts used for desktop evaluation, computing accuracy, FNR, FPR, and Stage~2 escalation rate.
 
 This protocol ensures that on\hyp device metrics are directly comparable to desktop metrics: both use the same threshold values ($\tau_\mathrm{low}=0.02$, $\tau_\mathrm{high}=0.98$, $\tau_\mathrm{s2}=0.5$), the same input preprocessing, and the same evaluation metrics. Any observed differences reflect platform\hyp specific factors (runtime library, numerical precision, face detection fallback) rather than model or threshold changes.
-
