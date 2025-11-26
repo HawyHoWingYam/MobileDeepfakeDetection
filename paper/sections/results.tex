@@ -194,7 +194,7 @@ The on\hyp device cascade achieves 92.8\% accuracy with an FNR of 2.5\% and FPR 
 Average per\hyp image latency is approximately 180\,ms, comprising $\sim$3\,ms for preprocessing and $\sim$176\,ms for ONNX inference. This latency is roughly $2\times$ higher than the desktop CPU baseline (Table~\ref{tab:mobile_perf}), which is expected given mobile thermal and power constraints. For interactive single\hyp image detection, 180\,ms provides near\hyp instantaneous feedback; for batch processing, the system can analyse approximately 5--6 images per second.
 
 \paragraph{Comparison with PC Results.}
-Table~\ref{tab:pc_vs_mobile} compares key metrics between the desktop combined validation set and the mobile \texttt{mobile\_eval} subset. The cascade maintains low FNR on both platforms ($<$3\%), demonstrating that the threshold configuration ($\tau_\mathrm{low}=0.02$, $\tau_\mathrm{high}=0.98$) generalises across runtimes. The higher FPR and escalation rate on mobile primarily reflect the different sample composition of \texttt{mobile\_eval} rather than model export artefacts.
+Table~\ref{tab:pc_vs_mobile} compares key metrics between the desktop combined validation set and the mobile \texttt{mobile\_eval} subset. The cascade maintains low FNR on both platforms ($<$3\%), demonstrating that the tuned threshold configuration selected by Stage~4 (e.g., $\tau_\mathrm{low}=0.05$, $\tau_\mathrm{high}=0.55$ for the safety\hyp first operating point) generalises across runtimes. The higher FPR and escalation rate on mobile primarily reflect the different sample composition of \texttt{mobile\_eval} rather than model export artefacts.
 
 \begin{table}[h]
   \centering
@@ -212,4 +212,3 @@ Table~\ref{tab:pc_vs_mobile} compares key metrics between the desktop combined v
 \end{table}
 
 These results confirm that the two\hyp stage cascade is viable for privacy\hyp preserving, on\hyp device deepfake detection on consumer smartphones, with performance characteristics consistent with the desktop evaluation.
-

@@ -78,11 +78,15 @@ class CascadeResult:
 class CascadeConfig:
     """Cascade system configuration"""
     # Stage 1 thresholds
-    stage1_real_threshold: float = 0.98  # Conservative real threshold
-    stage1_fake_threshold: float = 0.02  # Conservative fake threshold
+    # Thresholds are defined on Stage 1 fake probability p1(x) = P(fake).
+    # If p1(x) < stage1_real_threshold -> predict real.
+    # If p1(x) > stage1_fake_threshold -> predict fake.
+    # Values between are escalated to later stages.
+    stage1_real_threshold: float = 0.05  # tau_low in the paper
+    stage1_fake_threshold: float = 0.55  # tau_high in the paper
     
     # Dynamic threshold adaptation
-    enable_dynamic_thresholds: bool = True
+    enable_dynamic_thresholds: bool = False
     uncertainty_high_threshold: float = 0.3
     dynamic_real_range: Tuple[float, float] = (0.90, 0.98)
     dynamic_fake_range: Tuple[float, float] = (0.02, 0.10)
@@ -406,12 +410,13 @@ class CascadeDetector:
         stage_confidences = {'stage1': stage1_prob}
         
         # Stage 1 decision logic
-        if stage1_prob > real_threshold:
-            # High confidence REAL - filter out
+        # Note: stage1_prob is fake probability p1(x) = P(y=1 | x).
+        if stage1_prob < real_threshold:
+            # High confidence REAL - filter out (low fake probability)
             self.stats['stage1_real_filtered'] += 1
             result = CascadeResult(
                 prediction="real",
-                confidence=stage1_prob,
+                confidence=1.0 - stage1_prob,  # confidence in real = 1 - P(fake)
                 decision_stage=DecisionStage.STAGE1_REAL,
                 stage_confidences=stage_confidences,
                 processing_time=time.time() - prediction_start_time,
@@ -421,12 +426,12 @@ class CascadeDetector:
                     'filtered_at_stage1': True
                 }
             )
-        elif stage1_prob < fake_threshold:
-            # High confidence FAKE - filter out
+        elif stage1_prob > fake_threshold:
+            # High confidence FAKE - filter out (high fake probability)
             self.stats['stage1_fake_filtered'] += 1
             result = CascadeResult(
                 prediction="fake",
-                confidence=1.0 - stage1_prob,  # Convert to fake confidence
+                confidence=stage1_prob,  # confidence in fake = P(fake)
                 decision_stage=DecisionStage.STAGE1_FAKE,
                 stage_confidences=stage_confidences,
                 processing_time=time.time() - prediction_start_time,

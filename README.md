@@ -28,7 +28,7 @@ This README reflects the **current** implementation and is aligned with:
 
 ## 2. Repository Structure
 
-Only最重要的目錄簡要說明如下（詳細內容見 `project_instruction/` 和 `docs/`）：
+Only the most important directories are briefly described here (see `project_instruction/` and `docs/` for more details):
 
 ```text
 MobileDeepfakeDetection/
@@ -51,7 +51,7 @@ MobileDeepfakeDetection/
 └── dataset_paths*.json     # Example dataset path configs (no private paths)
 ```
 
-一些次要或歷史性文件（例如部分 log、zip 壓縮包、早期 Overleaf bundle）只作為備份存在，對主流程不是必需，可以在提交作業時選擇忽略。
+Some secondary or historical files (e.g., logs, zip archives, early Overleaf bundles) are kept only as backups and are not required for the main pipeline; they can be ignored or pruned when preparing a submission.
 
 ---
 
@@ -196,19 +196,56 @@ If you update experiments (e.g., retrain Stage‑2 or re‑tune the cascade), ru
 
 When submitting this project together with the paper:
 
-- 必須保留：`src/`, `paper/`, `project_instruction/`, `docs/`, `config/`, `manifests/`, `environment.yml`, 關鍵 `outputs/`（至少包含目前論文所用的 run）。  
-- 建議保留：`test/`（單元測試）、`dataset_paths_example.json`（示例配置）。  
-- 可選保留：`weights/`（Caffe face detector）、較大的 `outputs/` 子目錄（視空間而定）。  
-- 可以忽略或壓縮：舊的 log、zip bundle、早期 Overleaf 導出檔，只要已不再被腳本引用。
+- **Must keep**: `src/`, `paper/`, `project_instruction/`, `docs/`, `config/`, `manifests/`, `environment.yml`, and the key `outputs/` subdirectories (at least those runs that back the current paper tables).  
+- **Recommended to keep**: `test/` (unit tests) and `dataset_paths_example.json` (example dataset configuration).  
+- **Optional**: `weights/` (Caffe face detector) and larger `outputs/` subdirectories, depending on storage constraints.  
+- **Safe to compress/remove**: outdated logs, zip bundles, and early Overleaf exports, as long as they are no longer referenced by scripts.
 
-對於你自己要備份到雲端的內容，優先順序建議是：
+For your own cloud backups, a suggested priority is:
 
-1. `paper/`（最終 LaTeX + PDF）  
-2. 關鍵 `outputs/`（對應論文表格的 run）  
-3. `manifests/`（資料切分）  
+1. `paper/` (final LaTeX + PDF)  
+2. Key `outputs/` (runs that correspond to the paper’s tables)  
+3. `manifests/` (dataset splits)  
 4. `config/dataset_paths.json` / `dataset_paths_example.json`
 
 ---
 
-如需更細節的中文說明與開發歷史，請參考 `project_instruction/` 下的各個階段文檔，以及 `Midterm Progress Report.md`。  
-這些文檔加上本 README 構成了一條從研究構想到最終實作的完整故事線。  
+For more detailed documentation (in Chinese) and the development history of the project, refer to the stage documents under `project_instruction/` and the `Midterm Progress Report.md`.  
+Together with this README, they provide a complete narrative from initial research concept to the final implementation.
+
+---
+
+## 8. Implementation Notes & Alignment with the Paper
+
+This section summarizes a few potentially confusing details that are now explicitly aligned between the paper and the codebase, to make future reading and maintenance easier.
+
+- **Stage‑1 probability semantics and cascade thresholds**  
+  - Stage‑1 (MobileNetV4) outputs a single logit which, after `sigmoid`, is interpreted as **P(fake)**, matching the paper’s definition $p_1(x)=\Pr(y=1\mid x)$.  
+  - In `src/stage4/cascade_detector.py`, `CascadeConfig.stage1_real_threshold` corresponds to $\tau_{\mathrm{low}}$ in the paper (default `0.05`), and `stage1_fake_threshold` corresponds to $\tau_{\mathrm{high}}$ (default `0.55`). The decision rule is:
+    - `p1(x) < tau_low` → predict **real**, with confidence approximately `1 - p1(x)`;  
+    - `p1(x) > tau_high` → predict **fake**, with confidence approximately `p1(x)`;  
+    - values in between → escalate to Stage‑2/3.  
+  - Early internal versions briefly treated the output as P(real), which inverted the Stage‑1 decision logic; the current implementation has been corrected to match the paper’s formulation.
+
+- **Role of the Stage‑3 meta‑model**  
+  - The LightGBM meta‑model and optional GenConViT expert under `src/stage3/` are primarily **research and offline analysis components**.  
+  - The “default deployment” and mobile export pipeline described in both the paper and this README are a **two‑stage cascade** (Stage‑1 + Stage‑2); Stage‑3 is **not** part of the Android/on‑device runtime.  
+  - `src/stage4/cascade_detector.py` implements a three‑stage Python prototype `CascadeDetector` for desktop‑side analysis and benchmarking across Stage‑1→2→3; this does not imply Stage‑3 must be executed on mobile.
+
+- **Dynamic / adaptive thresholds**  
+  - The configuration field `CascadeConfig.enable_dynamic_thresholds` provides a prototype hook for dynamic thresholds based on an `uncertainty_score`, intended for experimenting with alternative routing policies.  
+  - This option is currently `False` by default, and all experiments/tables in the paper use **static thresholds** $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ obtained via the Stage‑4 grid search.  
+  - To experiment with adaptive thresholds you would:
+    - set `enable_dynamic_thresholds=True`, and  
+    - supply a meaningful `uncertainty_score` when calling `CascadeDetector.predict(..., uncertainty_score=...)` (or the batch/video variants), e.g., derived from video complexity indicators.
+
+- **Hard Example Mining (HEM)**  
+  - The paper and Chinese documentation discuss how hard‑example mining affects Stage‑2, but the **public training script** `src/stage2/train_stage2_effnet.py` uses a simple `shuffle=True` loader, i.e., **uniform sampling**.  
+  - HEM is only enabled in specific ablation experiments to construct a “difficult subset” and compare against the standard configuration. The main reported results and the released training script correspond to the “no‑HEM, uniform sampling” setting.  
+  - If a dedicated HEM training script is added in the future, it should live alongside the existing script in `src/stage2/` and be clearly marked in the README as ablation‑only.
+
+- **Use of DF40**  
+  - As noted in Section 3.1, DF40 is used only to analyze the target image specification (256×256 PNG) and **does not participate in any Stage‑1/2/3 training or evaluation**.  
+  - The preprocessing pipeline deliberately skips DF40 for re‑processing and treats it as a “format reference”; the final train/val/test manifests only use CelebDF‑v2, FF++, DFDC, DeeperForensics‑1.0, plus the OOD Deepfake‑Eval‑2024 benchmark.
+
+The goal of these notes is to keep the mathematical definitions and experimental settings in the paper aligned with the actual implementation and default scripts in this repository, while clearly separating research components (Stage‑3, HEM, adaptive thresholds) from the final deployment path. If you notice any apparent mismatch while reading the paper or reproducing experiments, this section and the corresponding `paper/sections/*.tex` passages are the first places to cross‑check.  
