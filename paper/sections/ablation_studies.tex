@@ -65,7 +65,7 @@ Improvement & +0.35\% & +0.76\% & -7.6\% \\
 \textbf{Analysis:}
 Hard example mining provides modest but consistent improvements across all metrics, with the most significant impact on FNR (7.6\% relative reduction). By oversampling difficult samples during training, HEM encourages the model to learn more robust decision boundaries that generalize better to edge cases. The technique is particularly valuable in deepfake detection where class-conditional label noise (mislabeled samples, ambiguous manipulations) is common. The computational overhead during training (1.2× wall\hyp clock time due to dynamic sample reweighting) is justified by improved inference\hyp time performance on hard examples.
 
-For the cascade system, HEM's benefits are amplified: since Stage~2 primarily processes samples that Stage~1 deemed uncertain, improving Stage~2's performance on hard examples directly translates to lower system\hyp level FNR. In our best cascade configuration (0.05/0.55 thresholds), the 0.76\% F1 improvement from HEM contributes to the final 0.60\% FNR.
+For the cascade system, HEM's benefits are amplified: since Stage~2 primarily processes samples that Stage~1 deemed uncertain, improving Stage~2's performance on hard examples directly translates to lower system\hyp level FNR. In our best cascade configuration (0.05/0.55 thresholds), the 0.76\% F1 improvement from HEM contributes to the final 0.60\% FNR. Given the additional engineering complexity and sensitivity of loss\hyp based sampling, we keep HEM as an ablation\hyp only option in the released pipeline and report main results under the simpler Standard configuration to prioritise reproducibility and ease of deployment; practitioners operating in high\hyp risk settings may nevertheless choose to adopt HEM when retraining Stage~2 under their own budgets.
 
 \subsection{Temperature Scaling Calibration}
 
@@ -98,7 +98,7 @@ Improvement & -78.9\% & — & — \\
   \item \textbf{Calibration enables better threshold selection.} Well\hyp calibrated probabilities allow thresholds to be interpreted as confidence levels: a threshold of 0.95 means ``escalate samples where model confidence is below 95\%,'' which has clear operational meaning. Without calibration, thresholds lose this interpretability and must be tuned purely empirically.
 \end{itemize}
 
-For cascade systems, calibration at both Stage~1 and Stage~2 is essential. We apply temperature scaling independently to each stage using held\hyp out validation data, ensuring that predicted probabilities accurately reflect uncertainty. This enables principled threshold tuning via grid search (Stage~4) and supports deployment scenarios where probability outputs are used for risk scoring or human\hyp in\hyp the\hyp loop review.
+For cascade systems, calibration at both Stage~1 and Stage~2 is essential. We apply temperature scaling independently to each stage using held\hyp out validation data, ensuring that predicted probabilities accurately reflect uncertainty. This enables principled threshold tuning via grid search (Stage~4) and supports deployment scenarios where probability outputs are used for risk scoring or human\hyp in\hyp the\hyp loop review. Although calibration does not change AUC, aligning predicted probabilities with empirical frequencies makes the cascade's thresholds $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ more interpretable and stable across datasets, improving decision reliability in safety\hyp critical deployments.
 
 \subsection{Meta-Model Contribution}
 

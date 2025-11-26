@@ -239,12 +239,12 @@
 \newlabel{tab:dataset_balance}{{2}{14}{Per-dataset class balance by split (rows and real/fake counts from balanced manifests)}{table.caption.31}{}}
 \@writefile{toc}{\contentsline {paragraph}{Datasets.}{14}{section*.32}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Preprocessing Pipeline.}{14}{section*.33}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Manifest Generation and Structure.}{14}{section*.34}\protected@file@percent }
 \citation{buslaev2018albumentations}
 \citation{pei2024deepfakesurvey}
 \citation{deepeval2024}
 \citation{guo2017calibration}
 \citation{minderer2021revisiting}
+\@writefile{toc}{\contentsline {paragraph}{Manifest Generation and Structure.}{15}{section*.34}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Split Protocol and Balancing.}{15}{section*.35}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Augmentation and Normalization.}{15}{section*.36}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{OOD Evaluation Protocol.}{15}{section*.37}\protected@file@percent }
@@ -283,8 +283,8 @@
 \@writefile{toc}{\contentsline {paragraph}{Inference Pipeline.}{20}{section*.55}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Stage~4: Cascade and Threshold Tuning.}{20}{section*.56}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{Stage~5: Cross-Dataset Evaluation and Robustness.}{20}{section*.57}\protected@file@percent }
-\citation{kaya2019shallowdeep}
 \@writefile{toc}{\contentsline {paragraph}{Stage~6: Mobile Deployment.}{21}{section*.58}\protected@file@percent }
+\citation{kaya2019shallowdeep}
 \citation{gholami2021quant_survey}
 \citation{guo2017calibration}
 \citation{paszke2019pytorch}
@@ -311,106 +311,106 @@
 \newlabel{tab:deepeval_stage2only}{{9}{26}{Deepfake-Eval-2024 (stage2only)}{table.caption.74}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {10}{\ignorespaces Stage~1 per-dataset evaluation (calibrated).}}{26}{table.caption.75}\protected@file@percent }
 \newlabel{tab:stage1_per_dataset}{{10}{26}{Stage~1 per-dataset evaluation (calibrated)}{table.caption.75}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Stage~2 EfficientNetV2-B3 per-dataset evaluation at threshold 0.70 (combined validation).}}{26}{table.caption.76}\protected@file@percent }
-\newlabel{tab:stage2_per_dataset}{{11}{26}{Stage~2 EfficientNetV2-B3 per-dataset evaluation at threshold 0.70 (combined validation)}{table.caption.76}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Stage~1 vs.\ Stage~2 performance on the combined validation split. Stage~1 is used as a fast filter within the cascade; Stage~2 serves as the high-accuracy expert.}}{26}{table.caption.77}\protected@file@percent }
-\newlabel{tab:stage1_stage2_compare}{{12}{26}{Stage~1 vs.\ Stage~2 performance on the combined validation split. Stage~1 is used as a fast filter within the cascade; Stage~2 serves as the high-accuracy expert}{table.caption.77}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces ROC curves for Stage~1 (left) and an expert model (right, EfficientNetV2) on combined validation.}}{26}{figure.caption.78}\protected@file@percent }
 \newlabel{fig:roc_baselines}{{2}{26}{ROC curves for Stage~1 (left) and an expert model (right, EfficientNetV2) on combined validation}{figure.caption.78}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces Stage~2 EfficientNetV2-B3 per-dataset evaluation at threshold 0.70 (combined validation).}}{27}{table.caption.76}\protected@file@percent }
+\newlabel{tab:stage2_per_dataset}{{11}{27}{Stage~2 EfficientNetV2-B3 per-dataset evaluation at threshold 0.70 (combined validation)}{table.caption.76}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces Stage~1 vs.\ Stage~2 performance on the combined validation split. Stage~1 is used as a fast filter within the cascade; Stage~2 serves as the high-accuracy expert.}}{27}{table.caption.77}\protected@file@percent }
+\newlabel{tab:stage1_stage2_compare}{{12}{27}{Stage~1 vs.\ Stage~2 performance on the combined validation split. Stage~1 is used as a fast filter within the cascade; Stage~2 serves as the high-accuracy expert}{table.caption.77}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Per-Dataset Performance Analysis}{27}{subsection.7.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {7.2.1}CelebDF-v2 Characteristics}{27}{subsubsection.7.2.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {7.2.2}FaceForensics++ Characteristics}{27}{subsubsection.7.2.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {7.2.3}DFDC (Deepfake Detection Challenge)}{27}{subsubsection.7.2.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {7.2.4}DeeperForensics-1.0 Characteristics}{27}{subsubsection.7.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {7.2.4}DeeperForensics-1.0 Characteristics}{28}{subsubsection.7.2.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {7.2.5}Cross-Dataset Patterns}{28}{subsubsection.7.2.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Meta-Model (Stage 3) Analysis}{28}{subsection.7.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Stage~2 expert vs.\ Stage~3 meta-model on combined validation. Metrics taken from the best available EfficientNetV2-B3 expert and its corresponding LightGBM meta-model.}}{28}{table.caption.79}\protected@file@percent }
-\newlabel{tab:stage2_stage3}{{13}{28}{Stage~2 expert vs.\ Stage~3 meta-model on combined validation. Metrics taken from the best available EfficientNetV2-B3 expert and its corresponding LightGBM meta-model}{table.caption.79}{}}
-\citation{guo2017calibration}
-\citation{minderer2021revisiting}
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces Stage~2 expert vs.\ Stage~3 meta-model on combined validation. Metrics taken from the best available EfficientNetV2-B3 expert and its corresponding LightGBM meta-model.}}{29}{table.caption.79}\protected@file@percent }
+\newlabel{tab:stage2_stage3}{{13}{29}{Stage~2 expert vs.\ Stage~3 meta-model on combined validation. Metrics taken from the best available EfficientNetV2-B3 expert and its corresponding LightGBM meta-model}{table.caption.79}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Stage~1 calibration (left) and confusion matrix (right).}}{29}{figure.caption.80}\protected@file@percent }
 \newlabel{fig:stage1_calib_conf}{{3}{29}{Stage~1 calibration (left) and confusion matrix (right)}{figure.caption.80}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Stage~2 calibration (left) and confusion matrix (right).}}{29}{figure.caption.81}\protected@file@percent }
-\newlabel{fig:stage2_calib_conf}{{4}{29}{Stage~2 calibration (left) and confusion matrix (right)}{figure.caption.81}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Cascade Threshold Tuning}{29}{subsection.7.4}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Best cascade configurations (validation). Low/high thresholds, metrics, and escalation rate.}}{29}{table.caption.82}\protected@file@percent }
-\newlabel{tab:cascade_best}{{14}{29}{Best cascade configurations (validation). Low/high thresholds, metrics, and escalation rate}{table.caption.82}{}}
+\citation{guo2017calibration}
+\citation{minderer2021revisiting}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Stage~2 calibration (left) and confusion matrix (right).}}{30}{figure.caption.81}\protected@file@percent }
+\newlabel{fig:stage2_calib_conf}{{4}{30}{Stage~2 calibration (left) and confusion matrix (right)}{figure.caption.81}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Cascade Threshold Tuning}{30}{subsection.7.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces Best cascade configurations (validation). Low/high thresholds, metrics, and escalation rate.}}{30}{table.caption.82}\protected@file@percent }
+\newlabel{tab:cascade_best}{{14}{30}{Best cascade configurations (validation). Low/high thresholds, metrics, and escalation rate}{table.caption.82}{}}
 \citation{wilddeepfake2021}
 \citation{pei2024deepfakesurvey}
 \citation{deepeval2024}
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Cascade threshold tuning heatmaps and best configuration metrics (example run).}}{30}{figure.caption.83}\protected@file@percent }
-\newlabel{fig:cascade_heatmaps}{{5}{30}{Cascade threshold tuning heatmaps and best configuration metrics (example run)}{figure.caption.83}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}Cross-Dataset Evaluation (Deepfake-Eval-2024)}{30}{subsection.7.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Cascade threshold tuning heatmaps and best configuration metrics (example run).}}{31}{figure.caption.83}\protected@file@percent }
+\newlabel{fig:cascade_heatmaps}{{5}{31}{Cascade threshold tuning heatmaps and best configuration metrics (example run)}{figure.caption.83}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}Cross-Dataset Evaluation (Deepfake-Eval-2024)}{31}{subsection.7.5}\protected@file@percent }
 \citation{kaya2019shallowdeep}
 \citation{durall2020watch}
 \citation{qian2020thinkingfrequency}
-\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Robustness: metric curves under common perturbations.}}{31}{figure.caption.84}\protected@file@percent }
-\newlabel{fig:robustness_curves}{{6}{31}{Robustness: metric curves under common perturbations}{figure.caption.84}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.6}Routing Strategies: Confidence vs. Entropy vs. Margin}{31}{subsection.7.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.7}Robustness to Common Perturbations}{31}{subsection.7.7}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Robustness: metric curves under common perturbations.}}{32}{figure.caption.84}\protected@file@percent }
+\newlabel{fig:robustness_curves}{{6}{32}{Robustness: metric curves under common perturbations}{figure.caption.84}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.6}Routing Strategies: Confidence vs. Entropy vs. Margin}{32}{subsection.7.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.7}Robustness to Common Perturbations}{32}{subsection.7.7}\protected@file@percent }
 \citation{durall2020watch}
 \citation{qian2020thinkingfrequency}
 \citation{carlini2017towards}
 \citation{undercover2023}
-\@writefile{toc}{\contentsline {paragraph}{Temporal segmentation and partial forgeries.}{32}{section*.85}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces Robustness summary by perturbation and level.}}{32}{table.caption.86}\protected@file@percent }
-\newlabel{tab:robustness_table}{{15}{32}{Robustness summary by perturbation and level}{table.caption.86}{}}
+\@writefile{toc}{\contentsline {paragraph}{Temporal segmentation and partial forgeries.}{33}{section*.85}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces Robustness summary by perturbation and level.}}{33}{table.caption.86}\protected@file@percent }
+\newlabel{tab:robustness_table}{{15}{33}{Robustness summary by perturbation and level}{table.caption.86}{}}
 \citation{li2021dabn}
-\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Representative FNR vs Stage-2 escalation rate trade-off curves under threshold sweeps. Left: JPEG quality 20 (heavy compression); middle: JPEG quality 95 (light compression); right: Gaussian noise with $\sigma =12$.}}{33}{figure.caption.87}\protected@file@percent }
-\newlabel{fig:robustness_tradeoff}{{7}{33}{Representative FNR vs Stage-2 escalation rate trade-off curves under threshold sweeps. Left: JPEG quality 20 (heavy compression); middle: JPEG quality 95 (light compression); right: Gaussian noise with $\sigma =12$}{figure.caption.87}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.8}Error Analysis and Failure Mode Taxonomy}{33}{subsection.7.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.9}On-device Results}{34}{subsection.7.9}\protected@file@percent }
-\newlabel{sec:ondevice_results}{{7.9}{34}{On-device Results}{subsection.7.9}{}}
-\@writefile{toc}{\contentsline {paragraph}{Key Findings.}{34}{section*.88}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Latency.}{34}{section*.89}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Comparison with PC Results.}{34}{section*.90}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces PC vs.\ mobile cascade comparison. PC metrics from combined validation; mobile metrics from \texttt  {mobile\_eval} (152 images).}}{34}{table.caption.91}\protected@file@percent }
-\newlabel{tab:pc_vs_mobile}{{16}{34}{PC vs.\ mobile cascade comparison. PC metrics from combined validation; mobile metrics from \texttt {mobile\_eval} (152 images)}{table.caption.91}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {8}Ablation Studies}{34}{section.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {8.1}Component Contribution Analysis}{35}{subsection.8.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {8.1.1}Stage-Wise Performance Comparison}{35}{subsubsection.8.1.1}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {17}{\ignorespaces Stage\hyp  wise performance comparison. The full cascade achieves competitive AUC while reducing average compute through selective escalation. FNR is critical for trust and safety applications.}}{35}{table.caption.92}\protected@file@percent }
-\newlabel{tab:ablation_stagewise}{{17}{35}{Stage\hyp wise performance comparison. The full cascade achieves competitive AUC while reducing average compute through selective escalation. FNR is critical for trust and safety applications}{table.caption.92}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Representative FNR vs Stage-2 escalation rate trade-off curves under threshold sweeps. Left: JPEG quality 20 (heavy compression); middle: JPEG quality 95 (light compression); right: Gaussian noise with $\sigma =12$.}}{34}{figure.caption.87}\protected@file@percent }
+\newlabel{fig:robustness_tradeoff}{{7}{34}{Representative FNR vs Stage-2 escalation rate trade-off curves under threshold sweeps. Left: JPEG quality 20 (heavy compression); middle: JPEG quality 95 (light compression); right: Gaussian noise with $\sigma =12$}{figure.caption.87}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.8}Error Analysis and Failure Mode Taxonomy}{34}{subsection.7.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.9}On-device Results}{35}{subsection.7.9}\protected@file@percent }
+\newlabel{sec:ondevice_results}{{7.9}{35}{On-device Results}{subsection.7.9}{}}
+\@writefile{toc}{\contentsline {paragraph}{Key Findings.}{35}{section*.88}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Latency.}{35}{section*.89}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Comparison with PC Results.}{35}{section*.90}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces PC vs.\ mobile cascade comparison. PC metrics from combined validation; mobile metrics from \texttt  {mobile\_eval} (152 images).}}{35}{table.caption.91}\protected@file@percent }
+\newlabel{tab:pc_vs_mobile}{{16}{35}{PC vs.\ mobile cascade comparison. PC metrics from combined validation; mobile metrics from \texttt {mobile\_eval} (152 images)}{table.caption.91}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Ablation Studies}{35}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.1}Component Contribution Analysis}{36}{subsection.8.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {8.1.1}Stage-Wise Performance Comparison}{36}{subsubsection.8.1.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {17}{\ignorespaces Stage\hyp  wise performance comparison. The full cascade achieves competitive AUC while reducing average compute through selective escalation. FNR is critical for trust and safety applications.}}{36}{table.caption.92}\protected@file@percent }
+\newlabel{tab:ablation_stagewise}{{17}{36}{Stage\hyp wise performance comparison. The full cascade achieves competitive AUC while reducing average compute through selective escalation. FNR is critical for trust and safety applications}{table.caption.92}{}}
 \citation{guo2017calibration}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {8.1.2}Escalation Rate vs.\ Performance Trade-off}{36}{subsubsection.8.1.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {8.2}Hard Example Mining Analysis}{36}{subsection.8.2}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {18}{\ignorespaces Impact of hard example mining on Stage~2 EfficientNetV2\hyp  B3 training. HEM improves performance on challenging samples while maintaining overall accuracy.}}{36}{table.caption.93}\protected@file@percent }
-\newlabel{tab:ablation_hem}{{18}{36}{Impact of hard example mining on Stage~2 EfficientNetV2\hyp B3 training. HEM improves performance on challenging samples while maintaining overall accuracy}{table.caption.93}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}Temperature Scaling Calibration}{36}{subsection.8.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {19}{\ignorespaces Effect of temperature scaling on Stage~1 MobileNetV4 calibration. Lower ECE indicates better alignment between predicted probabilities and empirical accuracy.}}{37}{table.caption.94}\protected@file@percent }
-\newlabel{tab:ablation_calibration}{{19}{37}{Effect of temperature scaling on Stage~1 MobileNetV4 calibration. Lower ECE indicates better alignment between predicted probabilities and empirical accuracy}{table.caption.94}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {8.4}Meta-Model Contribution}{37}{subsection.8.4}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {20}{\ignorespaces Stage~3 meta\hyp  model fusion results. Metrics are taken from the best available EfficientNetV2\hyp  B3 expert and its corresponding LightGBM meta\hyp  model on the combined validation split.}}{37}{table.caption.95}\protected@file@percent }
-\newlabel{tab:ablation_metamodel}{{20}{37}{Stage~3 meta\hyp model fusion results. Metrics are taken from the best available EfficientNetV2\hyp B3 expert and its corresponding LightGBM meta\hyp model on the combined validation split}{table.caption.95}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {8.5}Summary of Ablation Findings}{38}{subsection.8.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {9}Mobile Deployment}{38}{section.9}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{On-device Pipeline.}{39}{section*.96}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Application Features.}{39}{section*.97}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Detection Logging.}{39}{section*.98}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{On-device Evaluation Setup.}{40}{section*.99}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {21}{\ignorespaces Exported on-device model artifacts.}}{40}{table.caption.101}\protected@file@percent }
-\newlabel{tab:mobile_artifacts_auto}{{21}{40}{Exported on-device model artifacts}{table.caption.101}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {22}{\ignorespaces On-device cascade runtime and usage.}}{40}{table.caption.102}\protected@file@percent }
-\newlabel{tab:mobile_runtime_auto}{{22}{40}{On-device cascade runtime and usage}{table.caption.102}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {23}{\ignorespaces On-device accuracy and error rates.}}{40}{table.caption.103}\protected@file@percent }
-\newlabel{tab:mobile_accuracy_auto}{{23}{40}{On-device accuracy and error rates}{table.caption.103}{}}
-\@writefile{toc}{\contentsline {paragraph}{Model Artifacts.}{40}{table.caption.103}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Runtime Performance.}{40}{section*.104}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {8.1.2}Escalation Rate vs.\ Performance Trade-off}{37}{subsubsection.8.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.2}Hard Example Mining Analysis}{37}{subsection.8.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {18}{\ignorespaces Impact of hard example mining on Stage~2 EfficientNetV2\hyp  B3 training. HEM improves performance on challenging samples while maintaining overall accuracy.}}{37}{table.caption.93}\protected@file@percent }
+\newlabel{tab:ablation_hem}{{18}{37}{Impact of hard example mining on Stage~2 EfficientNetV2\hyp B3 training. HEM improves performance on challenging samples while maintaining overall accuracy}{table.caption.93}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.3}Temperature Scaling Calibration}{37}{subsection.8.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {19}{\ignorespaces Effect of temperature scaling on Stage~1 MobileNetV4 calibration. Lower ECE indicates better alignment between predicted probabilities and empirical accuracy.}}{38}{table.caption.94}\protected@file@percent }
+\newlabel{tab:ablation_calibration}{{19}{38}{Effect of temperature scaling on Stage~1 MobileNetV4 calibration. Lower ECE indicates better alignment between predicted probabilities and empirical accuracy}{table.caption.94}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.4}Meta-Model Contribution}{38}{subsection.8.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {20}{\ignorespaces Stage~3 meta\hyp  model fusion results. Metrics are taken from the best available EfficientNetV2\hyp  B3 expert and its corresponding LightGBM meta\hyp  model on the combined validation split.}}{39}{table.caption.95}\protected@file@percent }
+\newlabel{tab:ablation_metamodel}{{20}{39}{Stage~3 meta\hyp model fusion results. Metrics are taken from the best available EfficientNetV2\hyp B3 expert and its corresponding LightGBM meta\hyp model on the combined validation split}{table.caption.95}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {8.5}Summary of Ablation Findings}{39}{subsection.8.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Mobile Deployment}{39}{section.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{On-device Pipeline.}{40}{section*.96}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Application Features.}{40}{section*.97}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Detection Logging.}{41}{section*.98}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{On-device Evaluation Setup.}{41}{section*.99}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {21}{\ignorespaces Exported on-device model artifacts.}}{41}{table.caption.101}\protected@file@percent }
+\newlabel{tab:mobile_artifacts_auto}{{21}{41}{Exported on-device model artifacts}{table.caption.101}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {22}{\ignorespaces On-device cascade runtime and usage.}}{41}{table.caption.102}\protected@file@percent }
+\newlabel{tab:mobile_runtime_auto}{{22}{41}{On-device cascade runtime and usage}{table.caption.102}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {23}{\ignorespaces On-device accuracy and error rates.}}{41}{table.caption.103}\protected@file@percent }
+\newlabel{tab:mobile_accuracy_auto}{{23}{41}{On-device accuracy and error rates}{table.caption.103}{}}
+\@writefile{toc}{\contentsline {paragraph}{Model Artifacts.}{41}{table.caption.103}\protected@file@percent }
 \citation{gholami2021quant_survey}
 \citation{blalock2020pruningsurvey}
 \citation{gou2021kdsurvey}
-\@writefile{toc}{\contentsline {paragraph}{Accuracy and Error Rates.}{41}{section*.105}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{PTQ vs.\ QAT.}{41}{section*.106}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {24}{\ignorespaces Estimated cascade latency on a desktop CPU baseline using TorchScript models on synthetic inputs. Stage~2 rate corresponds to the safety-first configuration in Table~\ref {tab:cascade_best}.}}{41}{table.caption.107}\protected@file@percent }
-\newlabel{tab:mobile_perf}{{24}{41}{Estimated cascade latency on a desktop CPU baseline using TorchScript models on synthetic inputs. Stage~2 rate corresponds to the safety-first configuration in Table~\ref {tab:cascade_best}}{table.caption.107}{}}
-\@writefile{toc}{\contentsline {paragraph}{Compute Savings.}{41}{section*.108}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Limitations and Future Work.}{41}{section*.109}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Runtime Performance.}{42}{section*.104}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Accuracy and Error Rates.}{42}{section*.105}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{PTQ vs.\ QAT.}{42}{section*.106}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {24}{\ignorespaces Estimated cascade latency on a desktop CPU baseline using TorchScript models on synthetic inputs. Stage~2 rate corresponds to the safety-first configuration in Table~\ref {tab:cascade_best}.}}{42}{table.caption.107}\protected@file@percent }
+\newlabel{tab:mobile_perf}{{24}{42}{Estimated cascade latency on a desktop CPU baseline using TorchScript models on synthetic inputs. Stage~2 rate corresponds to the safety-first configuration in Table~\ref {tab:cascade_best}}{table.caption.107}{}}
+\@writefile{toc}{\contentsline {paragraph}{Compute Savings.}{42}{section*.108}\protected@file@percent }
 \citation{dosovitskiy2021vit}
 \citation{liu2021swin}
 \citation{pei2024deepfakesurvey}
-\@writefile{toc}{\contentsline {section}{\numberline {10}Discussion}{42}{section.10}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {25}{\ignorespaces Example deployment scenarios and operating points on the combined validation split (derived from Stage~4 best configurations). FNR and Stage~2 rate are reported as fractions.}}{43}{table.caption.111}\protected@file@percent }
-\newlabel{tab:deployment_scenarios}{{25}{43}{Example deployment scenarios and operating points on the combined validation split (derived from Stage~4 best configurations). FNR and Stage~2 rate are reported as fractions}{table.caption.111}{}}
+\@writefile{toc}{\contentsline {paragraph}{Limitations and Future Work.}{43}{section*.109}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {10}Discussion}{43}{section.10}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {25}{\ignorespaces Example deployment scenarios and operating points on the combined validation split (derived from Stage~4 best configurations). FNR and Stage~2 rate are reported as fractions.}}{44}{table.caption.111}\protected@file@percent }
+\newlabel{tab:deployment_scenarios}{{25}{44}{Example deployment scenarios and operating points on the combined validation split (derived from Stage~4 best configurations). FNR and Stage~2 rate are reported as fractions}{table.caption.111}{}}
 \citation{wang2018deepDA_survey}
 \citation{kaya2019shallowdeep}
 \citation{genconvit_github}
@@ -420,40 +420,40 @@
 \citation{jiang2020deeperforensics}
 \citation{verdoliva2020forensics_survey}
 \citation{deepeval2024}
+\@writefile{toc}{\contentsline {section}{\numberline {11}Ethics and Societal Impact}{47}{section.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Dataset Governance and Gated Access.}{47}{section*.120}\protected@file@percent }
 \citation{deepeval2024}
 \citation{pei2024deepfakesurvey}
-\@writefile{toc}{\contentsline {section}{\numberline {11}Ethics and Societal Impact}{46}{section.11}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Dataset Governance and Gated Access.}{46}{section*.120}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Privacy and On-Device Processing.}{46}{section*.121}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Dual Use and Responsible Release.}{46}{section*.122}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Bias, Fairness, and Representativeness.}{46}{section*.123}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Societal Impact and Use Cases.}{47}{section*.124}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Limitations and Human Oversight.}{47}{section*.125}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {12}Conclusion}{47}{section.12}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Key Findings.}{48}{section*.126}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Privacy and On-Device Processing.}{48}{section*.121}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Dual Use and Responsible Release.}{48}{section*.122}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Bias, Fairness, and Representativeness.}{48}{section*.123}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Societal Impact and Use Cases.}{48}{section*.124}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Limitations and Human Oversight.}{48}{section*.125}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {12}Conclusion}{49}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Key Findings.}{49}{section*.126}\protected@file@percent }
 \citation{li2021dabn}
-\@writefile{toc}{\contentsline {paragraph}{Deployment Implications.}{49}{section*.127}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Limitations and Future Work.}{49}{section*.128}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Broader Impact.}{50}{section*.129}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Conclusion.}{50}{section*.130}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Implementation Note on the Cascade Prototype.}{50}{section*.132}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Deployment Implications.}{50}{section*.127}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Limitations and Future Work.}{50}{section*.128}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Broader Impact.}{51}{section*.129}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Conclusion.}{52}{section*.130}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Implementation Note on the Cascade Prototype.}{52}{section*.132}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Stage~1/2/3 Training Hyperparameters.}{52}{section*.134}\protected@file@percent }
 \citation{guo2017calibration}
-\@writefile{toc}{\contentsline {paragraph}{Stage~1/2/3 Training Hyperparameters.}{51}{section*.134}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Stage~1 Convergence Characteristics.}{51}{section*.139}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Stage~2 Convergence Characteristics.}{51}{section*.140}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Hard Example Categories.}{52}{section*.145}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Stage~1 Convergence Characteristics.}{53}{section*.139}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Stage~2 Convergence Characteristics.}{53}{section*.140}\protected@file@percent }
 \citation{genconvit_github}
-\@writefile{toc}{\contentsline {paragraph}{Quantization Impact.}{53}{section*.150}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Integration Setup.}{53}{section*.155}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Architecture Overview.}{53}{section*.156}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Training Behaviour.}{53}{section*.157}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Validation Performance.}{53}{section*.158}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Hard Example Categories.}{54}{section*.145}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Quantization Impact.}{54}{section*.150}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Integration Setup.}{55}{section*.155}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Architecture Overview.}{55}{section*.156}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Training Behaviour.}{55}{section*.157}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Validation Performance.}{55}{section*.158}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Impact on Cascade and Meta\hyp  Model.}{55}{section*.159}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Takeaways.}{55}{section*.160}\protected@file@percent }
 \bibstyle{ieeetr}
 \bibdata{references}
 \bibcite{deepeval2024}{1}
 \bibcite{dosovitskiy2021vit}{2}
-\@writefile{toc}{\contentsline {paragraph}{Impact on Cascade and Meta\hyp  Model.}{54}{section*.159}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Takeaways.}{54}{section*.160}\protected@file@percent }
 \bibcite{liu2021swin}{3}
 \bibcite{rossler2019faceforensicspp}{4}
 \bibcite{li2020celebdf}{5}
@@ -557,16 +557,16 @@
 \bibcite{ke2017lightgbm}{103}
 \bibcite{paszke2019pytorch}{104}
 \bibcite{pedregosa2011sklearn}{105}
-\@writefile{lot}{\contentsline {table}{\numberline {26}{\ignorespaces Training hyperparameters by stage. Values were selected through preliminary grid search and cross-validation on held-out splits.}}{62}{table.caption.135}\protected@file@percent }
-\newlabel{tab:hyperparams_appendix}{{26}{62}{Training hyperparameters by stage. Values were selected through preliminary grid search and cross-validation on held-out splits}{table.caption.135}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {27}{\ignorespaces Per-generator performance breakdown on FaceForensics++ test split. Stage~2 EfficientNetV2-B3 calibrated model. Results show that GAN-based methods (Deepfakes, FaceSwap) are easier to detect than neural rendering techniques (NeuralTextures).}}{63}{table.caption.137}\protected@file@percent }
-\newlabel{tab:per_generator_appendix}{{27}{63}{Per-generator performance breakdown on FaceForensics++ test split. Stage~2 EfficientNetV2-B3 calibrated model. Results show that GAN-based methods (Deepfakes, FaceSwap) are easier to detect than neural rendering techniques (NeuralTextures)}{table.caption.137}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {28}{\ignorespaces Per-dataset optimal Stage~1 thresholds at target recall = 0.95. Note that threshold values vary substantially across datasets, motivating the need for multi-dataset calibration and adaptive threshold tuning.}}{63}{table.caption.143}\protected@file@percent }
-\newlabel{tab:per_dataset_threshold_appendix}{{28}{63}{Per-dataset optimal Stage~1 thresholds at target recall = 0.95. Note that threshold values vary substantially across datasets, motivating the need for multi-dataset calibration and adaptive threshold tuning}{table.caption.143}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {29}{\ignorespaces Calibration transfer analysis. ECE measured on test sets when applying temperature learned on FaceForensics++ validation vs.\ dataset-specific temperature. Lower ECE indicates better calibration. Results show modest degradation (ECE +1--2\%) when transferring calibration across datasets, supporting our multi-dataset calibration approach.}}{63}{table.caption.147}\protected@file@percent }
-\newlabel{tab:calibration_transfer_appendix}{{29}{63}{Calibration transfer analysis. ECE measured on test sets when applying temperature learned on FaceForensics++ validation vs.\ dataset-specific temperature. Lower ECE indicates better calibration. Results show modest degradation (ECE +1--2\%) when transferring calibration across datasets, supporting our multi-dataset calibration approach}{table.caption.147}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {30}{\ignorespaces Comparison of mobile export formats for Stage~1 and Stage~2 models. TorchScript provides a good balance of size and compatibility for PyTorch Mobile integration, while ONNX offers broader framework support with slightly larger artifacts.}}{63}{table.caption.149}\protected@file@percent }
-\newlabel{tab:export_artifact_comparison_appendix}{{30}{63}{Comparison of mobile export formats for Stage~1 and Stage~2 models. TorchScript provides a good balance of size and compatibility for PyTorch Mobile integration, while ONNX offers broader framework support with slightly larger artifacts}{table.caption.149}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {31}{\ignorespaces Training time and computational requirements. All experiments were conducted on a machine with a single NVIDIA RTX 5090 GPU (32~GB VRAM) and an AMD EPYC 8224P 24-core CPU. Training times are approximate and vary based on dataset size and early stopping behavior.}}{64}{table.caption.152}\protected@file@percent }
-\newlabel{tab:training_time_appendix}{{31}{64}{Training time and computational requirements. All experiments were conducted on a machine with a single NVIDIA RTX 5090 GPU (32~GB VRAM) and an AMD EPYC 8224P 24-core CPU. Training times are approximate and vary based on dataset size and early stopping behavior}{table.caption.152}{}}
-\gdef \@abspage@last{64}
+\@writefile{lot}{\contentsline {table}{\numberline {26}{\ignorespaces Training hyperparameters by stage. Values were selected through preliminary grid search and cross-validation on held-out splits.}}{63}{table.caption.135}\protected@file@percent }
+\newlabel{tab:hyperparams_appendix}{{26}{63}{Training hyperparameters by stage. Values were selected through preliminary grid search and cross-validation on held-out splits}{table.caption.135}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {27}{\ignorespaces Per-generator performance breakdown on FaceForensics++ test split. Stage~2 EfficientNetV2-B3 calibrated model. Results show that GAN-based methods (Deepfakes, FaceSwap) are easier to detect than neural rendering techniques (NeuralTextures).}}{64}{table.caption.137}\protected@file@percent }
+\newlabel{tab:per_generator_appendix}{{27}{64}{Per-generator performance breakdown on FaceForensics++ test split. Stage~2 EfficientNetV2-B3 calibrated model. Results show that GAN-based methods (Deepfakes, FaceSwap) are easier to detect than neural rendering techniques (NeuralTextures)}{table.caption.137}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {28}{\ignorespaces Per-dataset optimal Stage~1 thresholds at target recall = 0.95. Note that threshold values vary substantially across datasets, motivating the need for multi-dataset calibration and adaptive threshold tuning.}}{64}{table.caption.143}\protected@file@percent }
+\newlabel{tab:per_dataset_threshold_appendix}{{28}{64}{Per-dataset optimal Stage~1 thresholds at target recall = 0.95. Note that threshold values vary substantially across datasets, motivating the need for multi-dataset calibration and adaptive threshold tuning}{table.caption.143}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {29}{\ignorespaces Calibration transfer analysis. ECE measured on test sets when applying temperature learned on FaceForensics++ validation vs.\ dataset-specific temperature. Lower ECE indicates better calibration. Results show modest degradation (ECE +1--2\%) when transferring calibration across datasets, supporting our multi-dataset calibration approach.}}{64}{table.caption.147}\protected@file@percent }
+\newlabel{tab:calibration_transfer_appendix}{{29}{64}{Calibration transfer analysis. ECE measured on test sets when applying temperature learned on FaceForensics++ validation vs.\ dataset-specific temperature. Lower ECE indicates better calibration. Results show modest degradation (ECE +1--2\%) when transferring calibration across datasets, supporting our multi-dataset calibration approach}{table.caption.147}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {30}{\ignorespaces Comparison of mobile export formats for Stage~1 and Stage~2 models. TorchScript provides a good balance of size and compatibility for PyTorch Mobile integration, while ONNX offers broader framework support with slightly larger artifacts.}}{64}{table.caption.149}\protected@file@percent }
+\newlabel{tab:export_artifact_comparison_appendix}{{30}{64}{Comparison of mobile export formats for Stage~1 and Stage~2 models. TorchScript provides a good balance of size and compatibility for PyTorch Mobile integration, while ONNX offers broader framework support with slightly larger artifacts}{table.caption.149}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {31}{\ignorespaces Training time and computational requirements. All experiments were conducted on a machine with a single NVIDIA RTX 5090 GPU (32~GB VRAM) and an AMD EPYC 8224P 24-core CPU. Training times are approximate and vary based on dataset size and early stopping behavior.}}{65}{table.caption.152}\protected@file@percent }
+\newlabel{tab:training_time_appendix}{{31}{65}{Training time and computational requirements. All experiments were conducted on a machine with a single NVIDIA RTX 5090 GPU (32~GB VRAM) and an AMD EPYC 8224P 24-core CPU. Training times are approximate and vary based on dataset size and early stopping behavior}{table.caption.152}{}}
+\gdef \@abspage@last{65}

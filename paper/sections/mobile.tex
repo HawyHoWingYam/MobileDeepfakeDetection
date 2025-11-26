@@ -24,7 +24,7 @@ The Android app provides several detection modes tailored to different use cases
   \item \textbf{Single image}: Select one image from the gallery; the app displays the face crop preview and final result including label, confidence, stage used, and timing breakdown.
   \item \textbf{Batch detection}: Select multiple images for sequential processing; upon completion, a summary shows total count, number of detected deepfakes, Stage~2 usage rate, and average latency per image.
   \item \textbf{Video detection}: The app extracts frames at 1\hyp second intervals (up to 200 frames) and processes each frame independently, reporting the proportion of deepfake frames and average per\hyp frame latency.
-  \item \textbf{Folder detection}: A directory picker allows selecting an entire folder; all images and videos within are processed recursively, enabling evaluation of test sets like \texttt{mobile\_eval}.
+  \item \textbf{Folder detection}: A directory picker allows selecting an entire folder; all images and videos within are processed recursively, enabling evaluation of test sets like the static\hyp image subset \texttt{mobile\_eval}.
 \end{itemize}
 
 \paragraph{Detection Logging.}
@@ -32,7 +32,7 @@ All detection results are appended to \texttt{detection\_logs.csv} in the app's 
 
 %----------------------------------------------------------------------
 \paragraph{On-device Evaluation Setup.}
-We evaluated the deployed cascade on a Xiaomi~13 smartphone featuring a Qualcomm Snapdragon~8~Gen~2 system\hyp on\hyp chip with an octa\hyp core CPU configuration: $1\times$ Cortex\hyp X3 @ 3.2\,GHz, $2\times$ Cortex\hyp A715 @ 2.8\,GHz, $2\times$ Cortex\hyp A710 @ 2.8\,GHz, and $3\times$ Cortex\hyp A510 @ 2.0\,GHz. The device has 8\,GB LPDDR5 RAM and runs Android~13. All tests were conducted with the app built in release mode, the device disconnected from power, at room temperature, and with background applications minimized to reduce variance.
+We evaluated the deployed cascade on a Xiaomi~13 smartphone featuring a Qualcomm Snapdragon~8~Gen~2 system\hyp on\hyp chip with an octa\hyp core CPU configuration: $1\times$ Cortex\hyp X3 @ 3.2\,GHz, $2\times$ Cortex\hyp A715 @ 2.8\,GHz, $2\times$ Cortex\hyp A710 @ 2.8\,GHz, and $3\times$ Cortex\hyp A510 @ 2.0\,GHz. The device has 8\,GB LPDDR5 RAM and runs Android~13. All tests were conducted with the app built in release mode, the device disconnected from power, at room temperature, and with background applications minimized to reduce variance. To keep results broadly applicable, we intentionally use CPU\hyp only inference without NNAPI/GPU delegates, treating the reported latency as a conservative ``worst\hyp case'' baseline that applies even when specialised accelerators are unavailable or misconfigured.
 
 Timing measurements are captured within the application: \texttt{preprocess\_ms} covers image loading, face cropping, and tensor conversion; \texttt{inference\_ms} measures ONNX Runtime execution of Stage~1 and (if triggered) Stage~2; \texttt{total\_ms} is the wall\hyp clock time from image selection to result display. The reported statistics are averages over all samples in the test run.
 
@@ -41,11 +41,11 @@ Timing measurements are captured within the application: \texttt{preprocess\_ms}
 % Auto-generated artifact table
 \input{generated/mobile_tables}
 
-Table~\ref{tab:mobile_artifacts_auto} lists the exported model sizes. The combined Stage~1 and Stage~2 ONNX models total approximately 87\,MB, which is acceptable for modern smartphones with multi\hyp gigabyte storage. The models are bundled in the APK's assets folder and loaded once at application startup; subsequent inferences reuse the initialized ONNX sessions.
+Table~\ref{tab:mobile_artifacts_auto} lists the exported model sizes. The combined Stage~1 and Stage~2 ONNX models total approximately 87\,MB, which is acceptable for modern smartphones with multi\hyp gigabyte storage. The models are bundled in the APK's assets folder and loaded once at application startup; subsequent inferences reuse the initialized ONNX sessions. In line with the core system design, only the two CNN stages (MobileNetV4 and EfficientNetV2\hyp B3) are exported to ONNX; the optional Stage~3 LightGBM meta\hyp model remains an offline analysis component and is not deployed on device in the current export pipeline.
 
 %----------------------------------------------------------------------
 \paragraph{Runtime Performance.}
-Table~\ref{tab:mobile_runtime_auto} summarizes the on\hyp device inference statistics. On the \texttt{mobile\_eval} subset (152 images), the cascade achieves an average total latency of approximately 180\,ms per image, with Stage~2 invoked for only 7.2\% of samples under the default threshold configuration. Compared to the desktop CPU baseline (Table~\ref{tab:mobile_perf}), mobile latency is roughly $2\times$ higher, which is expected given the lower clock speeds and thermal constraints of mobile SoCs. Importantly, the Stage~2 escalation rate on mobile (7.2\%) is slightly higher than on the desktop validation set (1.2\%), likely due to distribution differences in the \texttt{mobile\_eval} subset rather than platform\hyp specific effects.
+Table~\ref{tab:mobile_runtime_auto} summarizes the on\hyp device inference statistics. On the \texttt{mobile\_eval} subset (152 static images), the cascade achieves an average total latency of approximately 180\,ms per image, with Stage~2 invoked for only 7.2\% of samples under the default threshold configuration. Compared to the desktop CPU baseline (Table~\ref{tab:mobile_perf}), mobile latency is roughly $2\times$ higher, which is expected given the lower clock speeds and thermal constraints of mobile SoCs. Importantly, the Stage~2 escalation rate on mobile (7.2\%) is slightly higher than on the desktop validation set (1.2\%), likely due to distribution differences in the \texttt{mobile\_eval} subset rather than platform\hyp specific effects.
 
 The first inference after app launch incurs a one\hyp time model loading overhead of approximately 500\,ms; subsequent ``warm'' inferences average around 180\,ms. For batch and folder detection modes, this startup cost is amortized across all samples.
 
@@ -87,8 +87,8 @@ The current on\hyp device evaluation has several limitations that suggest direct
 
 \begin{itemize}[leftmargin=*,itemsep=2pt]
   \item \textbf{Single device}: We report results on one flagship smartphone; multi\hyp device evaluation across different SoC tiers (mid\hyp range, entry\hyp level) would characterize performance variability.
-  \item \textbf{Static images only}: While video detection is implemented, systematic video\hyp level evaluation (aggregating frame predictions) remains future work.
-  \item \textbf{No hardware acceleration}: The current implementation uses CPU inference only; enabling NNAPI or GPU delegates in ONNX Runtime could reduce latency.
+  \item \textbf{Static\hyp image evaluation only}: While the deployed app supports frame\hyp by\hyp frame video processing, the quantitative on\hyp device benchmarks reported here are restricted to a stratified static\hyp image subset (\texttt{mobile\_eval}); systematic video\hyp level evaluation (aggregating frame predictions) remains future work.
+  \item \textbf{CPU\hyp only baseline, no hardware acceleration}: The current implementation uses CPU inference only, providing a universally available baseline even on devices without reliable NNAPI/GPU support; enabling NNAPI or GPU delegates in ONNX Runtime is expected to further reduce latency and is left to future work.
   \item \textbf{Basic face detection}: The Android \texttt{FaceDetector} API is deprecated and less accurate than modern solutions like MediaPipe; integration with a robust face detector would improve preprocessing quality.
   \item \textbf{Energy profiling}: Battery and thermal measurements during continuous detection would provide practical deployment guidance.
 \end{itemize}

@@ -68,8 +68,8 @@ The final implementation trains and validates on four academic datasets:
 
 All video datasets are preprocessed into **256×256 face crops** using a unified pipeline (MTCNN face detection + resizing), and described by CSV manifests.
 
-> **DF40** is used only to analyze the desired **256×256 PNG** specification in early planning.  
-> It does **not** participate in the final training pipeline.
+> **DF40** is referenced as a public benchmark that already uses **256×256 PNG** face crops, helping us choose a resolution that balances fidelity and mobile latency and remains compatible with newer in‑the‑wild datasets.  
+> It does **not** participate in the final training or evaluation pipeline.
 
 ### 3.2 OOD Evaluation Dataset
 
@@ -101,7 +101,7 @@ This matches the paper’s Method section.
 
 3. **Stage 2 – Expert Model (EfficientNetV2‑B3)**  
    - Train with `src/stage2/train_stage2_effnet.py` on the same combined manifest using EfficientNetV2‑B3, stronger augmentation (RandAugment + Mixup/CutMix), and Focal Loss with cosine‑annealing warm restarts (defaults match the paper’s hyperparameters).  
-   - Optional hard‑example mining (HEM) ablations oversample a difficult subset derived from Stage‑1 scores; the released training script defaults to uniform sampling and corresponds to the main reported EfficientNetV2‑B3 results.  
+   - Optional hard‑example mining (HEM) ablations oversample a difficult subset derived from Stage‑1 scores; to keep the public pipeline simple and reproducible, the released training script defaults to uniform sampling and corresponds to the main reported EfficientNetV2‑B3 results. Deployments that can afford the extra complexity and training cost may enable HEM for additional FNR reductions.  
    - Calibrate Stage‑2 probabilities and cache logits/embeddings for cascade tuning and optional meta‑model experiments.
 
 4. **Stage 3 – Meta‑Model (optional)**  
