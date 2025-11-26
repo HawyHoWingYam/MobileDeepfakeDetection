@@ -1,7 +1,7 @@
 % Mobile Deployment Section
 
 % Overview paragraph
-To enable practical deployment on resource\hyp constrained mobile devices, we developed a native Android application that runs the two\hyp stage cascade entirely on\hyp device. The same Stage~1 (MobileNetV4) and Stage~2 (EfficientNetV2\hyp B3) weights trained on desktop are exported to ONNX format and bundled into the application package. This approach ensures that (1)~user media never leaves the device, preserving privacy; (2)~the cascade thresholds tuned on the PC validation set transfer directly to mobile without re\hyp calibration; and (3)~performance characteristics remain consistent across platforms.
+To enable practical deployment on resource\hyp constrained mobile devices, we developed a native Android application that runs the two\hyp stage cascade entirely on\hyp device. The same Stage~1 (MobileNetV4) and Stage~2 (EfficientNetV2\hyp B3) weights trained on desktop are exported to ONNX format and bundled into the application package. Alongside the weights, we export the calibrated temperatures from the Stage~1 and Stage~2 temperature\hyp scaling procedures (Section~\ref{sec:pipeline_overview}) and embed them into a lightweight cascade configuration JSON used by the app. This approach ensures that (1)~user media never leaves the device, preserving privacy; (2)~the cascade thresholds and calibration temperatures tuned on the PC validation set transfer directly to mobile without re\hyp fitting; and (3)~performance characteristics remain consistent across platforms.
 
 The application supports four detection modes: \emph{single image} selection from the gallery, \emph{batch} processing of multiple selected images, \emph{video} frame\hyp by\hyp frame analysis with configurable sampling rate, and \emph{folder} traversal for evaluation of entire directories. All detection results are logged to a structured CSV file that records timing breakdowns and cascade routing decisions, enabling systematic performance analysis.
 
@@ -28,7 +28,7 @@ The Android app provides several detection modes tailored to different use cases
 \end{itemize}
 
 \paragraph{Detection Logging.}
-All detection results are appended to \texttt{detection\_logs.csv} in the app's external storage directory. Each row contains: timestamp, source URI, predicted label, binary deepfake indicator, confidence score, cascade stage, preprocessing time (ms), inference time (ms), total time (ms), threshold values ($\tau_\mathrm{low}$, $\tau_\mathrm{high}$, $\tau_\mathrm{s2}$), and a flag indicating whether Stage~2 was invoked. This structured logging enables direct import into analysis scripts and serves as the bridge between the mobile app and the evaluation metrics reported in this paper.
+All detection results are appended to \texttt{detection\_logs.csv} in the app's external storage directory. Each row contains: timestamp, source URI, predicted label, binary deepfake indicator, confidence score, cascade stage, preprocessing time (ms), inference time (ms), total time (ms), threshold values ($\tau_\mathrm{low}$, $\tau_\mathrm{high}$, $\tau_\mathrm{s2}$), the Stage~2 calibration temperature, and a flag indicating whether Stage~2 was invoked. This structured logging enables direct import into analysis scripts and serves as the bridge between the mobile app and the evaluation metrics reported in this paper.
 
 %----------------------------------------------------------------------
 \paragraph{On-device Evaluation Setup.}

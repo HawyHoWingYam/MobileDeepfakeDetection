@@ -38,7 +38,7 @@ from PIL import Image
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score, f1_score, accuracy_score
 import matplotlib.pyplot as plt
-from src.stage2.genconvit.common.losses import ClassificationLoss
+from src.common.losses import ClassificationLoss
 
 # Setup logging
 def setup_logging(output_dir):
@@ -231,7 +231,7 @@ def get_transforms(input_size=(256, 256)):
     return train_transform, val_transform
 
 def create_model(
-    model_name="tf_efficientnetv2_b3",
+    model_name="efficientnetv2_b3.in21k_ft_in1k",
     num_classes=1,
     pretrained=True,
     drop_rate=0.3,
@@ -461,7 +461,7 @@ def main():
     
     # Model arguments
     parser.add_argument('--model_name', type=str, 
-                        default='tf_efficientnetv2_b3',
+                        default='efficientnetv2_b3.in21k_ft_in1k',
                         help='Model name from timm library')
     parser.add_argument('--input_size', type=int, nargs=2, default=[256, 256],
                         help='Input image size (height width)')

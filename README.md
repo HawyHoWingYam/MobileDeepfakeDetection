@@ -95,15 +95,14 @@ This matches the paper’s Method section.
    - Generate train/val/test manifests under `manifests/`.
 
 2. **Stage 1 – Lightweight Filter (MobileNetV4)**  
-   - Train with `src/stage1/train_stage1.py` on the combined manifest.  
-   - Apply light augmentation, AdamW, cosine LR, early stopping.  
-   - Calibrate probabilities via temperature scaling using `src/stage1/calibrate_model.py`.  
-   - Evaluate per‑dataset and combined metrics (`outputs/stage1/evaluation/...`).
+   - Train with `src/stage1/train_stage1.py` on the combined manifest (default batch size 128).  
+   - Apply light augmentation (resize, flip, colour jitter, small affine, blur), AdamW, cosine LR; select the best checkpoint by validation AUC.  
+   - Calibrate probabilities via temperature scaling using `src/stage1/calibrate_model.py`, then evaluate per‑dataset and combined metrics (`outputs/stage1/evaluation/...`).
 
 3. **Stage 2 – Expert Model (EfficientNetV2‑B3)**  
-   - Train with `src/stage2/train_stage2_effnet.py` on the same combined manifest.  
-   - Optionally incorporate hard example mining (difficult subset derived from Stage 1 scores).  
-   - Calibrate probabilities and export logits/embeddings for later stages.
+   - Train with `src/stage2/train_stage2_effnet.py` on the same combined manifest using EfficientNetV2‑B3, stronger augmentation (RandAugment + Mixup/CutMix), and Focal Loss with cosine‑annealing warm restarts (defaults match the paper’s hyperparameters).  
+   - Optional hard‑example mining (HEM) ablations oversample a difficult subset derived from Stage‑1 scores; the released training script defaults to uniform sampling and corresponds to the main reported EfficientNetV2‑B3 results.  
+   - Calibrate Stage‑2 probabilities and cache logits/embeddings for cascade tuning and optional meta‑model experiments.
 
 4. **Stage 3 – Meta‑Model (optional)**  
    - Create meta‑dataset from Stage‑2 (and optional GenConViT) features using `src/stage3/create_meta_dataset.py`.  
@@ -156,20 +155,30 @@ This populates `processed_data/` and `manifests/`.
 ### 5.3 Train & Evaluate Stage 1
 
 ```bash
-python src/stage1/train_stage1.py --data_root processed_data
-python src/stage1/calibrate_model.py --data_root processed_data
-python src/stage1/evaluate_stage1.py --data_root processed_data
+python src/stage1/train_stage1.py --data_dir processed_data
+python src/stage1/calibrate_model.py --data_dir processed_data
+python src/stage1/evaluate_stage1.py --data_dir processed_data
 ```
 
 ### 5.4 Train Stage 2 and Tune Cascade
 
 ```bash
-python src/stage2/train_stage2_effnet.py --data_root processed_data
-# optional: hard example mining + meta-dataset generation
-python src/stage4/benchmark_cascade.py --data_root processed_data
+python src/stage2/train_stage2_effnet.py --data_dir processed_data
+# optional: cascade benchmarking and mobile‑oriented analysis
+python src/stage4/benchmark_cascade.py --benchmark_all
 ```
 
 These commands update `outputs/` and `paper/generated/` so that the LaTeX paper reflects the latest experiments.
+
+### 5.5 Android Demo App (optional)
+
+- After training Stage‑1/2 and selecting cascade thresholds, you can export ONNX models and a cascade config for Android via:
+
+  ```bash
+  python scripts/export_mobile_cascade_onnx.py
+  ```
+
+  This populates `android/mobile_bundle/` with ONNX models and JSON configs. For how to load these into the sample app and run on‑device evaluation, see `android/README.md`.
 
 ---
 
@@ -203,4 +212,3 @@ When submitting this project together with the paper:
 
 如需更細節的中文說明與開發歷史，請參考 `project_instruction/` 下的各個階段文檔，以及 `Midterm Progress Report.md`。  
 這些文檔加上本 README 構成了一條從研究構想到最終實作的完整故事線。  
-

@@ -116,7 +116,17 @@ MobileNetV4 Stage~1 training typically converges within 25--30 epochs, with vali
 \paragraph{Stage~2 Convergence Characteristics.}
 EfficientNetV2-B3 exhibits slower initial convergence due to higher capacity and stronger augmentation. Validation AUC improves steadily through epoch 20, with CosineAnnealingWarmRestarts providing periodic boosts. Final models show train AUC ~0.985 vs validation AUC ~0.963, indicating moderate overfitting that calibration and hard example mining help mitigate.
 
-\subsection*{A.4 Threshold and Cascade Analysis}
+\subsection*{A.4 Calibration Procedures for Stage~1 and Stage~2}
+
+Both stages use post\hyp hoc temperature scaling~\cite{guo2017calibration} to improve the reliability of predicted probabilities before threshold selection and deployment. For Stage~1, we apply the standard binary calibration procedure: given logits $f_1(x)$ and labels $y$, we solve
+\[
+  \min_{T_1}\ \mathrm{NLL}\big(\sigma(f_1(x)/T_1), y\big)
+\]
+on the combined validation manifest using an L\hyp BFGS\hyp B optimiser (\verb|calibrate_model.py|), and store the resulting temperature in \verb|calibration_temp.json|. For Stage~2, we mirror this setup: we collect EfficientNetV2\hyp B3 logits $f_2(x)$ on the same validation manifest, fit a scalar $T_2$ by minimising negative log-likelihood (\verb|calibrate_stage2.py|), and save it as \verb|calibration_temp_stage2.json|.
+
+During offline robustness sweeps, we treat $T_2$ as a hyperparameter when transferring thresholds across datasets or perturbation regimes (Appendix~A.6). For mobile deployment, both $T_1$ and $T_2$ are exported into a lightweight cascade configuration JSON that is consumed by the Android app; the ONNX Runtime engine applies the same temperatures on device, ensuring that PC\hyp tuned thresholds and calibrated probabilities match those used in the on\hyp device evaluation reported in Section~\ref{sec:ondevice_protocol}.
+
+\subsection*{A.5 Threshold and Cascade Analysis}
 
 In addition to the combined validation threshold sweep used in the main text, we also export per-dataset threshold and cascade analysis plots for Stage~1. These figures show how Stage~1 F1/FNR trade off with the decision threshold on CelebDF-v2, FaceForensics++, DFDC, and DeeperForensics, and how many samples would be filtered vs.\ escalated under a hypothetical cascade.
 
@@ -141,7 +151,7 @@ Table~\ref{tab:per_dataset_threshold_appendix} presents optimal single-threshold
   \end{tabular}}
 \end{table}
 
-\subsection*{A.5 Error Analysis and Hard Examples}
+\subsection*{A.6 Error Analysis and Hard Examples}
 
 Each run exports top false positives/negatives and aggregate error analysis figures. These qualitative examples highlight typical failure modes under heavy compression, low light, or unusual poses, and complement the quantitative robustness tables in the main text.
 
@@ -158,7 +168,7 @@ Through manual inspection of top-k errors across validation sets, we identify re
   \item \textbf{Partial manipulations (FN cluster):} Videos with manipulated regions confined to eyes or mouth (leaving most of face untouched) evade frame-level detectors, highlighting the need for temporal consistency checks in future work.
 \end{itemize}
 
-\subsection*{A.6 Cross-Dataset Calibration Transfer}
+\subsection*{A.7 Cross-Dataset Calibration Transfer}
 
 Table~\ref{tab:calibration_transfer_appendix} examines how well temperature-scaled calibration transfers across datasets by measuring Expected Calibration Error (ECE) when applying Stage~2 calibration temperature learned on FaceForensics++ validation to other datasets.
 
@@ -183,7 +193,7 @@ Table~\ref{tab:calibration_transfer_appendix} examines how well temperature-scal
 
 % A.7 Robustness perturbation details are summarised in the main text and robustness table; parameter ranges are omitted here for brevity.
 
-\subsection*{A.7 Mobile Export Artifact Details}
+\subsection*{A.8 Mobile Export Artifact Details}
 
 Table~\ref{tab:export_artifact_comparison_appendix} provides detailed comparison of exported model formats and their characteristics for mobile deployment.
 
@@ -211,7 +221,7 @@ Table~\ref{tab:export_artifact_comparison_appendix} provides detailed comparison
 \paragraph{Quantization Impact.}
 Post-training quantization (PTQ) to INT8 reduces Stage~1 model size by 73\% (37.3 MB $\rightarrow$ 10.1 MB) and Stage~2 by 73\% (49.6 MB $\rightarrow$ 13.4 MB). Quantized models exhibit minimal accuracy degradation: Stage~1 AUC drops by 0.003 (0.9936 $\rightarrow$ 0.9906), Stage~2 AUC drops by 0.007 (0.9633 $\rightarrow$ 0.9563). Inference latency on CPU improves by approximately 2.5--3$\times$ compared to FP32 models.
 
-\subsection*{A.8 Computational Requirements and Training Time}
+\subsection*{A.9 Computational Requirements and Training Time}
 
 Table~\ref{tab:training_time_appendix} summarizes wall-clock training time and hardware requirements for each stage.
 
@@ -235,11 +245,11 @@ Table~\ref{tab:training_time_appendix} summarizes wall-clock training time and h
   \end{tabular}}
 \end{table}
 
-\subsection*{A.9 Alternative Architectures Explored}
+\subsection*{A.10 Alternative Architectures Explored}
 
 \input{sections/appendix_genconvit}
 
-\subsection*{A.10 Reproducibility and Code Availability}
+\subsection*{A.11 Reproducibility and Code Availability}
 
 The complete training, evaluation, and deployment pipeline is available in the project repository at \url{https://github.com/HawyHoWingYam/MobileDeepfakeDetection} (commit \texttt{4aa69d6}). The repository includes:
 

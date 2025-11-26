@@ -87,6 +87,7 @@ class DetectionLogger(private val context: Context) {
             "tau_low",
             "tau_high",
             "stage2_threshold",
+            "stage2_temperature",
             "stage2_used"
         ).joinToString(",")
     }
@@ -110,6 +111,7 @@ class DetectionLogger(private val context: Context) {
             config.tauLow.toString(),
             config.tauHigh.toString(),
             config.stage2Threshold.toString(),
+            config.stage2Temperature.toString(),
             stage2UsedFlag
         )
 

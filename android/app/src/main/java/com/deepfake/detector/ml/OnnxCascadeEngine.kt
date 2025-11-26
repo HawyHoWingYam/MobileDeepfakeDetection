@@ -192,8 +192,12 @@ class OnnxCascadeEngine(
         inputTensor.close()
         outputs.close()
 
+        // Apply temperature scaling (if configured) before sigmoid
+        val temperature = if (config.stage2Temperature > 0f) config.stage2Temperature else 1.0f
+        val scaledLogit = logit / temperature
+
         // Apply sigmoid to get probability
-        return sigmoid(logit)
+        return sigmoid(scaledLogit)
     }
 
     /**

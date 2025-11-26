@@ -41,14 +41,21 @@ object CascadeConfigLoader {
         val tauHigh = root.getDouble("tau_high").toFloat()
         val stage2Threshold = root.getDouble("stage2_threshold").toFloat()
 
+        // Stage 2 temperature (optional, default 1.0 if missing)
+        val stage2Temperature = if (root.has("stage2_temperature")) {
+            root.getDouble("stage2_temperature").toFloat()
+        } else {
+            1.0f
+        }
+
         return CascadeConfig(
             inputSize = inputSize,
             mean = mean,
             std = std,
             tauLow = tauLow,
             tauHigh = tauHigh,
-            stage2Threshold = stage2Threshold
+            stage2Threshold = stage2Threshold,
+            stage2Temperature = stage2Temperature
         )
     }
 }
-

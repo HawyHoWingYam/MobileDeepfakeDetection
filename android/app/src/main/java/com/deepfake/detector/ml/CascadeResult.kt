@@ -42,7 +42,8 @@ data class CascadeConfig(
     val std: FloatArray,
     val tauLow: Float,
     val tauHigh: Float,
-    val stage2Threshold: Float
+    val stage2Threshold: Float,
+    val stage2Temperature: Float
 ) {
     companion object {
         fun default() = CascadeConfig(
@@ -51,7 +52,8 @@ data class CascadeConfig(
             std = floatArrayOf(0.229f, 0.224f, 0.225f),
             tauLow = 0.02f,
             tauHigh = 0.98f,
-            stage2Threshold = 0.5f
+            stage2Threshold = 0.5f,
+            stage2Temperature = 1.0f
         )
     }
 }

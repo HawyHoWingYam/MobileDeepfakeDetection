@@ -5,6 +5,7 @@
   "tau_low": 0.02,
   "tau_high": 0.98,
   "stage2_threshold": 0.5,
+  "stage2_temperature": 1.0,
   "description": "Cascade configuration for two-stage deepfake detection",
   "model_info": {
     "stage1": {
@@ -17,7 +18,7 @@
     },
     "stage2": {
       "name": "EfficientNetV2-B3",
-      "architecture": "tf_efficientnetv2_b3",
+      "architecture": "efficientnetv2_b3.in21k_ft_in1k",
       "input_size": 256,
       "output": "Single logit (binary classification)",
       "file": "aware_cascade_stage2.onnx",

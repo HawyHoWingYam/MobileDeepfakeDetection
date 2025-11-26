@@ -164,7 +164,7 @@ def create_stage2_model(model_path, device='cpu'):
     # Create model with wrapper to match checkpoint structure
     # Stage 2 uses a two-layer classifier with hidden_dim=512
     model = DeepfakeClassifier(
-        backbone_model_name='tf_efficientnetv2_b3',
+        backbone_model_name='efficientnetv2_b3.in21k_ft_in1k',
         num_classes=1,
         use_two_layer_classifier=True,
         hidden_dim=512
@@ -192,7 +192,7 @@ def create_stage2_model(model_path, device='cpu'):
     return model
 
 
-def create_cascade_config():
+def create_cascade_config(stage2_temperature: float = 1.0):
     """
     Create cascade configuration file for Android deployment
 
@@ -206,6 +206,7 @@ def create_cascade_config():
         "tau_low": 0.02,
         "tau_high": 0.98,
         "stage2_threshold": 0.5,
+        "stage2_temperature": float(stage2_temperature),
         "description": "Cascade configuration for two-stage deepfake detection",
         "notes": {
             "tau_low": "Stage1 fake probability below this -> classify as real",
@@ -332,7 +333,19 @@ def main():
     logger.info("Step 3: Creating Cascade Configuration")
     logger.info("=" * 80)
 
-    cascade_config = create_cascade_config()
+    # Try to load Stage 2 calibration temperature if available
+    stage2_temp = 1.0
+    calib_path = stage2_model_path.parent / "calibration_temp_stage2.json"
+    if calib_path.exists():
+        try:
+            with calib_path.open("r", encoding="utf-8") as f:
+                calib_data = json.load(f)
+            stage2_temp = float(calib_data.get("optimal_temperature", 1.0))
+            logger.info(f"Using calibrated Stage 2 temperature: T={stage2_temp:.4f} from {calib_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load Stage 2 calibration from {calib_path}: {e}")
+
+    cascade_config = create_cascade_config(stage2_temperature=stage2_temp)
     config_path = output_dir / "cascade_config.json"
 
     with open(config_path, 'w', encoding='utf-8') as f:
@@ -342,6 +355,7 @@ def main():
     logger.info(f"   tau_low: {cascade_config['tau_low']}")
     logger.info(f"   tau_high: {cascade_config['tau_high']}")
     logger.info(f"   stage2_threshold: {cascade_config['stage2_threshold']}")
+    logger.info(f"   stage2_temperature: {cascade_config['stage2_temperature']}")
 
     # Step 4: Validate ONNX models
     logger.info("\n" + "=" * 80)
