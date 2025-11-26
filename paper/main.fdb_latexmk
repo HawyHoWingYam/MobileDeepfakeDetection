@@ -1,13 +1,13 @@
 # Fdb version 4
-["bibtex main"] 1764126463.83997 "main.aux" "main.bbl" "main" 1764145522.9549 0
+["bibtex main"] 1764146721.2149 "main.aux" "main.bbl" "main" 1764146723.81715 0
   "./references.bib" 1763956191.48214 28506 f9c364b07f696ee75b2ee4f5da242362 ""
   "/usr/local/texlive/2025/texmf-dist/bibtex/bst/base/ieeetr.bst" 1292289607 18361 1a00e58565e7f19bf2b3e1bfb82254ae ""
-  "main.aux" 1764145522.61153 41437 e4493411f162b8a00e3b3008707d235f "pdflatex"
+  "main.aux" 1764146723.49776 41437 e4493411f162b8a00e3b3008707d235f "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1764145520.04167 "main.tex" "main.pdf" "main" 1764145522.95512 2
+["pdflatex"] 1764146721.31865 "main.tex" "main.pdf" "main" 1764146723.81736 2
   "../outputs/stage5/robustness/fnr_vs_s2_gaussian_12.0.png" 0 -1 0 ""
   "../outputs/stage5/robustness/fnr_vs_s2_jpeg_20.0.png" 0 -1 0 ""
   "../outputs/stage5/robustness/fnr_vs_s2_jpeg_95.0.png" 0 -1 0 ""
@@ -164,9 +164,9 @@
   "generated/robustness_tradeoff.tex" 1763956191.47659 838 3d23a3ad3bdf65e90e2c2528641a19bd ""
   "generated/stage1_eval_summary.tex" 1764123477.72735 747 028213385ce711334584238612d38821 ""
   "generated/stage2_eval_summary.tex" 1764123477.72762 730 7ce8269897498c6a45750308fbb58e81 ""
-  "main.aux" 1764145522.61153 41437 e4493411f162b8a00e3b3008707d235f "pdflatex"
-  "main.bbl" 1764126464.22207 20555 d583c908524a027f33e6dec8fb749c97 "bibtex main"
-  "main.out" 1764145522.61387 6480 02f3806fcf7df925c3cd82f77daa1b4a "pdflatex"
+  "main.aux" 1764146723.49776 41437 e4493411f162b8a00e3b3008707d235f "pdflatex"
+  "main.bbl" 1764146721.31597 20555 d583c908524a027f33e6dec8fb749c97 "bibtex main"
+  "main.out" 1764146723.5 6480 02f3806fcf7df925c3cd82f77daa1b4a "pdflatex"
   "main.tex" 1764123477.72974 1895 895e517f2c1da77742566b4893724f40 ""
   "sections/ablation_studies.tex" 1764123477.73016 13474 5426ca156e9ee0fac14cf0424e41bef8 ""
   "sections/abstract.tex" 1764144895.99695 2295 473098b046c7291f24ba3c963e0d64ec ""
@@ -179,7 +179,7 @@
   "sections/ethics.tex" 1763956191.48334 6853 1b2f806a2e2fef6f6c6edaed3e40b998 ""
   "sections/experiments.tex" 1764145014.10821 8745 66e58084af97137c532acc81b661cf34 ""
   "sections/introduction.tex" 1764123477.73241 9727 6c900b3d4cc23807ddf6ec1cfd7f073c ""
-  "sections/method.tex" 1764144913.79155 22727 76483f897c73dde3d4acf54b9a678ea3 ""
+  "sections/method.tex" 1764146301.02686 23082 6956b5e719aeea4540129e7526d8a19f ""
   "sections/mobile.tex" 1764139321.15087 11995 fc9b40ac49955304bafa447e36bc68ac ""
   "sections/related_work.tex" 1764123477.73333 25991 62256d178c98ec9e6ebb09044fbc03c8 ""
   "sections/results.tex" 1764145024.91607 25900 6cf1ef49839fe9b7c37fdcf83993a402 ""
