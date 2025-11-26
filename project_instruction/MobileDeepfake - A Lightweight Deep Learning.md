@@ -1,25 +1,31 @@
-# MobileDeepfake - A Lightweight Deep Learning
+# MobileDeepfake – Final System Design Overview
+
+> Note: this English document was originally an early proposal.  
+> It has been updated to describe the **final system** implemented in this repository and in the dissertation:  
+> a two‑stage MobileNetV4 + EfficientNetV2 cascade with optional Stage‑3 meta‑model, exported to Android via ONNX Runtime.
 
 # Application for Real-time Face-Swap Detection
 
 ## 1. Objectives of the Project
 
-The primary objective of this project is to develop a **robust deepfake detection model**
-specialized for face-swap manipulations and deploy it as a **mobile application**. This
-involves using a **light-weight convolutional neural network (CNN)** capable of
-distinguishing face-swapped images or video frames from genuine ones with high accuracy,
-and optimizing this model to run efficiently on Android devices. Achieving reliable on-device
-detection is significant because deepfake technology, especially face swaps, has advanced
-to the point where manipulated media can be very convincing. While some state-of-the-art
-detectors can exceed **99% accuracy** on benchmark datasets (A Review of Deep Learning-
-based Approaches for Deepfake Content Detection), these solutions typically run on
-powerful hardware. By bringing deepfake detection to mobile devices, the project contributes
-to the accessibility of verification tools for the general public and the field of mobile AI.
+The primary objective of this project is to develop a **robust deepfake detection system**
+specialized for face-swap manipulations and deploy it as a **mobile application**. The final
+design is a **two-stage cascaded detector**:
+
+- **Stage 1**: a lightweight MobileNetV4-based filter that quickly rejects easy real/fake cases.
+- **Stage 2**: a higher-capacity EfficientNetV2-B3 expert that handles ambiguous samples.
+- **(Optional) Stage 3**: a LightGBM meta-model used for offline analysis and research ablations, not part of the default mobile runtime.
+
+The cascaded architecture focuses Stage 2 compute on hard examples while keeping Stage 1 fast enough for on-device use. Achieving reliable on-device detection is significant because deepfake technology, especially face swaps, has advanced to the point where manipulated media can be very convincing. While some state-of-the-art detectors can exceed **99% accuracy** on benchmark datasets (A Review of Deep Learning-based Approaches for Deepfake Content Detection), these solutions typically run on powerful hardware. By bringing deepfake detection to mobile devices, the project contributes to the accessibility of verification tools for the general public and the field of mobile AI.
 
 In summary, the project’s goals are:
 
-By accomplishing these objectives, the project will contribute new insights into balancing
-**detection accuracy and efficiency** , guiding future research in both deepfake detection and
+- Design a **cascaded binary classifier** that achieves very low false negative rate (FNR) under a bounded compute budget.
+- Train and evaluate the cascade on multiple academic datasets (e.g., CelebDF‑v2, FaceForensics++, DFDC, DeeperForensics‑1.0), plus an in-the-wild benchmark.
+- Export calibrated models and cascade thresholds to Android using **ONNX Runtime**, supporting fully on-device inference.
+
+By accomplishing these objectives, the project contributes new insights into balancing
+**detection accuracy and efficiency**, guiding future research in both deepfake detection and
 mobile neural network deployment.
 
 ## 2. Background
@@ -27,22 +33,11 @@ mobile neural network deployment.
 **Deepfake Detection Techniques:** This section of the proposal provides a comprehensive
 overview of deepfake detection, with an emphasis on face-swap scenarios. Deepfakes are
 
-```
-Deepfake Detection Model : Develop a light-weight CNN-based model that can
-accurately detect face-swap deepfakes, improving techniques in the domain of image
-forensics and fake media detection. This model will be trained and fine-tuned specifically
-to recognize artifacts from face swapping.
-Mobile Deployment : Integrate and optimize this model within an Android application,
-demonstrating on-device inference of deepfake detection. The significance lies in
-contributing a practical tool that operates in real-time on consumer devices, which is a
-step forward for mobile AI applications in computer vision.
-Innovation and Contribution : Advance the deepfake detection field by focusing on
-resource-constrained environments. The project will show how a high-performing
-deepfake detector can be compressed and accelerated for mobile use, using
-frameworks like NCNN, thus bridging the gap between cutting-edge deepfake detection
-research and user-facing mobile technology. This not only aids in combating
-misinformation but also highlights methods for deploying AI models in portable contexts.
-```
+In practice, we instantiate these ideas as:
+
+- **Deepfake Detection Model**: A two-stage cascade where Stage 1 is a MobileNetV4-Hybrid-Medium filter and Stage 2 is an EfficientNetV2-B3 expert. Both are fine-tuned for face-swap detection at 256×256 resolution and calibrated on a combined validation set.
+- **Mobile Deployment**: Integration and optimization within an Android application using ONNX Runtime. The app runs the same Stage 1/2 models and calibrated thresholds as the desktop cascade, enabling privacy-preserving, fully on-device inference.
+- **Innovation and Contribution**: A complete training → tuning → robustness → deployment pipeline that treats cascaded inference, calibration, and mobile export as a single system, rather than isolated components.
 
 typically created using advanced generative models (such as **GANs** or **autoencoders** ) to
 replace one person’s face with another’s in images or videos. Detecting such forgeries relies
@@ -145,92 +140,35 @@ Detect Manipulated Facial Images), ensuring the model learns a wide variety of m
 artifacts. We will preprocess the videos by extracting frames (or short clips) and applying
 data augmentations (e.g., random cropping, flipping, color jitter) to improve the model’s
 robustness. The dataset will be split into training, validation, and test sets. **During training,
-the large “teacher” model will be trained on this dataset first** , learning to distinguish real
-vs fake patterns with high accuracy. Subsequently, the **“student” model (a lightweight
-network)** will be trained on the same data using knowledge distillation (detailed below),
-effectively **using the dataset twice** : first to fit the teacher, then to transfer knowledge to the
-student. We will ensure that the student model sees the full diversity of training data (and
-any available augmentation) so that despite its smaller size, it generalizes well. For
-evaluation, we will test both models on a held-out set of videos and possibly on additional
-benchmark deepfake datasets (such as DFDC or others) to verify that the compressed
-model maintains high accuracy across different data sources.
+### Model Selection: Cascaded Architecture
 
-### Model Selection (Teacher and Student Architecture)
+In the final system we adopt a **cascaded architecture** instead of a single teacher–student pair:
 
-```
-Teacher Model: As a baseline for top accuracy, we will start with a proven deepfake
-detection architecture. One option is the Xception network , which has demonstrated
-high performance in deepfake image classification tasks (it was used as a top performer
-in the original FaceForensics++ benchmark) (FaceForensics++: Learning to Detect
-Manipulated Facial Images). The Xception model (or a similar CNN) is deep and high-
-capacity, which makes it ideal to serve as a teacher that learns subtle forgery cues in the
-training data. However, such a model is too heavy for mobile deployment – Xception has
-over 22 million parameters – so it will be used only for offline training on a powerful
-machine. Another candidate could be a modern vision transformer or an ensemble of
-CNNs for even higher accuracy, but to keep the process feasible and given the need
-for compression, a CNN-based teacher is preferred. CNNs benefit from well-
-established compression techniques (pruning, quantization, etc.) that have been refined
-for edge devices (A Comparative Analysis of Compression and Transfer Learning
-Techniques in DeepFake Detection Models), whereas transformer models are still being
-optimized for such constraints (A Comparative Analysis of Compression and Transfer
-Learning Techniques in DeepFake Detection Models). Thus, our approach prioritizes a
-CNN teacher model to ensure easier compression and efficient knowledge transfer to
-the student.
-Student Model (Efficient Architecture): For the mobile-friendly student network, we will
-select an efficient CNN architecture known to run well on limited hardware. A strong
-candidate is MobileNet-V3 , a lightweight convolutional network with roughly 1.5 million
-parameters , specifically designed for mobile applications ([2205.00211] DefakeHop++:
-An Enhanced Lightweight Deepfake Detector). MobileNet-V3 uses depthwise separable
-convolutions and other optimizations to drastically reduce computation while still
-```
+- **Stage 1 (MobileNetV4-Hybrid-Medium)** acts as a fast, low‑compute filter that operates on 256×256 face crops and outputs a calibrated fake probability.
+- **Stage 2 (EfficientNetV2-B3)** is a higher-capacity expert that processes only those samples whose Stage‑1 scores fall in an “uncertain band” defined by low/high thresholds.
+- **Stage 3 (LightGBM meta-model, optional)** can fuse features and logits from Stage 2 (and optional research experts) for offline analysis, but is not part of the default mobile runtime.
 
-### Training Procedure and Knowledge Distillation
+This design directly mirrors the dissertation: Stage 1 and Stage 2 are each trained in a standard supervised fashion on combined multi‑dataset manifests; Stage 3 is used only when explicitly enabled for research ablations.
 
-The training will be carried out in two stages: first training the teacher, then training the
-student via knowledge distillation.
+### Training Procedure (Final System)
 
-```
-performing well on vision tasks. By using MobileNet (or a similar efficient architecture like
-EfficientNet-Lite or ShuffleNet ), we provide the student model with a strong inductive
-bias for low-resource operation. The student model will start with this architecture, and it
-may be further slimmed or adjusted during the compression process (e.g., reducing
-width or depth) as needed. Using such an efficient backbone is crucial – for instance,
-MobileNet-v3 is already targeted at mobile with 16% of the parameters of a typical CNN,
-yet offers competitive accuracy ([2205.00211] DefakeHop++: An Enhanced Lightweight
-Deepfake Detector). This gives us a head start in making the model lightweight. We will
-initialize the student model with random weights (or possibly pre-trained ImageNet
-weights if available for the chosen architecture) before the distillation process. The
-capacity gap between teacher and student (teacher being larger) ensures the student
-has room to learn compressed knowledge. Notably, the student’s architecture will be
-kept flexible: if the distilled student underperforms, we may iterate on the architecture
-(e.g., slightly increase its size or change layers) to hit the best trade-off between size
-and accuracy.
-```
-```
-Teacher Model Training: We will train the teacher model on the training dataset in a
-supervised manner using the ground truth labels (real or fake). Standard training
-protocols will be followed: using a binary cross-entropy (or focal loss) as the loss function
-for classification, with an optimizer like Adam. The teacher model will learn to output a
-high confidence for real vs fake classification. We will monitor its performance on the
-validation set and ensure it achieves strong accuracy (aiming for near state-of-the-art
-results on the dataset). Early stopping or checkpointing will be used to prevent
-overfitting. The purpose of this stage is to obtain a high-accuracy reference model that
-encapsulates the knowledge of detecting deepfakes.
-Knowledge Distillation (Teacher-to-Student Transfer): In the second stage, we train
-the student model under the guidance of the teacher model , employing knowledge
-distillation. Knowledge distillation is a model compression technique where
-“knowledge” from a larger pre-trained model (teacher) is transferred to a smaller
-model (student) (A Comparative Analysis of Compression and Transfer Learning
-Techniques in DeepFake Detection Models). This typically involves training the student
-on the same dataset, but instead of relying only on the hard labels (real/fake ground
-truth), the student is also penalized based on the soft predictions of the teacher.
-Concretely, we will use a distillation loss that combines two terms: (1) a standard
-classification loss (cross-entropy) between the student’s predictions and the true
-labels, and (2) a distillation loss between the student’s output probabilities and the
-teacher’s output probabilities for each input (A novel model compression method based
-on joint distillation for deepfake video detection | OpenReview) (A novel model
-compression method based on joint distillation for deepfake video detection |
-```
+Training proceeds in stages:
+
+1. **Stage 1 training and calibration**
+   - Train MobileNetV4 on balanced multi‑dataset manifests with a standard binary classification loss.
+   - Apply post‑hoc temperature scaling on a held‑out validation split to obtain a calibrated fake probability for cascade threshold tuning.
+
+2. **Stage 2 training (EfficientNetV2-B3)**
+   - Train EfficientNetV2-B3 on the same combined manifest with stronger augmentation (e.g., RandAugment, Mixup, CutMix) and a focal-style loss.
+   - Optionally construct a “hard subset” based on Stage‑1 scores for ablation runs with hard example mining; the default configuration uses uniform sampling.
+
+3. **Stage 3 meta-model (optional)**
+   - Build K‑fold meta-datasets from out‑of‑fold Stage‑2 embeddings and logits.
+   - Fit a LightGBM classifier to probe whether feature-level fusion improves over the best single expert. In practice, the meta‑model offers limited gains and remains an offline research component.
+
+4. **Cascade threshold tuning**
+   - Sweep low/high thresholds on validation data to trade off FNR against the Stage‑2 escalation rate.
+   - Select a “safety‑first” operating point (very low FNR with low Stage‑2 usage) and export these thresholds for deployment.
 
 ### Model Compression via Pruning and Fine-Tuning
 
@@ -282,77 +220,22 @@ and Transfer Learning Techniques in DeepFake Detection Models). To maintain a
 
 ### Quantization and Efficient Mobile Deployment
 
-The final step is to prepare the optimized model for deployment on mobile devices, which
-involves **model quantization** and integration into a mobile app framework. Quantization will
-further compress the model by reducing the numerical precision of the model’s weights (and
-possibly activations), typically from 32-bit floating point to 8-bit integers. This can **shrink
-memory and storage requirements by ~75%** and speed up inference using integer
-arithmetic (What Is int8 Quantization and Why Is It Popular for Deep Neural Networks? -
-MATLAB & Simulink) (What Is int8 Quantization and Why Is It Popular for Deep Neural
-Networks? - MATLAB & Simulink). We will perform **8-bit post-training quantization** on the
-pruned student model. This means converting the weights to int8 and calibrating the
-activations’ dynamic ranges using a representative dataset (usually a small set of training or
+The final step is to prepare the optimized cascade for deployment on mobile devices, which
+involves **model quantization** and integration into a mobile app framework. Quantization
+compresses the models by reducing the numerical precision of the weights (and possibly
+activations), typically from 32-bit floating point to 8-bit integers. This can **shrink memory and
+storage requirements by ~75%** and speed up inference using integer arithmetic (What Is
+int8 Quantization and Why Is It Popular for Deep Neural Networks? - MATLAB & Simulink)
+while keeping accuracy within a small margin.
 
-```
-balance across layers, we may remove an equal percentage of parameters per layer, as
-a form of local pruning (A Comparative Analysis of Compression and Transfer Learning
-Techniques in DeepFake Detection Models), ensuring no single layer becomes a
-bottleneck. Alternatively, if supported by our framework, structured pruning (removing
-entire filters or channels) could be used for a more hardware-friendly outcome (since
-removed neurons yield speedups). We will decide the pruning granularity based on what
-yields the best efficiency gains with minimal accuracy drop.
-Pruning Rate and Iterative Pruning: We will determine a pruning rate (for example,
-removing 20% of weights initially) and then iteratively prune and retrain. It is often
-effective to prune gradually – remove a small percentage of weights and then fine-tune
-the model to recover performance , rather than prune too aggressively in one go. Fine-
-tuning after pruning allows the remaining weights to adjust and compensate for the lost
-connections (A Comparative Analysis of Compression and Transfer Learning Techniques
-in DeepFake Detection Models). We will prune the network in one or multiple stages,
-each followed by a short re-training (with the same distillation or classification loss on the
-training set) to regain any slight accuracy drop due to pruning. This prune-and-fine-tune
-cycle will continue until we reach a desirable trade-off: a substantially smaller model that
-still meets our accuracy target. For instance, we might target a 30-50% reduction in the
-number of parameters or FLOPs from the distilled student. We will use the validation set
-to ensure the accuracy after each pruning iteration is acceptable. If a severe accuracy
-degradation is observed at any pruning level, we will stop or consider reverting the last
-step.
-Expected Outcome of Pruning: By the end of this step, the student model will be even
-more compact. Pruning can dramatically shrink model size by removing redundancies
-that the student didn’t actually need for the task. This contributes directly to faster
-inference on mobile and lower memory usage. Research shows that a carefully pruned
-model, followed by fine-tuning, can often retain accuracy very close to the original
-model’s (A Comparative Analysis of Compression and Transfer Learning Techniques in
-DeepFake Detection Models). We aim to validate that in our experiments – comparing
-the pruned model’s accuracy to the unpruned student. We will document the final pruned
-model’s size (parameter count) and performance.
-```
+In the final system we:
 
-validation samples) so that the quantized model maintains accuracy (How the Deep
-Learning benchmark performed for 16 bit and for 8 bit ...) (A Comparative Analysis of
-Compression and Transfer Learning Techniques in DeepFake Detection Models). Modern
-tools like **TensorFlow Lite** or **PyTorch Mobile** provide built-in support for such quantization
-and can often do this conversion with minimal loss in model accuracy. By quantizing, we
-expect only a minor drop (often just 1-2% in accuracy, if any) but a significant gain in
-inference speed and a reduction in model size (the model file becomes quarter the size of
-the 32-bit version) (What Is int8 Quantization and Why Is It Popular for Deep Neural
-Networks? - MATLAB & Simulink) (What Is int8 Quantization and Why Is It Popular for Deep
-Neural Networks? - MATLAB & Simulink). If we find the accuracy drop is larger than
-expected, we might employ quantization-aware training (fine-tuning the model with fake
-quantization in the loop) to better preserve performance – though this adds complexity and
-may not be necessary given the relatively simple classification task.
+- Apply **post-training dynamic quantization** to linear layers in the TorchScript exports of Stage 1 and Stage 2;
+- Optionally explore pruning or quantization-aware training in research variants when further efficiency is needed.
 
-**Mobile Integration:** Once quantized, we will integrate the model into a mobile application
-prototype. For Android, we can use TensorFlow Lite to load the .tflite quantized model.
-For iOS, Core ML conversion is an option. The app will take video input from the device’s
-camera or video files and run the deepfake detection model on each frame (or every few
-frames) in real time. Because our model is extremely lightweight at this stage (small number
-of parameters, int8 precision), it should be capable of near real-time inference even on a
-mobile CPU. We will test the inference speed (frames per second) on a typical mid-range
-smartphone to verify this. Additionally, we will measure the model’s memory footprint. The
-goal is to ensure the model can process video frames on-device without noticeable lag or
-excessive battery drain. If needed, we may optimize further by leveraging device
-accelerators (DSP/NPU) via frameworks or by adjusting the model (for example, ensuring
-ops are supported by the mobile GPU delegate).
+The quantized models are then exported to ONNX and bundled together with thresholds and calibration parameters in a lightweight metadata JSON. On Android, **ONNX Runtime** loads these models once at app startup and executes the two-stage cascade on-device.
+
+**Mobile Integration:** Once quantized and exported, we integrate the cascade into a mobile application prototype. The app takes images or frames from the device (e.g., gallery or video) and runs the two-stage cascade on each face crop. Because the models are carefully optimized and partially quantized, the system achieves practical per-image latency on representative smartphones while keeping storage and memory usage modest. We measure inference speed, memory footprint, and energy characteristics on a target device to ensure that the app can process media on-device without noticeable lag or excessive battery drain.
 
 **Deployment Strategy:** The deployment will emphasize **on-device processing for privacy
 and latency**. By not sending data to a server, the deepfake detection happens locally,
@@ -412,9 +295,9 @@ Month 1-2: Literature Review and Proposal Refinement – Conduct an in-depth
 literature review on deepfake generation and detection techniques, with special focus on
 face-swap detection methods and prior mobile AI implementations. During this phase,
 gather relevant research papers, survey existing deepfake detection tools, and
-familiarize with the NCNN framework documentation. Simultaneously, refine the thesis
-proposal (this document) based on initial findings and feedback, clearly defining the
-project scope and plan.
+familiarize yourself with practical deployment stacks (PyTorch, TorchScript, ONNX Runtime).
+Simultaneously, refine the thesis proposal (this document) based on initial findings and
+feedback, clearly defining the project scope and plan.
 Month 2-3: Dataset Acquisition and Preparation – Obtain the FaceForensics++
 dataset (and any supplementary datasets such as DFDC or others if needed). Set up the
 data processing pipeline: extract frames from videos if working with still-image detection,
@@ -436,24 +319,24 @@ model that reaches the target accuracy on the validation set. Periodically evalu
 hold-out test set to estimate real performance, but the bulk of test evaluation is left for
 later to avoid bias.
 
-**Month 5: Model Optimization and Conversion** – Once a satisfactory model is trained,
-optimize it for mobile deployment. This includes converting the model to a portable
-format and integrating with NCNN. Use tools to convert the model (e.g., export to ONNX,
-then use NCNN’s conversion utility to generate .param and .bin files). Perform
-quantization if necessary and measure any drop in accuracy versus size/speed gains.
-Test the NCNN model on a desktop or emulator to ensure it produces the same outputs
-as the original (verifying correctness after conversion). Iterate on this process if any
-issues arise (for example, if a layer is unsupported, replace it and retrain or modify the
-model). By the end of this month, have the model running in NCNN outside the Android
-app (e.g., in a simple C++ test environment), and ready to be embedded into the app.
+**Month 5: Model Optimization and Conversion** – Once satisfactory Stage 1 and Stage 2 models are trained,
+optimize them for mobile deployment. This includes exporting the models to a portable
+format (TorchScript and ONNX) and validating that post-training quantization preserves accuracy.
+Export the cascade to ONNX and verify on desktop (or emulator) that ONNX Runtime produces
+the same outputs as the original PyTorch models. Iterate on this process if any issues arise
+(for example, if an operator is unsupported, adjust the model or export settings and re-test).
+By the end of this month, have the quantized ONNX models and a small cascade configuration
+JSON ready for integration into the Android app.
+
 **Month 6: Android Application Development** – Develop the Android app that will host
-the deepfake detection functionality. Set up the Android Studio project, include the
-NCNN library, and write the JNI bridge code to load the model and run inference. Design
-and implement the user interface, ensuring it is intuitive. Integrate image selection or
-camera capture features for users to input media. Connect the UI with the detection
-logic: when the user submits an image or video, run the NCNN model on it and return
-the result to the UI. Conduct preliminary testing with sample images to verify end-to-end
-functionality (correct loading of model, inference, and result display).
+the deepfake detection functionality. Set up the Android Studio project, add ONNX Runtime
+for Android as the inference engine, and implement a Kotlin-based cascade engine that
+loads the exported ONNX models and configuration. Design and implement the user interface,
+ensuring it is intuitive. Integrate image selection or (later) camera capture features for users
+to input media. Connect the UI with the detection logic: when the user submits an image,
+run the Stage 1 / Stage 2 cascade and return the result to the UI, including label, confidence,
+stage used, and timing. Conduct preliminary testing with sample images to verify end-to-end
+functionality (correct model loading, inference, and result display).
 
 **Month 7: Testing and Evaluation** – Rigorously test the entire system. This involves two
 aspects: (a) **Accuracy Testing:** Run the app (or the underlying model) on the reserved
@@ -490,4 +373,3 @@ proper citations for any literature references. Aim to finalize the thesis by th
 Month 8, leaving additional time for proof-reading and revisions as needed before
 submission.
 ```
-

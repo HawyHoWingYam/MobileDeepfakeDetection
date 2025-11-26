@@ -125,7 +125,7 @@ Both stages use post\hyp hoc temperature scaling~\cite{guo2017calibration} to im
 \[
   \min_{T_1}\ \mathrm{NLL}\big(\sigma(f_1(x)/T_1), y\big)
 \]
-on the combined validation manifest using an L\hyp BFGS\hyp B optimiser (\verb|calibrate_model.py|), and store the resulting temperature in \verb|calibration_temp.json|. For Stage~2, we mirror this setup: we collect EfficientNetV2\hyp B3 logits $f_2(x)$ on the same validation manifest, fit a scalar $T_2$ by minimising negative log-likelihood (\verb|calibrate_stage2.py|), and save it as \verb|calibration_temp_stage2.json|.
+on the combined validation manifest using an L\hyp BFGS\hyp B optimiser and store the resulting temperature in a JSON configuration file. For Stage~2, we mirror this setup: we collect EfficientNetV2\hyp B3 logits $f_2(x)$ on the same validation manifest, fit a scalar $T_2$ by minimising negative log-likelihood, and save it as a separate calibration entry.
 
 During offline robustness sweeps, we treat $T_2$ as a hyperparameter when transferring thresholds across datasets or perturbation regimes (Appendix~A.6). For mobile deployment, both $T_1$ and $T_2$ are exported into a lightweight cascade configuration JSON that is consumed by the Android app; the ONNX Runtime engine applies the same temperatures on device, ensuring that PC\hyp tuned thresholds and calibrated probabilities match those used in the on\hyp device evaluation reported in Section~\ref{sec:ondevice_protocol}.
 

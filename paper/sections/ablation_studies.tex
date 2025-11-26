@@ -44,7 +44,7 @@ The cascade exhibits a Pareto frontier between FNR and escalation rate for diffe
 
 \subsection{Hard Example Mining Analysis}
 
-Stage~2 training incorporates hard example mining (HEM) to focus learning on samples near the decision boundary. We compare two training strategies: \textbf{Standard} (uniform sampling) vs.\ \textbf{HEM} (prioritize samples with loss $> 75$th percentile). Table~\ref{tab:ablation_hem} reports Stage~2\hyp only performance with and without HEM. The HEM experiments use an auxiliary loss\hyp based sampler that oversamples difficult samples; the released Stage~2 training script in \verb|src/stage2/train_stage2_effnet.py| defaults to the Standard configuration with uniform sampling (HEM disabled).
+Stage~2 training incorporates hard example mining (HEM) to focus learning on samples near the decision boundary. We compare two training strategies: \textbf{Standard} (uniform sampling) vs.\ \textbf{HEM} (prioritize samples with loss $> 75$th percentile). Table~\ref{tab:ablation_hem} reports Stage~2\hyp only performance with and without HEM. The HEM experiments use an auxiliary loss\hyp based sampler that oversamples difficult samples; the publicly released Stage~2 training configuration defaults to the Standard setting with uniform sampling (HEM disabled).
 
 \begin{table}[h]
 \centering
