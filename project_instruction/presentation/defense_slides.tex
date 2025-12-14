@@ -330,6 +330,58 @@ Explicit thresholds enable \highlight{auditable} cost-risk trade-offs, unlike bl
 \end{frame}
 
 % ============================================
+% Slide 4.5: Contributions – Technical Details
+% ============================================
+\begin{frame}{Contributions – Technical Details}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\textbf{1. Cost-Aware Cascade}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Stage-1 leakage + Stage-2 escalation as \highlight{system metrics}
+    \item Cost-sensitive grid search for threshold tuning
+    \item Optional Stage-3 LightGBM (analysis only)
+\end{itemize}
+
+\vspace{0.3em}
+\textbf{2. Cross-Dataset Evaluation}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Quantify \alerttext{cross-dataset gaps} and failure modes
+    \item Compare single-model vs cascade
+    \item Calibrated vs uncalibrated thresholds
+\end{itemize}
+\end{column}
+
+\begin{column}{0.5\textwidth}
+\textbf{3. Scriptable Pipeline}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Data preprocessing + manifest generation
+    \item Hard-example mining (HEM)
+    \item Calibration + robustness sweeps
+    \item Scripts reproduce all thesis tables/figures
+\end{itemize}
+
+\vspace{0.3em}
+\textbf{4. Mobile Export Template}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item INT8 quantization + knowledge distillation
+    \item TorchScript (primary) + ONNX export
+    \item Metadata file: thresholds + temperature
+    \item Reusable Android integration template
+\end{itemize}
+\end{column}
+\end{columns}
+
+\vspace{0.5em}
+\begin{block}{Design Philosophy}
+Bridge the gap between \highlight{research prototype} and \highlight{auditable mobile deployment} with explicit, reproducible controls.
+\end{block}
+\end{frame}
+
+% ============================================
 % Slide 5: Two-Stage Cascade Design
 % ============================================
 \begin{frame}{Two-Stage Cascade Design}
@@ -368,6 +420,69 @@ Explicit thresholds enable \highlight{auditable} cost-risk trade-offs, unlike bl
     \item Stage 2 escalation: only \successtext{$\sim$1.2\%}
     \item Most samples resolved at Stage 1
 \end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================
+% Slide 5.5: Cascade Efficiency & Operating Points
+% ============================================
+\begin{frame}{Cascade Efficiency \& Operating Points}
+\begin{columns}[T]
+\begin{column}{0.55\textwidth}
+\textbf{Compute Cost Comparison}
+\begin{center}
+\scriptsize
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Configuration} & \textbf{GFLOPs} & \textbf{FNR} & \textbf{Stage2} \\
+\midrule
+Stage 1 only & 0.54 & 3.12\% & -- \\
+Stage 2 only & 2.87 & 9.43\% & 100\% \\
+\midrule
+\textbf{Cascade} & \highlight{0.59} & \successtext{0.60\%} & 1.16\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.3em}
+\textbf{Quantization Impact}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Stage 1: 37.3 MB $\rightarrow$ \highlight{10.1 MB} (INT8)
+    \item Stage 2: 49.6 MB $\rightarrow$ \highlight{13.4 MB} (INT8)
+    \item AUC loss: $<$ 0.01 per stage
+\end{itemize}
+\end{column}
+
+\begin{column}{0.45\textwidth}
+\textbf{Deployment Scenarios}
+\begin{center}
+\scriptsize
+\begin{tabular}{lcc}
+\toprule
+\textbf{Scenario} & $\tau_{\text{low}}/\tau_{\text{high}}$ & \textbf{FNR} \\
+\midrule
+Safety-first & 0.05 / 0.55 & 0.60\% \\
+Balanced & 0.10 / 0.50 & 1.2\% \\
+Speed-first & 0.15 / 0.45 & 2.0\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.3em}
+\textbf{Calibration Effect}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Temperature scaling: T $\approx$ 1.34
+    \item ECE reduced by \highlight{79\%}
+    \item Enables reliable threshold decisions
+\end{itemize}
+
+\vspace{0.3em}
+\begin{block}{Key Insight}
+Cascade achieves \successtext{5$\times$ lower FNR} than Stage 1 alone with only \highlight{9\%} compute overhead.
 \end{block}
 \end{column}
 \end{columns}
@@ -488,15 +603,84 @@ Stage 1 output: $p_1(x) = P(\text{fake} \mid x)$
 \toprule
 \textbf{Stage} & \textbf{Name} & \textbf{Key Techniques} \\
 \midrule
-0 & Preprocessing & Face detection, alignment, cropping, augmentation \\
-1 & Stage1 Training & MobileNetV4, BCE loss, recall optimization \\
-2/3 & Stage2 Training & EfficientNetV2-B3, boundary sample focus \\
+0 & Data \& Preprocess & Multi-backend face detection, 256$\times$256 crops, manifests \\
+1 & Stage1 Training & MobileNetV4, BCE loss, temperature calibration \\
+2 & Stage2 Training & EfficientNetV2-B3, focal loss, strong augmentation \\
+3 & Meta-Model (opt.) & LightGBM on embeddings (analysis only, not deployed) \\
 4 & Threshold Tuning & Grid search for $\tau_{\text{low}}/\tau_{\text{high}}$, FNR constraint \\
-5 & Robustness & Compression, resolution, noise testing \\
-6 & Mobile Export & INT8 quantization, ONNX, \highlight{180ms / 92.8\%} \\
+5 & Robustness & JPEG, noise, blur, brightness, gamma sweeps \\
+6 & Mobile Export & TorchScript INT8 + FP32 ONNX, \highlight{180ms / 92.8\%} \\
 \bottomrule
 \end{tabular}
 \end{center}
+\end{frame}
+
+% ============================================
+% Slide 7.5: Mobile Deployment Details
+% ============================================
+\begin{frame}{Mobile Deployment Details}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\textbf{Export Artifacts}
+\begin{center}
+\scriptsize
+\begin{tabular}{lrr}
+\toprule
+\textbf{Format} & \textbf{Stage 1} & \textbf{Stage 2} \\
+\midrule
+FP32 TorchScript & 37.3 MB & 49.6 MB \\
+INT8 TorchScript & 10.1 MB & 13.4 MB \\
+FP32 ONNX & 37.5 MB & 52 MB \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.3em}
+\textbf{On-Device Pipeline}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item FaceDetector API $\rightarrow$ 256$\times$256 crop
+    \item ImageNet normalization
+    \item Stage 1 $\rightarrow$ cascade routing $\rightarrow$ Stage 2
+    \item Temperature scaling on logits
+\end{itemize}
+\end{column}
+
+\begin{column}{0.5\textwidth}
+\textbf{On-Device Metrics (Xiaomi 13)}
+\begin{center}
+\scriptsize
+\begin{tabular}{lr}
+\toprule
+\textbf{Metric} & \textbf{Value} \\
+\midrule
+Accuracy & \highlight{92.8\%} \\
+FNR & 2.5\% \\
+FPR & 12.5\% \\
+Stage-2 Rate & 7.2\% \\
+\midrule
+Preprocessing & 3.4 ms \\
+Inference & 176 ms \\
+\textbf{Total Latency} & \highlight{$\sim$180 ms} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.3em}
+\textbf{Runtime Stack}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item ONNX Runtime Android 1.19.0
+    \item CPUExecutionProvider (ARM NEON)
+    \item NNAPI/GPU delegates: future work
+\end{itemize}
+\end{column}
+\end{columns}
+
+\vspace{0.3em}
+\begin{block}{Deployment Note}
+Android bundle uses \highlight{FP32 ONNX} models; INT8 TorchScript available for size-constrained scenarios with minimal AUC loss.
+\end{block}
 \end{frame}
 
 % ============================================
@@ -508,10 +692,9 @@ Stage 1 output: $p_1(x) = P(\text{fake} \mid x)$
 \textbf{Model Compression}
 \begin{itemize}
 \setlength\itemsep{0.1em}
-    \item INT8 post-training quantization
-    \item Calibration dataset for accuracy
-    \item Stage1: 37.3MB / Stage2: 49.6MB {\scriptsize (FP32 TorchScript)}
-    \item INT8 ONNX: $\sim$37.5MB / $\sim$52MB
+    \item FP32 TorchScript: 37.3MB / 49.6MB
+    \item INT8 TorchScript: 10.1MB / 13.4MB
+    \item FP32 ONNX (Android): $\sim$37.5MB / $\sim$52MB
 \end{itemize}
 
 \vspace{-0.3em}
@@ -519,8 +702,8 @@ Stage 1 output: $p_1(x) = P(\text{fake} \mid x)$
 \begin{itemize}
 \setlength\itemsep{0.1em}
     \item PyTorch $\rightarrow$ ONNX export
-    \item ONNX Runtime Mobile / NNAPI
-    \item ARM NEON vectorization
+    \item ONNX Runtime Android 1.19.0 (CPU)
+    \item NNAPI/GPU delegates: future work
 \end{itemize}
 
 \vspace{-0.3em}
@@ -562,7 +745,7 @@ Stage 1 output: $p_1(x) = P(\text{fake} \mid x)$
 \begin{frame}{Dataset Introduction}
 \begin{columns}[T]
 \begin{column}{0.55\textwidth}
-\textbf{Training Datasets ($\sim$3.5M face crops)}
+\textbf{Training: 2.66M + OOD: 0.85M face crops}
 
 \vspace{0.3em}
 \begin{center}
@@ -592,13 +775,12 @@ DeeperForensics & 844,396 & 165,854 & 172,894 \\
 \end{column}
 
 \begin{column}{0.45\textwidth}
-\begin{block}{OOD Test: Deepfake-Eval-2024}
+\begin{block}{OOD Evaluation: Deepfake-Eval-2024}
 \begin{itemize}
     \item Val: 451,917 / Test: 402,413
-    \item \highlight{88 websites}
-    \item \highlight{52 languages}
+    \item \highlight{88 websites}, \highlight{52 languages}
     \item 2024 real media environment
-    \item Multi-platform, multi-language
+    \item Used only for evaluation; no training
 \end{itemize}
 \end{block}
 
@@ -614,6 +796,75 @@ DeeperForensics & 844,396 & 165,854 & 172,894 \\
 \end{frame}
 
 % ============================================
+% Slide 9.5: Dataset Preprocessing & Splits
+% ============================================
+\begin{frame}{Dataset Preprocessing \& Splits}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\textbf{Unified Preprocessing}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item 256$\times$256 PNG face crops
+    \item Max 50 faces per video
+    \item Frame interval: 10
+    \item Multi-backend face detection
+\end{itemize}
+
+\vspace{0.3em}
+\textbf{Split Protocol}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Fixed ratios: 70\% / 15\% / 15\%
+    \item Official test subsets preserved (FF++)
+    \item Deterministic hash-based splitting
+\end{itemize}
+
+\vspace{0.3em}
+\textbf{Balanced Manifests}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item $\approx$ Equal real/fake per dataset
+    \item Prevents dataset dominance in training
+    \item Per-split balance maintained
+\end{itemize}
+\end{column}
+
+\begin{column}{0.5\textwidth}
+\textbf{Class Distribution}
+\begin{center}
+\scriptsize
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Dataset} & \textbf{Real} & \textbf{Fake} & \textbf{Ratio} \\
+\midrule
+CelebDF-v2 & 59K & 60K & 0.98 \\
+FF++ & 161K & 161K & 1.00 \\
+DFDC & 516K & 515K & 1.00 \\
+DeeperForensics & 591K & 592K & 1.00 \\
+\midrule
+Eval-2024 & 366K & 488K & 0.75 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.3em}
+\textbf{Evaluation Regimes}
+\begin{enumerate}
+\setlength\itemsep{0.1em}
+    \item Combined validation (all 4 datasets)
+    \item Per-dataset validation
+    \item OOD evaluation (Deepfake-Eval-2024)
+\end{enumerate}
+
+\vspace{0.3em}
+\begin{block}{Key Point}
+Training manifests are \highlight{balanced by class and dataset} to ensure fair multi-source learning.
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================
 % Slide 10: Cross-Dataset Evaluation Protocol
 % ============================================
 \begin{frame}{Cross-Dataset Evaluation Protocol}
@@ -622,7 +873,8 @@ DeeperForensics & 844,396 & 165,854 & 172,894 \\
 \textbf{Training \& Validation}
 \begin{itemize}
     \item Only on 4 public academic datasets
-    \item Official train/val/test splits
+    \item Reproducible splits (official test where available)
+    \item Balanced manifests across all 4 datasets
 \end{itemize}
 
 \vspace{0.5em}
@@ -643,6 +895,8 @@ OOD & F1, FNR, Stage2 Escalation Rate \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+{\scriptsize \textit{Headline metrics; full tables include Acc, Precision/Recall, FPR}}
 \end{column}
 
 \begin{column}{0.45\textwidth}
@@ -690,20 +944,21 @@ Simulate: Train on public data $\rightarrow$ Deploy to real internet
 \begin{column}{0.5\textwidth}
 \textbf{Individual Stage Performance}
 \begin{itemize}
-    \item Stage 1 AUC: \highlight{0.9936}
-    \item Stage 2 AUC: 0.9633
+    \item Stage 1 AUC: \highlight{0.9936} (F1: 0.9561)
+    \item Stage 2 AUC: 0.9633 (F1: 0.8930)
 \end{itemize}
 
 \vspace{0.5em}
-\textbf{Cascade Performance}
+\textbf{Cascade Performance (Safety-first)}
 \begin{itemize}
-    \item Final FNR: \successtext{$\sim$0.6\%}
-    \item Stage 2 Escalation: \successtext{$\sim$1.2\%}
+    \item Cascade AUC: \highlight{0.9941}, F1: 0.9654
+    \item Final FNR: \successtext{0.60\%}
+    \item Stage 2 Escalation: \successtext{1.16\%}
 \end{itemize}
 
-\vspace{1em}
+\vspace{0.5em}
 \begin{block}{Conclusion}
-On public benchmarks, cascade achieves high detection with significant compute savings.
+On combined validation, cascade achieves high detection with significant compute savings.
 \end{block}
 \end{column}
 
@@ -713,6 +968,83 @@ On public benchmarks, cascade achieves high detection with significant compute s
     \includegraphics[width=0.9\textwidth]{outputs_stage1_run_20251023_034316_01_roc_curve.png}
     \caption*{Stage 1 ROC Curve (AUC=0.9936)}
 \end{figure}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================
+% Slide 11.5: Stage-wise Ablation Analysis
+% ============================================
+\begin{frame}{Stage-wise Ablation Analysis}
+\begin{columns}[T]
+\begin{column}{0.55\textwidth}
+\textbf{Why Cascade?}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Stage 1 alone: Fast but higher FNR
+    \item Stage 2 alone: Lower FNR but 5$\times$ slower
+    \item Cascade: Best of both worlds
+\end{itemize}
+
+\vspace{0.3em}
+\textbf{Stage-wise Comparison (Combined Val)}
+\begin{center}
+\scriptsize
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Config} & \textbf{AUC} & \textbf{F1} & \textbf{FNR} & \textbf{GFLOPs} \\
+\midrule
+Stage 1 only & 0.9936 & 0.9561 & 3.12\% & 0.54 \\
+Stage 2 only & 0.9633 & 0.8930 & 9.43\% & 2.87 \\
+\midrule
+\textbf{Cascade} & \textbf{0.9941} & \textbf{0.9654} & \successtext{0.60\%} & \highlight{0.59} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.3em}
+\begin{block}{Key Insight}
+Cascade achieves \successtext{5$\times$ lower FNR} than Stage 1 alone with only \highlight{9\%} compute overhead.
+\end{block}
+\end{column}
+
+\begin{column}{0.45\textwidth}
+\textbf{FNR Reduction}
+\begin{center}
+\begin{tikzpicture}[scale=0.7]
+    % Bar chart
+    \draw[thick] (0,0) -- (0,4);
+    \draw[thick] (0,0) -- (4,0);
+
+    % Bars
+    \fill[alertred!60] (0.5,0) rectangle (1.3,3.12);
+    \fill[alertred!80] (1.8,0) rectangle (2.6,4);
+    \fill[successgreen!60] (3.1,0) rectangle (3.9,0.6);
+
+    % Labels
+    \node[below, font=\tiny] at (0.9,-0.1) {S1};
+    \node[below, font=\tiny] at (2.2,-0.1) {S2};
+    \node[below, font=\tiny] at (3.5,-0.1) {Cascade};
+
+    % Values
+    \node[above, font=\tiny] at (0.9,3.12) {3.12\%};
+    \node[above, font=\tiny] at (2.2,4) {9.43\%};
+    \node[above, font=\tiny] at (3.5,0.6) {0.60\%};
+
+    % Y-axis label
+    \node[left, font=\tiny, rotate=90] at (-0.3,2) {FNR (\%)};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+\textbf{Compute Efficiency}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Stage 1: 0.54 GFLOPs
+    \item Stage 2: 2.87 GFLOPs (5.3$\times$)
+    \item Cascade avg: 0.59 GFLOPs
+    \item Overhead: only 9\% vs Stage 1
+\end{itemize}
 \end{column}
 \end{columns}
 \end{frame}
@@ -731,7 +1063,7 @@ On public benchmarks, cascade achieves high detection with significant compute s
     \item Stage 2: Fine-grained for difficult samples
 \end{itemize}
 
-\textbf{Runtime Statistics (In-domain)}
+\textbf{Runtime Statistics (Combined Validation)}
 \begin{itemize}
 \setlength\itemsep{0.1em}
     \item Escalation rate: $\sim$1.2\%
@@ -838,6 +1170,7 @@ Model achieves practical real-time performance on mainstream flagship smartphone
 \midrule
 F1 & $>$0.95 & \alerttext{$<$0.30} \\
 FNR & $\sim$0.6\% & \alerttext{73-79\%} \\
+FPR & $\sim$3\% & \alerttext{25-27\%} \\
 Stage2 Rate & $\sim$1.2\% & \alerttext{$\sim$51\%} \\
 \bottomrule
 \end{tabular}
@@ -848,7 +1181,7 @@ Stage2 Rate & $\sim$1.2\% & \alerttext{$\sim$51\%} \\
 \begin{itemize}
     \item Training data $\neq$ 2024 internet distribution
     \item New forgery methods not in training set
-    \item Multi-platform effects (filters, subtitles)
+    \item Domain shift from social-media processing pipelines
 \end{itemize}
 \end{column}
 
@@ -860,6 +1193,67 @@ Models trained only on traditional public datasets cannot directly generalize to
 \vspace{0.5em}
 \begin{block}{Valuable Negative Finding}
 This result provides an important empirical baseline for future research on cross-domain robustness.
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================
+% Slide 14.5: OOD Analysis Deep Dive
+% ============================================
+\begin{frame}{OOD Analysis Deep Dive}
+\begin{columns}[T]
+\begin{column}{0.55\textwidth}
+\textbf{Deepfake-Eval-2024 Results (Calibrated)}
+\begin{center}
+\scriptsize
+\begin{tabular}{lrr}
+\toprule
+\textbf{Metric} & \textbf{Val} & \textbf{Test} \\
+\midrule
+F1 & 0.2996 & 0.2796 \\
+Accuracy & 58.0\% & 50.0\% \\
+FNR & \alerttext{72.9\%} & \alerttext{79.0\%} \\
+FPR & 26.7\% & 25.1\% \\
+Stage2 Rate & 51.1\% & 52.3\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.3em}
+\textbf{Stage2-Only Baseline (Max Compute)}
+\begin{center}
+\scriptsize
+\begin{tabular}{lrr}
+\toprule
+\textbf{Metric} & \textbf{Val} & \textbf{Test} \\
+\midrule
+F1 & 0.4460 & 0.5962 \\
+FNR & 18.2\% & 14.6\% \\
+FPR & \alerttext{91.6\%} & \alerttext{87.1\%} \\
+Stage2 Rate & 97.5\% & 98.9\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{column}
+
+\begin{column}{0.45\textwidth}
+\begin{alertblock}{Key Finding}
+Even with 100\% Stage 2 usage, FPR exceeds 87\% -- the problem is \alerttext{not just compute} but \highlight{domain coverage}.
+\end{alertblock}
+
+\vspace{0.3em}
+\textbf{Implications}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Cascade efficiency irrelevant if base models fail
+    \item Need domain adaptation / continual learning
+    \item Current training data insufficient for 2024 web
+\end{itemize}
+
+\vspace{0.3em}
+\begin{block}{Future Direction}
+Domain generalization and periodic retraining are essential for real-world deployment.
 \end{block}
 \end{column}
 \end{columns}
@@ -882,10 +1276,12 @@ This result provides an important empirical baseline for future research on cros
 \midrule
 JPEG Compression & Moderate compression sometimes improves F1 \\
 Gaussian Noise & Moderate noise: unstable performance \\
-Motion Blur & Gradual decline, no catastrophic failure \\
+Motion Blur & \alerttext{Near-total failure} (FNR $\sim$96-100\%) \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+{\scriptsize \textit{Note: Robustness results are sample-limited and treated as preliminary hypotheses.}}
 
 \vspace{0.5em}
 \textbf{Typical Failure Cases}
@@ -977,7 +1373,7 @@ Motion Blur & Gradual decline, no catastrophic failure \\
 \scriptsize
 \begin{tabular}{llcc}
 \toprule
-\textbf{Stage} & \textbf{Model} & \textbf{FP32} & \textbf{INT8 ONNX} \\
+\textbf{Stage} & \textbf{Model} & \textbf{FP32 TS} & \textbf{FP32 ONNX} \\
 \midrule
 Stage 1 & MobileNetV4 & 37.3 MB & $\sim$37.5 MB \\
 Stage 2 & EfficientNetV2-B3 & 49.6 MB & $\sim$52 MB \\
@@ -990,8 +1386,8 @@ Stage 2 & EfficientNetV2-B3 & 49.6 MB & $\sim$52 MB \\
 \begin{itemize}
     \item INT8 post-training quantization
     \item ONNX export for cross-platform
-    \item ONNX Runtime Mobile (trimmed)
-    \item Multi-thread pipeline
+    \item ONNX Runtime Android 1.19.0
+    \item Multi-thread pipeline (4 threads)
 \end{itemize}
 \end{column}
 
@@ -999,7 +1395,7 @@ Stage 2 & EfficientNetV2-B3 & 49.6 MB & $\sim$52 MB \\
 \textbf{Engineering Highlights}
 \begin{itemize}
     \item End-to-end reproducible
-    \item Training to APP: automated packaging
+    \item Semi-automated export pipeline
     \item Face detection on-device
     \item CPU baseline (GPU/NNAPI as future work)
 \end{itemize}
@@ -1023,6 +1419,80 @@ Stage 2 & EfficientNetV2-B3 & 49.6 MB & $\sim$52 MB \\
 \draw[arrow] (s1) -- (s2);
 \draw[arrow] (s2) -| (out);
 \end{tikzpicture}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ============================================
+% Slide 17.5: PC vs Mobile Deployment Comparison
+% ============================================
+\begin{frame}{PC vs Mobile Deployment Comparison}
+\begin{columns}[T]
+\begin{column}{0.55\textwidth}
+\textbf{Performance Comparison}
+\begin{center}
+\scriptsize
+\begin{tabular}{lrr}
+\toprule
+\textbf{Metric} & \textbf{PC} & \textbf{Mobile} \\
+\midrule
+Accuracy & 96.5\% & 92.8\% \\
+FNR & 0.6\% & 2.5\% \\
+FPR & 3.5\% & 12.5\% \\
+Stage2 Rate & 1.2\% & 7.2\% \\
+\midrule
+Latency & -- & $\sim$180 ms \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{0.3em}
+\textbf{Model Size Comparison}
+\begin{center}
+\scriptsize
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Stage} & \textbf{FP32 TS} & \textbf{INT8 TS} & \textbf{FP32 ONNX} \\
+\midrule
+Stage 1 & 37.3 MB & \highlight{10.1 MB} & 37.5 MB \\
+Stage 2 & 49.6 MB & \highlight{13.4 MB} & 52 MB \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+{\scriptsize \textit{Android deployment uses FP32 ONNX; INT8 available for size-constrained scenarios.}}
+\end{column}
+
+\begin{column}{0.45\textwidth}
+\textbf{Latency Breakdown (Xiaomi 13)}
+\begin{center}
+\begin{tikzpicture}[scale=0.7]
+    % Stacked bar
+    \fill[primaryblue!30] (0,0) rectangle (3,0.3);
+    \fill[primaryblue!70] (0,0.3) rectangle (3,3);
+
+    % Labels
+    \node[right, font=\scriptsize] at (3.1,0.15) {Preprocess: 3 ms};
+    \node[right, font=\scriptsize] at (3.1,1.65) {Inference: 176 ms};
+
+    % Total
+    \node[above, font=\scriptsize\bfseries] at (1.5,3.1) {Total: $\sim$180 ms};
+\end{tikzpicture}
+\end{center}
+
+\vspace{0.3em}
+\textbf{Calibration Parameters}
+\begin{itemize}
+\setlength\itemsep{0.1em}
+    \item Temperature: T $\approx$ 1.34
+    \item ECE reduced by \highlight{79\%}
+    \item Thresholds: $\tau_{low}$=0.05, $\tau_{high}$=0.55
+\end{itemize}
+
+\vspace{0.3em}
+\begin{block}{Key Insight}
+Mobile deployment trades \alerttext{4\% accuracy} for \highlight{on-device privacy} and \highlight{$<$200ms latency}.
+\end{block}
 \end{column}
 \end{columns}
 \end{frame}
