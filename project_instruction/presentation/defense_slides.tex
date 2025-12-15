@@ -16,11 +16,33 @@
 \definecolor{secondaryblue}{RGB}{70,130,180}
 \definecolor{alertred}{RGB}{192,0,0}
 \definecolor{successgreen}{RGB}{0,128,0}
+\definecolor{PolyUred}{RGB}{198,12,48}
 
 \setbeamercolor{structure}{fg=primaryblue}
 \setbeamercolor{block title}{bg=primaryblue,fg=white}
 \setbeamercolor{block body}{bg=primaryblue!10}
 \setbeamercolor{alerted text}{fg=alertred}
+
+% ============================================
+% PolyU Background Design (DISABLED)
+% ============================================
+% \setbeamertemplate{background canvas}{
+%   \begin{tikzpicture}[remember picture, overlay]
+%     % Top bar - PolyU Red
+%     \fill[PolyUred] (current page.north west) rectangle ($(current page.north east) + (0, -0.9cm)$);
+%     % Bottom bar - PolyU Red
+%     \fill[PolyUred] (current page.south west) rectangle ($(current page.south east) + (0, 0.9cm)$);
+%   \end{tikzpicture}
+% }
+%
+% \setbeamertemplate{background}{
+%   \begin{tikzpicture}[remember picture, overlay]
+%     % Top bar - PolyU Red
+%     \fill[PolyUred] (current page.north west) rectangle ($(current page.north east) + (0, -0.9cm)$);
+%     % Bottom bar - PolyU Red
+%     \fill[PolyUred] (current page.south west) rectangle ($(current page.south east) + (0, 0.9cm)$);
+%   \end{tikzpicture}
+% }
 
 % ============================================
 % Packages
@@ -53,10 +75,15 @@
 % Document Metadata
 % ============================================
 \title[MobileDeepfake]{MobileDeepfake}
-\subtitle{A Cascaded Detection System for On-Device Deepfake Detection}
+\subtitle{A Lightweight Cascaded Deepfake Detection System for Mobile Deployment}
 \author{Wing Yam Ho}
 \institute{The Hong Kong Polytechnic University}
 \date{December 2025}
+
+% Additional title page information
+\newcommand{\supervisor}{Zhou Kai}
+\newcommand{\department}{DSAI}
+\newcommand{\program}{MScAIBDC (62037)}
 
 % ============================================
 % Custom Commands
@@ -93,7 +120,31 @@
 % Slide 1: Title
 % ============================================
 \begin{frame}
-\titlepage
+\begin{center}
+\vspace*{1.5cm}
+{\Huge \textbf{\inserttitle}}
+
+\vspace{1em}
+{\large \insertsubtitle}
+
+\vspace{1em}
+{\Large \insertauthor}
+
+\vspace{0.5em}
+{\normalsize \insertinstitute}
+
+\vspace{1.5em}
+{\small Supervisor: \supervisor}
+
+\vspace{0.3em}
+{\small Department: \department}
+
+\vspace{0.3em}
+{\small Program: \program}
+
+\vfill
+{\normalsize \insertdate}
+\end{center}
 \end{frame}
 
 % ============================================
@@ -186,24 +237,25 @@ No existing cascade detector provides explicit FNR control with auditable cost-r
 % ============================================
 \begin{frame}{Problems and Challenges}
 \begin{center}
-\begin{tabular}{>{\raggedright}p{3.5cm} p{8cm}}
+\renewcommand{\arraystretch}{1.0}
+\footnotesize
+\begin{tabular}{>{\raggedright}p{4cm} p{10cm}}
 \toprule
 \textbf{Challenge} & \textbf{Description} \\
 \midrule
 \alerttext{Lightweight vs. Accuracy} & High-precision models are computationally heavy; mobile resources are limited \\
-\addlinespace
 \alerttext{Distribution Shift} & Training data differs significantly from real-world application scenarios \\
-\addlinespace
 \alerttext{FNR Control} & Strict false negative control under operational compute budgets \\
-\addlinespace
 \alerttext{Engineering Deployment} & Complete pipeline needed: from research model to deployable system \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\begin{block}{Research Questions}
+\vspace{0.1em}
+\begin{block}{\footnotesize Research Questions}
+\footnotesize
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{-0.05em}
     \item How to achieve high recall under distribution shift on resource-constrained mobile devices?
     \item Can a cascaded architecture with explicit thresholds offer interpretable cost-risk trade-offs?
     \item What minimal scripts and artifacts are needed for a reproducible, auditable end-to-end system?
@@ -218,27 +270,28 @@ No existing cascade detector provides explicit FNR control with auditable cost-r
 \begin{frame}{Technical Challenges in Detail}
 \begin{columns}[T]
 \begin{column}{0.55\textwidth}
+\footnotesize
 \textbf{False Negative Control}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.02em}
     \item Missed fakes have \alerttext{high cost} (misinformation spread)
     \item Must maintain FNR $<$ 1\% under compute budget
     \item Requires explicit, auditable threshold tuning
 \end{itemize}
 
-\vspace{0.3em}
+\vspace{0.08em}
 \textbf{Probability Calibration}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.02em}
     \item Raw model scores often miscalibrated
     \item Temperature scaling for reliable confidence
     \item Essential for threshold-based decisions
 \end{itemize}
 
-\vspace{0.3em}
+\vspace{0.08em}
 \textbf{Robustness Under Perturbations}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.02em}
     \item JPEG compression, noise, blur in real media
     \item Multi-platform effects (filters, subtitles)
     \item Need systematic evaluation protocol
@@ -333,20 +386,20 @@ Explicit thresholds enable \highlight{auditable} cost-risk trade-offs, unlike bl
 % Slide 4.5: Contributions – Technical Details
 % ============================================
 \begin{frame}{Contributions – Technical Details}
+\small
 \begin{columns}[T]
 \begin{column}{0.5\textwidth}
 \textbf{1. Cost-Aware Cascade}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.03em}
     \item Stage-1 leakage + Stage-2 escalation as \highlight{system metrics}
     \item Cost-sensitive grid search for threshold tuning
     \item Optional Stage-3 LightGBM (analysis only)
 \end{itemize}
 
-\vspace{0.3em}
 \textbf{2. Cross-Dataset Evaluation}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.03em}
     \item Quantify \alerttext{cross-dataset gaps} and failure modes
     \item Compare single-model vs cascade
     \item Calibrated vs uncalibrated thresholds
@@ -356,17 +409,17 @@ Explicit thresholds enable \highlight{auditable} cost-risk trade-offs, unlike bl
 \begin{column}{0.5\textwidth}
 \textbf{3. Scriptable Pipeline}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.03em}
     \item Data preprocessing + manifest generation
     \item Hard-example mining (HEM)
     \item Calibration + robustness sweeps
     \item Scripts reproduce all thesis tables/figures
 \end{itemize}
 
-\vspace{0.3em}
+
 \textbf{4. Mobile Export Template}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.03em}
     \item INT8 quantization + knowledge distillation
     \item TorchScript (primary) + ONNX export
     \item Metadata file: thresholds + temperature
@@ -375,9 +428,9 @@ Explicit thresholds enable \highlight{auditable} cost-risk trade-offs, unlike bl
 \end{column}
 \end{columns}
 
-\vspace{0.5em}
-\begin{block}{Design Philosophy}
-Bridge the gap between \highlight{research prototype} and \highlight{auditable mobile deployment} with explicit, reproducible controls.
+\vspace{0.2em}
+\begin{block}{\small Design Philosophy}
+\small Bridge the gap between \highlight{research prototype} and \highlight{auditable mobile deployment} with explicit, reproducible controls.
 \end{block}
 \end{frame}
 
@@ -429,6 +482,7 @@ Bridge the gap between \highlight{research prototype} and \highlight{auditable m
 % Slide 5.5: Cascade Efficiency & Operating Points
 % ============================================
 \begin{frame}{Cascade Efficiency \& Operating Points}
+\small
 \begin{columns}[T]
 \begin{column}{0.55\textwidth}
 \textbf{Compute Cost Comparison}
@@ -446,10 +500,10 @@ Stage 2 only & 2.87 & 9.43\% & 100\% \\
 \end{tabular}
 \end{center}
 
-\vspace{0.3em}
+\vspace{0.15em}
 \textbf{Quantization Impact}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.03em}
     \item Stage 1: 37.3 MB $\rightarrow$ \highlight{10.1 MB} (INT8)
     \item Stage 2: 49.6 MB $\rightarrow$ \highlight{13.4 MB} (INT8)
     \item AUC loss: $<$ 0.01 per stage
@@ -471,21 +525,21 @@ Speed-first & 0.15 / 0.45 & 2.0\% \\
 \end{tabular}
 \end{center}
 
-\vspace{0.3em}
+\vspace{0.1em}
 \textbf{Calibration Effect}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.03em}
     \item Temperature scaling: T $\approx$ 1.34
     \item ECE reduced by \highlight{79\%}
     \item Enables reliable threshold decisions
 \end{itemize}
-
-\vspace{0.3em}
-\begin{block}{Key Insight}
-Cascade achieves \successtext{5$\times$ lower FNR} than Stage 1 alone with only \highlight{9\%} compute overhead.
-\end{block}
 \end{column}
 \end{columns}
+
+\vspace{0.05em}
+\begin{block}{\footnotesize Key Insight}
+\footnotesize Cascade: \successtext{5$\times$ lower FNR} than Stage 1 alone \quad with only \highlight{9\%} compute overhead.
+\end{block}
 \end{frame}
 
 % ============================================
@@ -498,13 +552,11 @@ Cascade achieves \successtext{5$\times$ lower FNR} than Stage 1 alone with only 
 
 Stage 1 output: $p_1(x) = P(\text{fake} \mid x)$
 
-\vspace{0.5em}
 \begin{itemize}
     \item Low threshold: $\tau_{\text{low}} = 0.05$
     \item High threshold: $\tau_{\text{high}} = 0.55$
 \end{itemize}
 
-\vspace{0.5em}
 \textbf{Decision Rules:}
 \[
 \hat{y}(x) = \begin{cases}
@@ -747,7 +799,6 @@ Android bundle uses \highlight{FP32 ONNX} models; INT8 TorchScript available for
 \begin{column}{0.55\textwidth}
 \textbf{Training: 2.66M + OOD: 0.85M face crops}
 
-\vspace{0.3em}
 \begin{center}
 \scriptsize
 \begin{tabular}{lrrr}
@@ -764,7 +815,6 @@ DeeperForensics & 844,396 & 165,854 & 172,894 \\
 \end{tabular}
 \end{center}
 
-\vspace{0.5em}
 \textbf{Dataset Characteristics}
 \begin{itemize}
     \item CelebDF-v2: High-quality celebrity swaps
@@ -784,7 +834,6 @@ DeeperForensics & 844,396 & 165,854 & 172,894 \\
 \end{itemize}
 \end{block}
 
-\vspace{0.5em}
 \textbf{Design Goal:}
 \begin{itemize}
     \item Cover diverse forgery methods
@@ -803,26 +852,24 @@ DeeperForensics & 844,396 & 165,854 & 172,894 \\
 \begin{column}{0.5\textwidth}
 \textbf{Unified Preprocessing}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.08em}
     \item 256$\times$256 PNG face crops
     \item Max 50 faces per video
     \item Frame interval: 10
     \item Multi-backend face detection
 \end{itemize}
 
-\vspace{0.3em}
 \textbf{Split Protocol}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.08em}
     \item Fixed ratios: 70\% / 15\% / 15\%
     \item Official test subsets preserved (FF++)
     \item Deterministic hash-based splitting
 \end{itemize}
 
-\vspace{0.3em}
 \textbf{Balanced Manifests}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.08em}
     \item $\approx$ Equal real/fake per dataset
     \item Prevents dataset dominance in training
     \item Per-split balance maintained
@@ -847,19 +894,14 @@ Eval-2024 & 366K & 488K & 0.75 \\
 \end{tabular}
 \end{center}
 
-\vspace{0.3em}
 \textbf{Evaluation Regimes}
 \begin{enumerate}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.08em}
     \item Combined validation (all 4 datasets)
     \item Per-dataset validation
     \item OOD evaluation (Deepfake-Eval-2024)
+    \item balanced manifests by class and datasetfor fair multi-source learning.
 \end{enumerate}
-
-\vspace{0.3em}
-\begin{block}{Key Point}
-Training manifests are \highlight{balanced by class and dataset} to ensure fair multi-source learning.
-\end{block}
 \end{column}
 \end{columns}
 \end{frame}
@@ -869,55 +911,59 @@ Training manifests are \highlight{balanced by class and dataset} to ensure fair 
 % ============================================
 \begin{frame}{Cross-Dataset Evaluation Protocol}
 \begin{columns}[T]
-\begin{column}{0.55\textwidth}
+\begin{column}{0.5\textwidth}
+\small
 \textbf{Training \& Validation}
 \begin{itemize}
+\setlength\itemsep{-0.05em}
     \item Only on 4 public academic datasets
     \item Reproducible splits (official test where available)
     \item Balanced manifests across all 4 datasets
 \end{itemize}
 
-\vspace{0.5em}
 \textbf{Cross-Dataset Evaluation}
 \begin{itemize}
+\setlength\itemsep{0.05em}
     \item \alerttext{No fine-tuning} on Deepfake-Eval-2024
     \item Direct application of trained model
     \item Simulates real deployment scenario
 \end{itemize}
 
+\vspace{0.05em}
 \begin{center}
+\tiny
 \begin{tabular}{ll}
 \toprule
 \textbf{Scenario} & \textbf{Metrics} \\
 \midrule
-In-domain & AUC, Cascade FNR, Escalation Rate \\
-OOD & F1, FNR, Stage2 Escalation Rate \\
+In-domain & AUC, Cascade FNR, Escalation \\
+OOD & F1, FNR, Stage2 Escalation \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-{\scriptsize \textit{Headline metrics; full tables include Acc, Precision/Recall, FPR}}
+{\tiny \textit{Full tables: Acc, Precision, Recall, FPR}}
 \end{column}
 
-\begin{column}{0.45\textwidth}
-\begin{tikzpicture}[scale=0.7, transform shape,
+\begin{column}{0.5\textwidth}
+\begin{tikzpicture}[scale=0.8, transform shape,
     box/.style={rectangle, draw=primaryblue, fill=primaryblue!10,
-                minimum width=1.5cm, minimum height=0.7cm, align=center,
-                rounded corners, font=\scriptsize},
+                minimum width=1.6cm, minimum height=0.75cm, align=center,
+                rounded corners, font=\small},
     arrow/.style={->, thick, primaryblue}]
 
 % Training datasets
 \node[box] (c1) at (0,3) {CelebDF};
-\node[box] (c2) at (1.8,3) {FF++};
-\node[box] (c3) at (0,2) {DFDC};
-\node[box] (c4) at (1.8,2) {Deeper\\Forensics};
+\node[box] (c2) at (1.9,3) {FF++};
+\node[box] (c3) at (0,1.8) {DFDC};
+\node[box] (c4) at (1.9,1.8) {Deeper\\Forensics};
 
 % Model
-\node[box, fill=secondaryblue!30, minimum width=3.5cm] (model) at (0.9,0.5) {Cascade Model};
+\node[box, fill=secondaryblue!30, minimum width=3.8cm] (model) at (0.95,0.3) {Cascade Model};
 
 % Tests
-\node[box, fill=successgreen!20] (in) at (-1,-1) {In-domain\\Test};
-\node[box, fill=alertred!20] (ood) at (2.8,-1) {OOD Test\\(No Finetune)};
+\node[box, fill=successgreen!20] (in) at (-1,-1.2) {In-domain\\Test};
+\node[box, fill=alertred!20] (ood) at (2.9,-1.2) {OOD Test\\(No Finetune)};
 
 % Arrows
 \draw[arrow] (c1.south) -- ++(0,-0.3) -| (model.north);
@@ -928,9 +974,9 @@ OOD & F1, FNR, Stage2 Escalation Rate \\
 \draw[arrow] (model.south) -- ++(0,-0.3) -| (ood.north);
 \end{tikzpicture}
 
-\vspace{0.5em}
+\vspace{0.3em}
 \begin{block}{Goal}
-Simulate: Train on public data $\rightarrow$ Deploy to real internet
+Train on public data $\rightarrow$ Deploy to real internet
 \end{block}
 \end{column}
 \end{columns}
@@ -976,42 +1022,39 @@ On combined validation, cascade achieves high detection with significant compute
 % Slide 11.5: Stage-wise Ablation Analysis
 % ============================================
 \begin{frame}{Stage-wise Ablation Analysis}
+\footnotesize
 \begin{columns}[T]
-\begin{column}{0.55\textwidth}
+\begin{column}{0.5\textwidth}
 \textbf{Why Cascade?}
 \begin{itemize}
-\setlength\itemsep{0.1em}
-    \item Stage 1 alone: Fast but higher FNR
-    \item Stage 2 alone: Lower FNR but 5$\times$ slower
+\setlength\itemsep{0.02em}
+    \item Stage 1: Fast but higher FNR
+    \item Stage 2: Lower FNR but 5$\times$ slower
     \item Cascade: Best of both worlds
 \end{itemize}
 
-\vspace{0.3em}
-\textbf{Stage-wise Comparison (Combined Val)}
+\vspace{0.1em}
+\textbf{Stage-wise Comparison}
 \begin{center}
-\scriptsize
+\tiny
 \begin{tabular}{lrrrr}
 \toprule
 \textbf{Config} & \textbf{AUC} & \textbf{F1} & \textbf{FNR} & \textbf{GFLOPs} \\
 \midrule
-Stage 1 only & 0.9936 & 0.9561 & 3.12\% & 0.54 \\
-Stage 2 only & 0.9633 & 0.8930 & 9.43\% & 2.87 \\
+S1 only & 0.9936 & 0.9561 & 3.12\% & 0.54 \\
+S2 only & 0.9633 & 0.8930 & 9.43\% & 2.87 \\
 \midrule
 \textbf{Cascade} & \textbf{0.9941} & \textbf{0.9654} & \successtext{0.60\%} & \highlight{0.59} \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\vspace{0.3em}
-\begin{block}{Key Insight}
-Cascade achieves \successtext{5$\times$ lower FNR} than Stage 1 alone with only \highlight{9\%} compute overhead.
-\end{block}
 \end{column}
 
-\begin{column}{0.45\textwidth}
+\begin{column}{0.5\textwidth}
 \textbf{FNR Reduction}
 \begin{center}
-\begin{tikzpicture}[scale=0.7]
+\begin{tikzpicture}[scale=0.55]
     % Bar chart
     \draw[thick] (0,0) -- (0,4);
     \draw[thick] (0,0) -- (4,0);
@@ -1036,64 +1079,63 @@ Cascade achieves \successtext{5$\times$ lower FNR} than Stage 1 alone with only 
 \end{tikzpicture}
 \end{center}
 
-\vspace{0.3em}
+\vspace{-0.2em}
 \textbf{Compute Efficiency}
 \begin{itemize}
-\setlength\itemsep{0.1em}
-    \item Stage 1: 0.54 GFLOPs
-    \item Stage 2: 2.87 GFLOPs (5.3$\times$)
-    \item Cascade avg: 0.59 GFLOPs
-    \item Overhead: only 9\% vs Stage 1
+\setlength\itemsep{0.02em}
+    \item S1: 0.54 GFLOPs
+    \item S2: 2.87 GFLOPs
+    \item Cascade: 0.59 GFLOPs
+    \item Overhead: 9\% only
 \end{itemize}
 \end{column}
 \end{columns}
+
+\vspace{0.05em}
+\begin{block}{\tiny Key Insight}
+Cascade: \successtext{5$\times$ lower FNR} than Stage 1 \quad with only \highlight{9\%} overhead.
+\end{block}
 \end{frame}
 
 % ============================================
 % Slide 12: Cascade Efficiency Analysis
 % ============================================
 \begin{frame}{Cascade Efficiency Analysis}
+\footnotesize
 \begin{columns}[T]
-\begin{column}{0.55\textwidth}
+\begin{column}{0.56\textwidth}
 \textbf{Design Philosophy}
 \begin{itemize}
-\setlength\itemsep{0.1em}
+\setlength\itemsep{0.03em}
     \item Stage 1: Lightweight, high-throughput
     \item Principle: ``Better catch more than miss''
     \item Stage 2: Fine-grained for difficult samples
 \end{itemize}
 
-\textbf{Runtime Statistics (Combined Validation)}
+\vspace{0.08em}
+\textbf{Runtime Statistics}
 \begin{itemize}
-\setlength\itemsep{0.1em}
-    \item Escalation rate: $\sim$1.2\%
-    \item $\Rightarrow$ \highlight{98.8\%} samples only need Stage 1
-    \item FNR maintained at $\sim$0.6\%
+\setlength\itemsep{0.03em}
+    \item Escalation: $\sim$1.2\%
+    \item $\Rightarrow$ \highlight{98.8\%} Stage 1 only
+    \item FNR: $\sim$0.6\%
 \end{itemize}
 
-\textbf{Significance for Mobile/Edge}
+\vspace{0.08em}
+\textbf{Mobile/Edge Impact}
 \begin{itemize}
-\setlength\itemsep{0.1em}
-    \item Most samples: fast local detection
-    \item Few samples: optional cloud refinement
+\setlength\itemsep{0.03em}
+    \item Most: fast local detection
+    \item Few: optional cloud refinement
 \end{itemize}
 \end{column}
 
-\begin{column}{0.45\textwidth}
+\begin{column}{0.44\textwidth}
 \begin{figure}
     \centering
     \includegraphics[width=\textwidth]{outputs_stage4_run_20251031_075851_heatmap_f1.png}
-    \caption*{F1 Score Heatmap ($\tau_{\text{low}}$ vs $\tau_{\text{high}}$)}
+    \caption*{\tiny F1 Score Heatmap}
 \end{figure}
-
-\begin{tikzpicture}[scale=0.6]
-    % Funnel
-    \fill[primaryblue!30] (-2,2) -- (2,2) -- (1.5,1) -- (-1.5,1) -- cycle;
-    \fill[primaryblue!50] (-1.5,1) -- (1.5,1) -- (0.3,0) -- (-0.3,0) -- cycle;
-
-    \node at (0,1.5) {\scriptsize 100\% Input};
-    \node at (0,0.5) {\scriptsize 1.2\% Stage2};
-\end{tikzpicture}
 \end{column}
 \end{columns}
 \end{frame}
@@ -1162,7 +1204,6 @@ Model achieves practical real-time performance on mainstream flagship smartphone
 \begin{column}{0.55\textwidth}
 \textbf{Performance Drop on Deepfake-Eval-2024}
 
-\vspace{0.5em}
 \begin{center}
 \begin{tabular}{lcc}
 \toprule
@@ -1176,7 +1217,6 @@ Stage2 Rate & $\sim$1.2\% & \alerttext{$\sim$51\%} \\
 \end{tabular}
 \end{center}
 
-\vspace{0.5em}
 \textbf{Root Causes}
 \begin{itemize}
     \item Training data $\neq$ 2024 internet distribution
@@ -1267,7 +1307,6 @@ Domain generalization and periodic retraining are essential for real-world deplo
 \begin{column}{0.55\textwidth}
 \textbf{Image Perturbation Experiments}
 
-\vspace{0.3em}
 \begin{center}
 \scriptsize
 \begin{tabular}{lp{5cm}}
@@ -1283,7 +1322,6 @@ Motion Blur & \alerttext{Near-total failure} (FNR $\sim$96-100\%) \\
 
 {\scriptsize \textit{Note: Robustness results are sample-limited and treated as preliminary hypotheses.}}
 
-\vspace{0.5em}
 \textbf{Typical Failure Cases}
 \begin{itemize}
     \item High-quality fakes: human-indistinguishable
@@ -1487,12 +1525,8 @@ Stage 2 & 49.6 MB & \highlight{13.4 MB} & 52 MB \\
     \item Temperature: T $\approx$ 1.34
     \item ECE reduced by \highlight{79\%}
     \item Thresholds: $\tau_{low}$=0.05, $\tau_{high}$=0.55
+    \item 4\% accuracy for on-device privacy and latency
 \end{itemize}
-
-\vspace{0.3em}
-\begin{block}{Key Insight}
-Mobile deployment trades \alerttext{4\% accuracy} for \highlight{on-device privacy} and \highlight{$<$200ms latency}.
-\end{block}
 \end{column}
 \end{columns}
 \end{frame}
@@ -1628,17 +1662,6 @@ Temporal Modeling & Frame-level, no video fusion \\
 \vspace{2em}
 {\large Questions \& Discussion}
 
-\vspace{3em}
-\textbf{Acknowledgments}
-\begin{itemize}
-    \item Supervisor: [Supervisor Name]
-    \item Research Group Members
-    \item Open-source communities (ONNX Runtime, PyTorch)
-    \item Public dataset contributors
-\end{itemize}
-
-\vspace{2em}
-{\small This work provides a baseline platform for on-device deepfake detection research.}
 \end{center}
 \end{frame}
 
