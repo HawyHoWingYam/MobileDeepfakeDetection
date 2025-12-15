@@ -1,6 +1,6 @@
 # Fdb version 4
-["pdflatex"] 1765728074.55809 "/Users/hawyho/Documents/GitHub/MobileDeepfakeDetection/project_instruction/presentation/defense_slides.tex" "defense_slides.pdf" "defense_slides" 1765728075.44479 2
-  "/Users/hawyho/Documents/GitHub/MobileDeepfakeDetection/project_instruction/presentation/defense_slides.tex" 1765728072.89679 49116 6da5afe1285b9561127814d7b65d9d25 ""
+["pdflatex"] 1765810643.01247 "/Users/hawyho/Documents/GitHub/MobileDeepfakeDetection/project_instruction/presentation/defense_slides.tex" "defense_slides.pdf" "defense_slides" 1765810644.19408 2
+  "/Users/hawyho/Documents/GitHub/MobileDeepfakeDetection/project_instruction/presentation/defense_slides.tex" 1765810642.23887 49516 d7ac598576da9360c1bc1f08b6e808c7 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/public/cm/cmr12.tfm" 1136768653 1288 655e228510b4c2a1abe905c368440826 ""
   "/usr/local/texlive/2025/texmf-dist/fonts/tfm/public/cm/cmss12.tfm" 1136768653 1324 37b971caf729d7edd9cbb9f9b0ea76eb ""
@@ -219,8 +219,8 @@
   "/usr/local/texlive/2025/texmf-dist/web2c/texmf.cnf" 1739380943 42148 61becc7c670cd061bb319c643c27fdd4 ""
   "/usr/local/texlive/2025/texmf-var/web2c/pdftex/pdflatex.fmt" 1764124251 3345742 7ae5bad836ea0fa5672ebbd5e10f5517 ""
   "/usr/local/texlive/2025/texmf.cnf" 1741450484 577 418a7058ec8e006d8704f60ecd22c938 ""
-  "defense_slides.aux" 1765728074.55623 32 3985256e7290058c681f74d7a3565a19 "pdflatex"
-  "defense_slides.tex" 1765728072.89679 49116 6da5afe1285b9561127814d7b65d9d25 ""
+  "defense_slides.aux" 1765810643.01068 32 3985256e7290058c681f74d7a3565a19 "pdflatex"
+  "defense_slides.tex" 1765810642.23887 49516 d7ac598576da9360c1bc1f08b6e808c7 ""
   (generated)
   "defense_slides.aux"
   "defense_slides.log"

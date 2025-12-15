@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025) (preloaded format=xelatex 2025.11.26)  15 DEC 2025 00:02
+This is XeTeX, Version 3.141592653-2.6-0.999997 (TeX Live 2025) (preloaded format=xelatex 2025.11.26)  15 DEC 2025 22:58
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1196,26 +1196,26 @@ Package fontspec Info:
  (./defense_slides.aux)
 \openout1 = `defense_slides.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
-LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 90.
-LaTeX Font Info:    ... okay on input line 90.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
+LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 117.
+LaTeX Font Info:    ... okay on input line 117.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: xetex
@@ -1251,53 +1251,55 @@ LaTeX Font Info:    ... okay on input line 90.
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-Package hyperref Info: Link coloring OFF on input line 90.
-(./defense_slides.out) (./defense_slides.out)
+Package hyperref Info: Link coloring OFF on input line 117.
 \@outlinefile=\write5
 \openout5 = `defense_slides.out'.
 
+
+Package hyperref Warning: Rerun to get /PageLabels entry.
+
 LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  OT1/cmr/m/n --> OT1/cmss/m/n on input line 90.
+(Font)                  OT1/cmr/m/n --> OT1/cmss/m/n on input line 117.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  OT1/cmr/bx/n --> OT1/cmss/b/n on input line 90.
+(Font)                  OT1/cmr/bx/n --> OT1/cmss/b/n on input line 117.
 \symnumbers=\mathgroup6
 \sympureletters=\mathgroup7
 LaTeX Font Info:    Overwriting math alphabet `\mathrm' in version `normal'
-(Font)                  OT1/cmss/m/n --> TU/lmr/m/n on input line 90.
-LaTeX Font Info:    Redeclaring math alphabet \mathbf on input line 90.
+(Font)                  OT1/cmss/m/n --> TU/lmr/m/n on input line 117.
+LaTeX Font Info:    Redeclaring math alphabet \mathbf on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
-(Font)                  OT1/cmr/bx/n --> TU/lmss/b/n on input line 90.
+(Font)                  OT1/cmr/bx/n --> TU/lmss/b/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `bold'
-(Font)                  OT1/cmr/bx/n --> TU/lmss/b/n on input line 90.
-LaTeX Font Info:    Redeclaring math alphabet \mathsf on input line 90.
+(Font)                  OT1/cmr/bx/n --> TU/lmss/b/n on input line 117.
+LaTeX Font Info:    Redeclaring math alphabet \mathsf on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
-(Font)                  OT1/cmss/m/n --> TU/lmss/m/n on input line 90.
+(Font)                  OT1/cmss/m/n --> TU/lmss/m/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
-(Font)                  OT1/cmss/bx/n --> TU/lmss/m/n on input line 90.
-LaTeX Font Info:    Redeclaring math alphabet \mathit on input line 90.
+(Font)                  OT1/cmss/bx/n --> TU/lmss/m/n on input line 117.
+LaTeX Font Info:    Redeclaring math alphabet \mathit on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
-(Font)                  OT1/cmr/m/it --> TU/lmss/m/it on input line 90.
+(Font)                  OT1/cmr/m/it --> TU/lmss/m/it on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
-(Font)                  OT1/cmr/bx/it --> TU/lmss/m/it on input line 90.
-LaTeX Font Info:    Redeclaring math alphabet \mathtt on input line 90.
+(Font)                  OT1/cmr/bx/it --> TU/lmss/m/it on input line 117.
+LaTeX Font Info:    Redeclaring math alphabet \mathtt on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
-(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 90.
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
-(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 90.
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 117.
 LaTeX Font Info:    Overwriting symbol font `numbers' in version `bold'
-(Font)                  TU/lmss/m/n --> TU/lmss/b/n on input line 90.
+(Font)                  TU/lmss/m/n --> TU/lmss/b/n on input line 117.
 LaTeX Font Info:    Overwriting symbol font `pureletters' in version `bold'
-(Font)                  TU/lmss/m/it --> TU/lmss/b/it on input line 90.
+(Font)                  TU/lmss/m/it --> TU/lmss/b/it on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathrm' in version `bold'
-(Font)                  OT1/cmss/b/n --> TU/lmr/b/n on input line 90.
+(Font)                  OT1/cmss/b/n --> TU/lmr/b/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `bold'
-(Font)                  TU/lmss/b/n --> TU/lmss/b/n on input line 90.
+(Font)                  TU/lmss/b/n --> TU/lmss/b/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
-(Font)                  TU/lmss/m/n --> TU/lmss/b/n on input line 90.
+(Font)                  TU/lmss/m/n --> TU/lmss/b/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
-(Font)                  TU/lmss/m/it --> TU/lmss/b/it on input line 90.
+(Font)                  TU/lmss/m/it --> TU/lmss/b/it on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
-(Font)                  TU/lmtt/m/n --> TU/lmtt/b/n on input line 90.
+(Font)                  TU/lmtt/m/n --> TU/lmtt/b/n on input line 117.
 
 (/usr/local/texlive/2025/texmf-dist/tex/latex/translator/translator-basic-dicti
 onary-English.dict
@@ -1333,58 +1335,63 @@ Package fontspec Info:
 
 \symlegacymaths=\mathgroup8
 LaTeX Font Info:    Overwriting symbol font `legacymaths' in version `bold'
-(Font)                  OT1/cmr/m/n --> OT1/cmr/bx/n on input line 90.
-LaTeX Font Info:    Redeclaring math accent \acute on input line 90.
-LaTeX Font Info:    Redeclaring math accent \grave on input line 90.
-LaTeX Font Info:    Redeclaring math accent \ddot on input line 90.
-LaTeX Font Info:    Redeclaring math accent \tilde on input line 90.
-LaTeX Font Info:    Redeclaring math accent \bar on input line 90.
-LaTeX Font Info:    Redeclaring math accent \breve on input line 90.
-LaTeX Font Info:    Redeclaring math accent \check on input line 90.
-LaTeX Font Info:    Redeclaring math accent \hat on input line 90.
-LaTeX Font Info:    Redeclaring math accent \dot on input line 90.
-LaTeX Font Info:    Redeclaring math accent \mathring on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Gamma on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Delta on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Theta on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Lambda on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Xi on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Pi on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Sigma on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Upsilon on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Phi on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Psi on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \Omega on input line 90.
-LaTeX Font Info:    Redeclaring math symbol \mathdollar on input line 90.
-LaTeX Font Info:    Redeclaring symbol font `operators' on input line 90.
+(Font)                  OT1/cmr/m/n --> OT1/cmr/bx/n on input line 117.
+LaTeX Font Info:    Redeclaring math accent \acute on input line 117.
+LaTeX Font Info:    Redeclaring math accent \grave on input line 117.
+LaTeX Font Info:    Redeclaring math accent \ddot on input line 117.
+LaTeX Font Info:    Redeclaring math accent \tilde on input line 117.
+LaTeX Font Info:    Redeclaring math accent \bar on input line 117.
+LaTeX Font Info:    Redeclaring math accent \breve on input line 117.
+LaTeX Font Info:    Redeclaring math accent \check on input line 117.
+LaTeX Font Info:    Redeclaring math accent \hat on input line 117.
+LaTeX Font Info:    Redeclaring math accent \dot on input line 117.
+LaTeX Font Info:    Redeclaring math accent \mathring on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Gamma on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Delta on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Theta on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Lambda on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Xi on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Pi on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Sigma on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Upsilon on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Phi on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Psi on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \Omega on input line 117.
+LaTeX Font Info:    Redeclaring math symbol \mathdollar on input line 117.
+LaTeX Font Info:    Redeclaring symbol font `operators' on input line 117.
 LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
-(Font)              `operators' in the math version `normal' on input line 90.
+(Font)              `operators' in the math version `normal' on input line 117.
+
 LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  OT1/cmss/m/n --> TU/lmr/m/n on input line 90.
+(Font)                  OT1/cmss/m/n --> TU/lmr/m/n on input line 117.
 LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
-(Font)              `operators' in the math version `bold' on input line 90.
+(Font)              `operators' in the math version `bold' on input line 117.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  OT1/cmss/b/n --> TU/lmr/m/n on input line 90.
+(Font)                  OT1/cmss/b/n --> TU/lmr/m/n on input line 117.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  TU/lmr/m/n --> TU/lmr/m/n on input line 90.
-LaTeX Font Info:    Redeclaring math alphabet \mathrm on input line 90.
+(Font)                  TU/lmr/m/n --> TU/lmr/m/n on input line 117.
+LaTeX Font Info:    Redeclaring math alphabet \mathrm on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
-(Font)                  TU/lmss/m/it --> TU/lmr/m/it on input line 90.
+(Font)                  TU/lmss/m/it --> TU/lmr/m/it on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
-(Font)                  TU/lmss/b/n --> TU/lmr/b/n on input line 90.
+(Font)                  TU/lmss/b/n --> TU/lmr/b/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
-(Font)                  TU/lmss/m/n --> TU/lmss/m/n on input line 90.
+(Font)                  TU/lmss/m/n --> TU/lmss/m/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
-(Font)                  TU/lmtt/m/n --> TU/lmtt/m/n on input line 90.
+(Font)                  TU/lmtt/m/n --> TU/lmtt/m/n on input line 117.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  TU/lmr/m/n --> TU/lmr/b/n on input line 90.
+(Font)                  TU/lmr/m/n --> TU/lmr/b/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
-(Font)                  TU/lmss/b/it --> TU/lmr/b/it on input line 90.
+(Font)                  TU/lmss/b/it --> TU/lmr/b/it on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
-(Font)                  TU/lmss/b/n --> TU/lmss/b/n on input line 90.
+(Font)                  TU/lmss/b/n --> TU/lmss/b/n on input line 117.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
-(Font)                  TU/lmtt/b/n --> TU/lmtt/b/n on input line 90.
+(Font)                  TU/lmtt/b/n --> TU/lmtt/b/n on input line 117.
 (./defense_slides.nav)
+Overfull \vbox (0.30739pt too high) detected at line 148
+ []
+
+
 
 [1
 
@@ -1393,45 +1400,40 @@ LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
 [2
 
 ]
-LaTeX Font Info:    Trying to load font information for U+msa on input line 182
+LaTeX Font Info:    Trying to load font information for U+msa on input line 233
 .
  (/usr/local/texlive/2025/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 182
+LaTeX Font Info:    Trying to load font information for U+msb on input line 233
 .
 
 (/usr/local/texlive/2025/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 )
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <12> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 182.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 233.
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <8> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 182.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 233.
 LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <6> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 182.
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 233.
 
 
 [3
 
 ]
-Underfull \hbox (badness 4416) in paragraph at lines 213--213
-[]|\TU/lmss/m/n/12 High-precision models are computationally
- []
-
-
-Overfull \vbox (111.70258pt too high) detected at line 213
- []
-
+LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <10> not available
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 265.
+LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <7> not available
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 265.
+LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <5> not available
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 265.
 
 
 [4
 
 ]
-LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <5> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 276.
-
-Overfull \vbox (28.35222pt too high) detected at line 276
+Overfull \vbox (3.46713pt too high) detected at line 329
  []
 
 
@@ -1439,7 +1441,7 @@ Overfull \vbox (28.35222pt too high) detected at line 276
 [5
 
 ]
-Overfull \hbox (8.05254pt too wide) in paragraph at lines 330--330
+Overfull \hbox (8.05254pt too wide) in paragraph at lines 383--383
 [][]  
  []
 
@@ -1448,7 +1450,7 @@ Overfull \hbox (8.05254pt too wide) in paragraph at lines 330--330
 [6
 
 ]
-Overfull \vbox (85.01575pt too high) detected at line 382
+Overfull \vbox (60.37108pt too high) detected at line 435
  []
 
 
@@ -1460,7 +1462,10 @@ Overfull \vbox (85.01575pt too high) detected at line 382
 [8
 
 ]
-Overfull \vbox (24.54015pt too high) detected at line 489
+LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <10.95> not available
+(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 543.
+
+Overfull \vbox (1.18874pt too high) detected at line 543
  []
 
 
@@ -1468,20 +1473,16 @@ Overfull \vbox (24.54015pt too high) detected at line 489
 [9
 
 ]
-Overfull \vbox (11.78346pt too high) detected at line 563
- []
-
-
 
 [10
 
 ]
-Overfull \hbox (13.19551pt too wide) in paragraph at lines 616--616
+Overfull \hbox (13.19551pt too wide) in paragraph at lines 668--668
  [] 
  []
 
 
-Overfull \vbox (4.02899pt too high) detected at line 616
+Overfull \vbox (4.02899pt too high) detected at line 668
  []
 
 
@@ -1489,7 +1490,7 @@ Overfull \vbox (4.02899pt too high) detected at line 616
 [11
 
 ]
-Overfull \vbox (55.43204pt too high) detected at line 684
+Overfull \vbox (55.43204pt too high) detected at line 736
  []
 
 
@@ -1497,7 +1498,7 @@ Overfull \vbox (55.43204pt too high) detected at line 684
 [12
 
 ]
-Overfull \hbox (6.80745pt too wide) in paragraph at lines 740--740
+Overfull \hbox (6.80745pt too wide) in paragraph at lines 792--792
 [][]  
  []
 
@@ -1506,7 +1507,7 @@ Overfull \hbox (6.80745pt too wide) in paragraph at lines 740--740
 [13
 
 ]
-Overfull \vbox (14.25475pt too high) detected at line 796
+Overfull \vbox (4.65471pt too high) detected at line 845
  []
 
 
@@ -1514,7 +1515,7 @@ Overfull \vbox (14.25475pt too high) detected at line 796
 [14
 
 ]
-Overfull \vbox (52.34808pt too high) detected at line 865
+Overfull \vbox (6.03987pt too high) detected at line 907
  []
 
 
@@ -1522,12 +1523,7 @@ Overfull \vbox (52.34808pt too high) detected at line 865
 [15
 
 ]
-Overfull \hbox (15.17448pt too wide) in paragraph at lines 937--937
- [] 
- []
-
-
-Overfull \vbox (52.8324pt too high) detected at line 937
+Overfull \vbox (34.60497pt too high) detected at line 983
  []
 
 
@@ -1539,7 +1535,7 @@ File: ../../paper/figures/outputs_stage1_run_20251023_034316_01_roc_curve.png G
 raphic file (type bmp)
 <../../paper/figures/outputs_stage1_run_20251023_034316_01_roc_curve.png>
 
-Overfull \vbox (4.3057pt too high) detected at line 973
+Overfull \vbox (4.3057pt too high) detected at line 1019
  []
 
 
@@ -1547,7 +1543,7 @@ Overfull \vbox (4.3057pt too high) detected at line 973
 [17
 
 ]
-Overfull \vbox (24.01053pt too high) detected at line 1050
+Overfull \vbox (26.5191pt too high) detected at line 1098
  []
 
 
@@ -1559,7 +1555,7 @@ File: ../../paper/figures/outputs_stage4_run_20251031_075851_heatmap_f1.png Gra
 phic file (type bmp)
 <../../paper/figures/outputs_stage4_run_20251031_075851_heatmap_f1.png>
 
-Overfull \vbox (58.92126pt too high) detected at line 1099
+Overfull \vbox (1.38208pt too high) detected at line 1141
  []
 
 
@@ -1567,7 +1563,7 @@ Overfull \vbox (58.92126pt too high) detected at line 1099
 [19
 
 ]
-Overfull \vbox (3.0444pt too high) detected at line 1155
+Overfull \vbox (3.0444pt too high) detected at line 1197
  []
 
 
@@ -1575,15 +1571,11 @@ Overfull \vbox (3.0444pt too high) detected at line 1155
 [20
 
 ]
-Overfull \vbox (8.46036pt too high) detected at line 1199
- []
-
-
 
 [21
 
 ]
-Overfull \vbox (67.63106pt too high) detected at line 1260
+Overfull \vbox (67.63106pt too high) detected at line 1300
  []
 
 
@@ -1598,7 +1590,7 @@ File: ../../paper/figures/outputs_stage5_robustness_motion_f1.png Graphic file
 (type bmp)
 <../../paper/figures/outputs_stage5_robustness_motion_f1.png>
 
-Overfull \vbox (185.23524pt too high) detected at line 1309
+Overfull \vbox (185.23524pt too high) detected at line 1347
  []
 
 
@@ -1610,7 +1602,7 @@ Overfull \vbox (185.23524pt too high) detected at line 1309
 [24
 
 ]
-Overfull \hbox (4.08202pt too wide) in paragraph at lines 1424--1424
+Overfull \hbox (4.08202pt too wide) in paragraph at lines 1462--1462
  [] 
  []
 
@@ -1619,7 +1611,7 @@ Overfull \hbox (4.08202pt too wide) in paragraph at lines 1424--1424
 [25
 
 ]
-Overfull \vbox (65.41704pt too high) detected at line 1498
+Overfull \vbox (12.58951pt too high) detected at line 1532
  []
 
 
@@ -1627,11 +1619,7 @@ Overfull \vbox (65.41704pt too high) detected at line 1498
 [26
 
 ]
-LaTeX Font Info:    Font shape `TU/lmss/m/it' in size <10.95> not available
-(Font)              Font shape `TU/lmss/m/sl' tried instead on input line 1562.
-
-
-Overfull \vbox (2.86751pt too high) detected at line 1562
+Overfull \vbox (2.86751pt too high) detected at line 1596
  []
 
 
@@ -1649,7 +1637,7 @@ Overfull \vbox (2.86751pt too high) detected at line 1562
 ]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\translate ' on input line 1649.
+(hyperref)                removing `\translate ' on input line 1672.
 
 File: ../../paper/figures/outputs_stage1_run_20251023_034316_03_calibration.png
  Graphic file (type bmp)
@@ -1671,7 +1659,7 @@ File: ../../paper/figures/outputs_stage4_run_20251031_075851_heatmap_fnr.png Gr
 aphic file (type bmp)
 <../../paper/figures/outputs_stage4_run_20251031_075851_heatmap_fnr.png>
 
-Overfull \vbox (44.82887pt too high) detected at line 1666
+Overfull \vbox (44.82887pt too high) detected at line 1689
  []
 
 
@@ -1683,7 +1671,7 @@ File: ../../paper/figures/outputs_stage5_robustness_gaussian_f1.png Graphic fil
 e (type bmp)
 <../../paper/figures/outputs_stage5_robustness_gaussian_f1.png>
 
-Overfull \vbox (29.35678pt too high) detected at line 1672
+Overfull \vbox (29.35678pt too high) detected at line 1695
  []
 
 
@@ -1705,15 +1693,22 @@ Overfull \vbox (29.35678pt too high) detected at line 1672
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2022/08/05>
  ***********
-Package rerunfilecheck Info: File `defense_slides.out' has not changed.
-(rerunfilecheck)             Checksum: 5BCEA9CF7D2D9AECE7CAC4018E9F6C5B;81.
+
+
+Package rerunfilecheck Warning: File `defense_slides.out' has changed.
+(rerunfilecheck)                Rerun to get outlines right
+(rerunfilecheck)                or use package `bookmark'.
+
+Package rerunfilecheck Info: Checksums for `defense_slides.out':
+(rerunfilecheck)             Before: <no file>
+(rerunfilecheck)             After:  5BCEA9CF7D2D9AECE7CAC4018E9F6C5B;81.
  ) 
 Here is how much of TeX's memory you used:
- 41747 strings out of 473832
- 1059821 string characters out of 5729480
- 1570978 words of memory out of 5000000
- 64042 multiletter control sequences out of 15000+600000
- 566793 words of font info for 91 fonts, out of 8000000 for 9000
+ 41684 strings out of 473832
+ 1057936 string characters out of 5729480
+ 1568115 words of memory out of 5000000
+ 63972 multiletter control sequences out of 15000+600000
+ 567927 words of font info for 106 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
  128i,16n,123p,738b,1096s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
