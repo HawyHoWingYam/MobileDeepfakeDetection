@@ -226,7 +226,7 @@ Privacy & On-device only \\
 
 \vspace{0.5em}
 \begin{block}{Research Gap}
-No existing cascade detector provides explicit FNR control with auditable cost-risk trade-offs for mobile.
+Existing cascade systems rarely provide explicit FNR control with auditable cost-risk trade-offs for mobile.
 \end{block}
 \end{column}
 \end{columns}
@@ -1028,9 +1028,9 @@ On combined validation, cascade achieves high detection with significant compute
 \textbf{Why Cascade?}
 \begin{itemize}
 \setlength\itemsep{0.02em}
-    \item Stage 1: Fast but higher FNR
-    \item Stage 2: Lower FNR but 5$\times$ slower
-    \item Cascade: Best of both worlds
+    \item Stage 1: Fast but FNR = 3.12\%
+    \item Stage 2: Higher FNR (9.43\%), different error modes
+    \item Cascade: Complementary $\rightarrow$ FNR = 0.60\%
 \end{itemize}
 
 \vspace{0.1em}
@@ -1044,7 +1044,7 @@ On combined validation, cascade achieves high detection with significant compute
 S1 only & 0.9936 & 0.9561 & 3.12\% & 0.54 \\
 S2 only & 0.9633 & 0.8930 & 9.43\% & 2.87 \\
 \midrule
-\textbf{Cascade} & \textbf{0.9941} & \textbf{0.9654} & \successtext{0.60\%} & \highlight{0.59} \\
+\textbf{Cascade} & \textbf{0.9941} & \textbf{0.9580} & \successtext{0.60\%} & \highlight{0.59} \\
 \bottomrule
 \end{tabular}
 \end{center}

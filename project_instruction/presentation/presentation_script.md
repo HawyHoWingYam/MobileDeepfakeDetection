@@ -151,10 +151,13 @@
 - Deepfake生成和传播路径示意图
 - 3个关键风险点的图标+简短说明
 
-### 讲稿
-> Deepfake技术近年来快速发展，基于GAN和扩散模型的换脸技术已经能够生成以假乱真的伪造内容。这带来了严重的社会风险：政治虚假信息影响选举、名人换脸用于金融诈骗、非自愿亲密内容侵害个人隐私。
->
-> 与此同时，移动设备已成为人们获取信息的主要渠道，超过60%的互联网流量来自手机。用户需要能够在本地快速验证内容真伪，同时出于隐私考虑，敏感的人脸数据不应上传到云端。因此，在移动端实现实时、准确的Deepfake检测成为一个重要的研究方向。
+### 讲稿 (中文)
+
+> 过去十年，深伪技术从早期的 GAN 换脸，发展到扩散模型和高逼真重演系统，可以生成几乎以假乱真的人脸视频和图像，普通用户用开源工具就能轻松制作。这样的视频已经被大量用来散布政治虚假信息，冒充名人或合成身份进行金融诈骗，以及生成非自愿的色情和亲密影像。与此同时，媒体消费快速向移动端迁移，如今超过 60% 的互联网流量来自手机。用户希望在本地就能验证内容真伪，不必把敏感媒体上传云端，以保护隐私、也支持离线场景。综合来看，在移动设备上实现实时、准确的深伪检测已经变成一个紧迫的研究方向。
+
+### English Script
+
+> Over the last decade, deepfake technology has moved from early GAN-based face swaps to diffusion and advanced reenactment models that generate highly photorealistic faces. These synthetic videos and images are no longer harmless curiosities: they are routinely weaponized for political misinformation, large-scale financial scams using celebrity or synthetic identities, and non-consensual intimate content. At the same time, media consumption has shifted to mobile: today, over 60% of internet traffic comes from phones, and easy-to-use tools make deepfakes widely accessible. Users increasingly expect to verify content locally on their devices, without uploading sensitive media to a server, for both privacy and offline use. Together, these trends make accurate, real-time deepfake detection on mobile devices an urgent research direction.
 
 ---
 
@@ -184,17 +187,13 @@
 - 左侧：两组 bullet points（基准vs现实、服务器假设）
 - 右侧：约束表格 + Research Gap block
 
-### 讲稿
+### 讲稿 (中文)
 
-> 在介绍完深度伪造的社会背景之后，我想进一步说明当前研究面临的技术挑战。
->
-> 首先是"基准与现实世界的差距"问题。现有的检测模型通常在 FaceForensics++ 或 CelebDF 等精心策划的数据集上训练，但当迁移到真实世界的数据时，AUC 可能下降 20-30%。这是因为真实场景中存在更复杂的压缩、光照变化和新型生成器。
->
-> 其次，现有研究大多假设服务器级算力。绝大多数工作都在高端 GPU 上评估，很少关注移动端或边缘设备的部署需求，也很少报告移动端特定的指标，比如升级率或设备上的延迟。
->
-> 右侧的表格总结了移动端部署的硬约束：模型大小需要控制在 100MB 以内以适应应用包；延迟需要低于 200ms 以支持实时交互；还需要考虑电池续航和隐私保护——数据应该留在设备本地处理。
->
-> 这些挑战揭示了一个研究空白：目前还没有一个级联检测系统能够为移动端部署提供显式的假阴性率控制，并具备可审计的代价-风险权衡机制。这正是我们 MobileDeepfake 项目要解决的核心问题。
+> 虽然很多深伪检测模型在基准数据集上表现很好，但在真实环境中的效果往往大幅下降。比如，在 FaceForensics++、CelebDF 等精心整理的数据上训练的模型，一旦迁移到真实网络视频，AUC 往往会下降 20–30%，暴露出明显的数据集偏差和分布移位问题。现有工作大多默认使用服务器级 GPU，只报告准确率和算力指标，很少系统性地评估移动端，更缺乏面向手机的延迟和能耗指标。实际部署时，我们希望模型体积不超过 100MB，每帧延迟小于 200ms，同时节省电量，并且只在本机处理敏感媒体。不过，现有系统——包括级联检测器——普遍缺少对 FNR 的显式控制，也难以给出可审计的成本–风险权衡，这正是本研究要填补的空白。
+
+### English Script
+
+> Despite strong benchmark numbers, current deepfake detectors do not transfer cleanly to the real world. Models trained on curated datasets such as FaceForensics++ and CelebDF often suffer a 20–30% AUC drop on in-the-wild media because of dataset bias and distribution shift. Most prior work also assumes server-class GPUs: they report accuracy and FLOPs, but rarely mobile-specific metrics, and almost never end-to-end latency on phones. For practical deployment, however, we need detectors whose core model is no larger than about 100MB, runs in under 200ms per frame, stays battery-friendly, and keeps all media strictly on-device. Yet existing systems, including cascade-style detectors, typically lack explicit FNR control and do not offer auditable cost–risk trade-offs for mobile operators, which is the key gap this work targets.
 
 ---
 
@@ -218,18 +217,29 @@
 - 2×2表格或图标列表展示四大挑战
 - 底部加粗总结研究目标
 
-### 讲稿
-> 在移动端实现Deepfake检测面临四大核心挑战：
+### 讲稿 (中文)
+
+> 这一页我把问题具体拆成四个挑战，并用实际数字说明为什么它们难。
 >
-> 第一，轻量化与准确率的矛盾。高精度的检测模型通常参数量大、计算复杂，而移动设备的算力、内存和电量都十分有限。
+> 第一，轻量化与准确率的张力。很多最新的深伪检测模型在服务器上可以用上百 MB 的大模型、几百毫秒甚至秒级的推理时间，但在移动端我们必须遵守非常苛刻的约束：整个检测模块最好控制在 100MB 以内，单帧端侧推理时间小于 200ms，还要兼顾电池寿命。MobileDeepfake 的设计目标就是"两阶段主干模型加起来 <100MB、端侧 <200ms"。最终 Stage1 的 MobileNetV4 FP32 约 37.3MB，Stage2 的 EfficientNetV2‑B3 约 49.6MB，INT8 量化后分别压缩到 10.1MB 和 13.4MB；在小米 13 上，人脸级检测准确率 92.8%，平均延迟约 180ms。要在这样紧的算力和容量预算下维持接近 0.99 的 AUC，本身就是一个不小的工程挑战。
 >
-> 第二，分布偏移问题。训练数据集与真实应用场景在伪造方法、压缩程度、拍摄设备等方面存在显著差异，导致模型泛化能力不足。
+> 第二是分布偏移。文献和我们的实验都显示，基于 FaceForensics++、CelebDF 这类精心整理数据集训练的模型，一旦迁移到 in‑the‑wild 数据集（比如 WildDeepfake 或 Deepfake‑Eval‑2024），AUC 往往会下降 20–30%。在本系统中，校准后的级联在四个学术数据集的联合验证上可以做到 AUC≈0.9941、F1≈0.965、FNR≈0.60%，Stage2 升级率只有 1.16%；但当我们把同一套级联直接应用到 Deepfake‑Eval‑2024 时，F1 掉到 0.28–0.30，FNR 上升到 73–79%，Stage2 升级率飙升到约 51%。这说明即使 in‑domain 指标很漂亮，一旦遇到 2024 年真实互联网分布，模型仍然会大幅退化。
 >
-> 第三，假阴性率控制问题。在深度伪造检测中，漏检的代价非常高——一个未被检测到的虚假视频可能造成严重的社会影响。因此需要在计算预算内严格控制 FNR。
+> 第三是假阴性率控制。在深度伪造检测里，真正危险的是"漏掉一个假"，而不是"多报几个真"。如果只用 Stage1，在 combined validation 上 FNR 约为 3.12%，Stage2 单独使用时 FNR 甚至更高，大约 9.43%，而且计算量是 2.87 GFLOPs。我们因此把"在 in‑domain 保持 FNR ≤1%"当成硬约束，通过显式的双阈值机制（τ_low=0.05、τ_high=0.55）和网格搜索来选操作点，最终把 FNR 压到 0.60%，同时把 Stage2 升级率控制在 1.16%。要做到这一点，就必须从设计之初就把 FNR 当成一等公民，而不是训练完随便挑一个阈值。
 >
-> 第四，工程落地的挑战。从一个研究模型到可实际部署的系统，需要完整的数据处理、训练、导出、部署流水线。
+> 最后是工程落地。要支撑前面这些数字，我们不仅要有模型，还要有一整套可复现的流水线：多数据集 manifest 的构建，Stage1/Stage2 训练，Stage1 的温度缩放校准（最优温度 T≈1.34，把 ECE 从 4.21% 降到 0.89%，相对下降约 79%），Stage4 中对 (τ_low, τ_high) 的约束式网格搜索，以及 Stage5 上针对 JPEG、噪声和模糊的鲁棒性扫描。所有这些逻辑最终都收敛到一个 `cascade_config.json` 和一组 `CascadeConfig` 参数上，并被 Android 端的 `OnnxCascadeEngine` 直接消费。这也是为什么这页的四个挑战，在后面的实现中都能一一对应到具体的代码和配置。
+
+### Script (English)
+
+> This slide turns the high‑level problem into four concrete challenges, each backed by numbers.
 >
-> 针对这四个挑战，我们提出了四个具体的研究问题。第一个问题关注如何在分布偏移条件下实现高召回率；第二个问题探讨级联架构能否提供可解释的代价-风险权衡；第三个问题关于系统的可复现性；第四个问题则是如何科学地评估鲁棒性和泛化能力。
+> First, the tension between lightweight models and accuracy. Many state‑of‑the‑art deepfake detectors assume server‑class GPUs and hundreds of megabytes of weights, which simply do not fit into a ≤100MB mobile app bundle or a <200ms per‑frame budget. In MobileDeepfake we explicitly target "two stages under ~100MB and <200ms on device." Stage 1 MobileNetV4 is about 37.3MB in FP32, Stage 2 EfficientNetV2‑B3 is about 49.6MB, and INT8 quantization shrinks them to 10.1MB and 13.4MB. On a Xiaomi 13 (Snapdragon 8 Gen 2) the on‑device cascade reaches 92.8% face‑level accuracy with roughly 180ms end‑to‑end latency per face. Achieving near‑0.99 AUC under these constraints is already non‑trivial.
+>
+> Second, distribution shift. Prior work and our own experiments show that models trained on FaceForensics++ or CelebDF can lose 20–30 percentage points of AUC when evaluated on in‑the‑wild datasets such as WildDeepfake or Deepfake‑Eval‑2024. In our system, the calibrated cascade on the four academic datasets achieves about AUC=0.9941, F1≈0.965, FNR≈0.60% with only 1.16% of samples escalated to Stage 2. But when we take the exact same cascade and apply it to Deepfake‑Eval‑2024, F1 collapses to 0.28–0.30, FNR jumps to 73–79%, and the Stage‑2 escalation rate explodes to around 51%. This is a concrete, measured manifestation of dataset bias and domain shift in 2024 media.
+>
+> Third, explicit FNR control. For deepfake detection, the catastrophic failure is a missed fake, not an extra false alarm, so we treat FNR as a first‑class constraint. On the combined validation set, Stage 1 alone yields FNR≈3.12% at 0.54 GFLOPs; Stage 2 alone is even worse at FNR≈9.43% and 2.87 GFLOPs. We therefore formulate Stage 4 as a constrained optimization problem: search over (τ_low, τ_high) to keep FNR ≤1% while minimizing the Stage‑2 rate. The safety‑first operating point τ_low=0.05, τ_high=0.55 reaches FNR=0.60% with only 1.16% of samples escalated, giving roughly a 5× FNR reduction compared to Stage 1 for only ~9% extra compute.
+>
+> Finally, the engineering gap. To make these numbers reproducible and deployable, we build a six‑stage pipeline: multi‑dataset manifests, Stage‑1 and Stage‑2 training, temperature‑scaling calibration, constrained threshold grid search, robustness sweeps over JPEG/noise/blur, and mobile export. In the code, this all collapses into a `CascadeConfig` dataclass (with fields like `stage1_real_threshold` and `stage1_fake_threshold`), a `calibration_temp.json` file that stores the optimal temperature T≈1.34 (reducing Stage‑1 ECE from 4.21% to 0.89%, a 78.9% drop), and a `cascade_config.json` bundle consumed by the Android `OnnxCascadeEngine`. So each abstract challenge on this slide is tied directly to concrete configuration knobs and scripts in the implementation.
 
 ---
 
@@ -263,16 +273,33 @@
 - 右侧：FNR vs Stage 2 Rate 的 trade-off 曲线图
 - 底部：Core Insight 总结框
 
-### 讲稿
-> 让我进一步详细说明这些技术挑战。
+### 讲稿 (中文)
+
+> 接下来这页，我从实现角度具体展开刚才提到的技术挑战。
 >
-> 首先是假阴性控制问题。在深度伪造检测中，漏检的代价非常高——一个未被检测到的虚假视频可能造成严重的社会影响。因此，我们需要在计算预算内将 FNR 控制在 1% 以下，这需要显式的、可审计的阈值调优机制。
+> 首先是假阴性率控制在代码里的落地。Stage1 输出的是一个二分类 logit，我们在 Stage1 校准脚本里学习到最优温度 T≈1.34，然后在级联系统中统一用 `p1(x)=σ(z/T)` 作为假脸概率。在 Stage4，我们在 combined validation manifest 上枚举一系列 (τ_low, τ_high) 组合，计算每一对阈值对应的 FNR 和 Stage2 升级率。Safety‑first 的配置就是这样选出来的：τ_low=0.05、τ_high=0.55，把 FNR 从单独 Stage1 的 3.12% 压到 0.60%，Stage2 升级率只有 1.16%，平均计算量从 0.54 GFLOPs 升到 0.59 GFLOPs。Stage2 单独使用时 FNR 反而更高（约 9.43%、2.87 GFLOPs），说明收益来自"路由策略"，而不是某个单一更强的大模型。
 >
-> 其次是概率校准问题。原始模型输出的分数往往是过度自信或欠自信的，我们使用 temperature scaling 来校准概率，使得基于阈值的决策更加可靠。
+> 在 Python 代码中，这一逻辑对应到 `CascadeConfig.stage1_real_threshold=0.05` 和 `stage1_fake_threshold=0.55`，以及 `CascadeDetector.stage1_predict()` 中对 logit 做温度缩放；在 Android 端，同样的 τ_low/τ_high 被写进 `cascade_config.json`，由 `OnnxCascadeEngine.detect()` 中的 `if (stage1Prob < tauLow) ... else if (stage1Prob > tauHigh) ...` 这种级联分支来执行。所以"FNR < 1%"不是一个口号，而是被编码进配置文件和推理流程中的硬约束。
 >
-> 第三是扰动鲁棒性问题。真实世界的媒体经常经过 JPEG 压缩、添加噪声、模糊处理，还有各种平台的滤镜和字幕效果。我们需要系统性的评估协议来测试这些情况。
+> 第二个难点是概率校准。未经校准的 MobileNetV4 在联合验证集上的 Expected Calibration Error 约为 4.21%，意味着"0.9 的置信度"不能解释为"90% 的成功率"。我们用 `src/stage1/calibrate_model.py` 对 held‑out 验证集做温度缩放，拟合出最优温度 T=1.34。这个温度被写入 `calibration_temp.json`，推理时 `CascadeDetector` 读取该文件，在 `stage1_predict()` 里用 `scaled_logits = logits / T` 再过 sigmoid。校准之后，Stage1 的 ECE 降到 0.89%，相对降低约 78.9%，而 AUC 保持在 0.9936 不变，使得 τ_low、τ_high 真正可以解释为"约 5% / 55% 的假脸概率"，方便在不同数据集和设备之间迁移操作点。
 >
-> 右侧的图展示了关键的权衡关系：FNR 和 Stage 2 升级率之间的 trade-off。通过显式的双阈值机制，我们可以在这条曲线上选择合适的操作点，这比黑箱的集成方法更加透明和可审计。
+> 第三个难点是鲁棒性评估要有系统性，而不是只看干净样本。Stage5 的脚本会对同一批验证人脸施加四类扰动：JPEG 压缩（质量从 95 降到 20）、高斯噪声（σ 从 2 到 12）、运动模糊（卷积核大小 3–13）、以及亮度/对比度缩放。每一个设置，我们都会输出 F1、FNR 和 Stage2 升级率。比如，在 JPEG 质量 q=20 的强压缩下，FNR 约 30.6%，Stage2 升级率约 5.2%；在高斯噪声 σ=12 时，FNR 约 67.4%，Stage2 升级率约 48.5%；而在运动模糊核大小 3–13 的范围内，FNR 几乎一直在 96–100% 之间，Stage2 升级率也维持在 17–38% 左右。这些数字说明：级联架构在适度压缩和噪声下还能保持一定性能，但在严重模糊等极端场景下几乎完全失效，这一点必须在早期就明确给出。
+>
+> 最后，右侧的 FNR–Stage2 升级率曲线，实际上就是上述机制在代码中的综合产物。我们在阈值网格搜索时，对每一对 (τ_low, τ_high) 记录 FNR、Stage2 升级率和 GFLOPs，形成一条 Pareto 前沿。Safety‑first 点（0.05, 0.55）落在曲线的左下角；如果把 τ_low 再降到 0.03，可以把 FNR 进一步压到 0.54%，但 Stage2 升级率会升到 1.50%。这种带具体数字的 trade‑off，让我们可以非常明确地回答平台方的问题：为了把 FNR 从 0.60% 再降 0.06 个百分点，需要多付出多少计算成本和端侧延迟。
+
+### Script (English)
+
+> Let me now unpack these technical challenges from an implementation perspective.
+>
+> First, FNR control is implemented as an explicit routing problem. Stage 1 produces raw logits; we interpret the calibrated fake probability as p₁(x)=σ(z/T) with a learned temperature T≈1.34, and then search over threshold pairs (τ_low, τ_high) on the combined validation manifest. At the safety‑first operating point τ_low=0.05, τ_high=0.55, the cascade drives FNR down from 3.12% for Stage‑1‑only to 0.60%, while escalating only 1.16% of samples to Stage 2 and increasing average compute from 0.54 to 0.59 GFLOPs. Stage 2 by itself actually has a higher FNR of about 9.43% at 2.87 GFLOPs, so the gain comes from smarter routing, not from a single "better" model.
+>
+> In the code this appears as `CascadeConfig.stage1_real_threshold=0.05` and `stage1_fake_threshold=0.55` on the Python side, plus the use of temperature scaling inside `CascadeDetector.stage1_predict()`. For mobile deployment, the same τ_low and τ_high values are written into `cascade_config.json` as `tau_low` / `tau_high` and consumed by the Android `OnnxCascadeEngine.detect()` method via a simple `if (stage1Prob < tauLow) ... else if (stage1Prob > tauHigh) ...` cascade. In other words, the "FNR < 1%" requirement is encoded directly into configuration and runtime logic, not just stated in the paper.
+>
+> Second, probability calibration is what makes those thresholds meaningful. The uncalibrated MobileNetV4 has an Expected Calibration Error of about 4.21% on the combined validation set, so a score of 0.9 does not correspond to a 90% success rate. The script `src/stage1/calibrate_model.py` fits a single temperature on a held‑out split, yielding an optimal T=1.34. This value is stored in `calibration_temp.json`, and during inference `CascadeDetector.stage1_predict()` loads it and applies `scaled_logits = logits / T` before the sigmoid. After calibration, Stage‑1 ECE drops to 0.89% (a 78.9% relative reduction) while AUC remains at 0.9936, so τ_low and τ_high can be interpreted as approximate probability levels rather than arbitrary scores.
+>
+> Third, robustness is evaluated through a systematic corruption sweep rather than a one‑off demo. In Stage 5 we take a fixed validation manifest and apply four perturbation families: JPEG compression (quality 95→20), Gaussian noise (σ from 2 to 12), motion blur (kernel sizes 3–13), and brightness/contrast scaling. For each setting we log F1, FNR, and Stage‑2 rate. For example, at JPEG quality q=20 the cascade sees FNR≈30.6% with a Stage‑2 rate of about 5.2%; with Gaussian noise σ=12, FNR is ≈67.4% and the Stage‑2 rate ≈48.5%; under motion blur, all tested kernels push FNR into the 96–100% range with Stage‑2 rates around 17–38%. These numbers show that the cascade retains some robustness under moderate compression or noise, but essentially fails under strong blur—an important limitation to surface early.
+>
+> Finally, the trade‑off curve on the right—FNR versus Stage‑2 escalation rate—is produced directly by the threshold search code. In `benchmark_cascade.py` we sweep a grid of (τ_low, τ_high) pairs over the calibrated probabilities, compute FNR, Stage‑2 rate, and GFLOPs for each, and plot the resulting Pareto frontier. The safety‑first point (0.05, 0.55) sits near the lower‑left; lowering τ_low to 0.03 can push FNR to about 0.54%, but at the cost of raising the Stage‑2 rate to roughly 1.50%. Presenting the curve this way lets us tell operators, in concrete numbers, exactly how much extra compute and latency they must pay to squeeze out each additional fraction of a percent of FNR.
 
 ---
 
@@ -302,16 +329,29 @@
 - 左侧：系统整体框图（输入→两阶段检测→结果）
 - 右侧：4条贡献bullet，每条配图标
 
-### 讲稿
-> 基于上述挑战，本工作提出了MobileDeepfake系统，主要有四个贡献：
+### 讲稿 (中文)
+
+> 这一页我把刚才的问题设定，具体落到本论文的研究目标和四个贡献上。
 >
-> 第一，设计了成本感知的两阶段级联检测系统。使用轻量的MobileNetV4作为快速过滤器，处理大部分简单样本；对于难以判定的样本，再交给EfficientNetV2-B3专家模型进行精准分析。通过双阈值机制，显式控制漏检率和计算成本。
+> 第一项贡献是一个成本感知的两阶段级联系统。我们用 MobileNetV4 做 Stage 1 轻量过滤器，用 EfficientNetV2‑B3 做 Stage 2 专家模型，通过显式的双阈值路由策略在易样本和难样本之间分工。在四个学术数据集组成的联合验证集上（约 187 万训练样本、38.9 万验证样本），我们对 (τ_low, τ_high) 进行网格搜索，选出一个 safety‑first 操作点：级联整体 AUC 约 0.9941，系统级 FNR 仅 0.60%，只有 1.16% 的样本会被升级到 Stage 2。也就是说，在几乎不牺牲召回的前提下，把绝大部分计算量都控制在轻量级的 Stage 1 上。
 >
-> 第二，采用多数据集联合训练，并在独立的Deepfake-Eval-2024数据集上进行跨数据集评估，系统性地揭示分布偏移问题。
+> 第二项贡献是多数据集联合训练和系统性的跨数据集评估。Stage 1 和 Stage 2 都是在 CelebDF‑v2、FaceForensics++、DFDC 和 DeeperForensics‑1.0 四个数据集的统一 manifest 上共同训练的，训练集约 187 万张人脸，验证集约 38.9 万张。然后，我们把调好阈值的级联直接迁移到 Deepfake‑Eval‑2024 这个严格分布外的基准上，它包含大约 45.1 万验证样本和 40.2 万测试样本。通过同时报告 in‑domain 和 OOD 上的 FNR、Stage‑2 升级率和 AUC，我们可以量化「单模型 vs 级联」、「校准 vs 未校准」在 2024 年真实社交媒体分布下的性能差距，而不是只停留在单一数据集上的指标。
 >
-> 第三，构建了端到端的可复现流水线，涵盖数据预处理、模型训练、阈值调优、鲁棒性评估和移动导出六个阶段。
+> 第三项贡献是一条端到端可复现的六阶段流水线。从 Stage 0 的预处理与 manifest 生成开始，到 Stage 1 / Stage 2 的训练和温度缩放校准，再到 Stage 4 的阈值网格搜索、Stage 5 的扰动鲁棒性扫描以及最后的移动导出，每一步都有对应的脚本和配置文件。只要给定原始数据路径和环境配置，读者可以从头重新跑一遍，自动生成论文中的绝大部分表格和图，这对于后续审计、复现和工程落地都非常关键。
 >
-> 第四，提供了完整的移动端部署方案，包括模型量化和Android应用集成。
+> 第四项贡献是一个经过实际验证的移动端部署方案。我们先通过 INT8 动态量化，把 FP32 TorchScript 模型从 37.3MB / 49.6MB 压缩到 10.1MB / 13.4MB，再导出为 ONNX 并打包进 Android 应用。在小米 13 真机上，完整级联在单人脸场景下可以达到约 92.8% 的帧级准确率，端到端延迟大约 180ms。更重要的是，这个 App 使用的就是研究阶段同一套权重和阈值配置，通过 `cascade_config.json` 把 PC 端调好的 τ_low、τ_high 和温度参数原封不动地搬到设备上，实现「论文里的数字」和「手机上的体验」的一致性。
+
+### Script (English)
+
+> This slide turns those challenges into four concrete objectives and contributions.
+>
+> First, we design a cost‑aware two‑stage cascade. Stage 1 is a lightweight MobileNetV4 filter, Stage 2 is an EfficientNetV2‑B3 expert, and we route samples using an explicit pair of thresholds (τ_low, τ_high). On the combined validation set built from four academic datasets (~1.87M training and ~389k validation face crops), a grid search over these thresholds yields a safety‑first operating point with AUC≈0.9941, system‑level FNR=0.60%, and only 1.16% of samples escalated to Stage 2. In other words, the cascade achieves server‑grade recall while keeping almost all computation in the cheap Stage‑1 path.
+>
+> Second, we commit to multi‑dataset training and cross‑dataset evaluation. Both stages are trained jointly on CelebDF‑v2, FaceForensics++, DFDC, and DeeperForensics‑1.0 using a unified, balanced manifest, and then evaluated not only in‑domain but also on Deepfake‑Eval‑2024, a strictly held‑out OOD benchmark with roughly 451k validation and 402k test face crops. By reporting AUC, FNR, and Stage‑2 usage for single‑stage vs. cascade, and for calibrated vs. uncalibrated scores, we can quantify exactly how much robustness we gain—or still lack—when moving from curated benchmarks to 2024 social‑media videos.
+>
+> Third, we package everything into an end‑to‑end, scriptable six‑stage pipeline. Stage 0 handles preprocessing and manifest generation; Stages 1 and 2 train the MobileNetV4 filter and EfficientNetV2‑B3 expert; Stage 3 hosts optional meta‑models and hard‑example mining experiments; Stage 4 performs cost‑aware threshold tuning over (τ_low, τ_high); and Stages 5–6 cover robustness sweeps and mobile export. Given the raw data and the environment file, every table and figure in the thesis can be regenerated from these scripts, which is essential for reproducibility and auditability.
+>
+> Fourth, we deliver a practical mobile deployment path. We first compress the FP32 models (37.3MB and 49.6MB) to 10.1MB and 13.4MB using INT8 TorchScript quantization, then export them to ONNX and bundle them into an Android app. On a Xiaomi 13, this on‑device cascade reaches about 92.8% face‑level accuracy with roughly 180ms end‑to‑end latency per face. The app reads the same `cascade_config.json` used on the desktop side, so the τ_low, τ_high, and calibration temperatures tuned on the validation set transfer directly to the device without any re‑training.
 
 ---
 
@@ -345,18 +385,29 @@
 - 左右两栏布局，每栏两个贡献的技术细节
 - 底部：Design Philosophy 总结框
 
-### 讲稿
-> 让我进一步详细说明这四个贡献的技术细节。
+### 讲稿 (中文)
+
+> 这张过渡页我从工程实现的角度，再把刚才四个贡献拆得更细一点。
 >
-> 对于级联系统，我们定义了两个关键的系统级指标：Stage-1 leakage（第一阶段漏检率）和 Stage-2 escalation rate（升级到第二阶段的比例）。通过 cost-sensitive grid search，我们可以在这两个指标之间找到最优的阈值组合。此外，我们还实现了可选的 Stage-3 LightGBM 元模型用于分析，但默认移动部署不包含它。
+> 第一，成本感知级联。我们把 Stage‑1 leakage 定义为：在所有假样本中，被 Stage 1 当成「简单真实」直接放行、且不会升级到 Stage 2 的比例；把 Stage‑2 escalation rate 定义为：所有样本中被路由到 Stage 2 的比例。Stage 1 侧在 `src/stage1/utils.analyze_cascade_performance` 里先对一维阈值做分析，计算过滤率和 leakage；Stage 4 的 `src/stage4/benchmark_cascade.py` 则在联合验证 manifest 上对 (τ_low, τ_high) 做二维网格搜索，逐点评估 FNR、Stage‑2 升级率、leakage 和 GFLOPs。当前使用的配置在 combined validation 上达到 AUC≈0.9941、FNR=0.60%、Stage‑2 升级率 1.16%。这些数值被写入 `outputs/stage4/run_*/best_config.json`，并同步到用于移动端的 `cascade_config.json`，后续像鲁棒性扫描脚本和 Android 端的级联引擎都以这两份配置作为阈值的单一来源。
 >
-> 对于跨数据集评估，我们不仅报告了性能数字，还系统性地量化了跨数据集的性能差距和典型失败模式。我们比较了单模型和级联系统的表现，以及校准和未校准阈值在迁移时的差异。
+> 第二，跨数据集评估。数据层面，我们通过统一的 manifest 机制，把 CelebDF‑v2、FaceForensics++、DFDC 和 DeeperForensics‑1.0 四个数据集拼成约 187 万训练样本、38.9 万验证样本的联合数据集，`scripts/preprocess_datasets_v2.py` 和 `scripts/regenerate_manifests.py` 负责生成这些 CSV。Stage 1 和 Stage 2 的训练脚本只依赖「manifest + data_root」这两个参数，就可以在同一接口上完成训练。评估阶段，`src/stage1/evaluate_stage1.py`、`src/stage2/evaluate_stage2.py` 和 `src/stage4/benchmark_cascade.py` 会在四个 in‑domain 数据集和 Deepfake‑Eval‑2024（约 45.1 万验证、40.2 万测试样本）上分别跑三种配置：Stage‑1‑only、Stage‑2‑only 和 cascade，并同时记录「未校准分数 + 直接阈值」和「温度缩放后 + 同一组阈值」的结果，这样单模型 vs 级联、校准 vs 未校准的差异都可以用具体的 FNR 和 Stage‑2 升级率来刻画。
 >
-> 对于流水线，我们强调它是完全可脚本化和可复现的。从数据预处理、manifest 生成，到 hard-example mining、校准、鲁棒性扫描，所有步骤都有对应的脚本。这些脚本可以复现论文中的所有表格和图表。
+> 第三，可脚本化流水线。Stage 0 的预处理和 manifest 生成完全由脚本驱动；Stage 1 / Stage 2 训练脚本会把最优权重、曲线和指标统一写入 `outputs/stage*/run_*/` 目录下的 JSON 与 CSV。Stage 3 在需要时可以启用 hard‑example mining，把高损失样本或 Stage 1 / Stage 2 的错误样本抽出来，构造成一个元数据集供 LightGBM 等元模型做消融实验；但默认部署路径仍然使用标准的统一采样。Stage 1 的 `calibrate_model.py` 和 Stage 2 的 `calibrate_stage2.py` 负责温度缩放，把最优温度写入小的 JSON 文件；Stage 5 的 `src/tools/analyze_robustness.py` 则对 JPEG 压缩、高斯噪声、运动模糊、亮度变化等扰动做系统扫描，生成包含 F1、FNR、Stage‑2 升级率的 CSV 和 LaTeX 插图片段。整个链路从原始 PNG 到鲁棒性曲线，中间没有「手动点点点」这种不可追踪的步骤。
 >
-> 对于移动部署，除了 INT8 量化，我们还使用了 knowledge distillation 进一步压缩模型。导出格式以 TorchScript 为主，ONNX 为辅。关键是我们将阈值和 temperature 参数打包到元数据文件中，使得整个导出可以直接用于 Android 集成，形成一个可复用的模板。
+> 第四，移动导出。训练好的 FP32 模型首先在 PyTorch 中通过动态量化得到 10.1MB / 13.4MB 的 INT8 TorchScript 版本，作为体积受限场景的备选格式；随后在 `scripts/export_mobile_cascade_onnx.py` 中用 `DeepfakeClassifier` 统一封装 Stage 1 和 Stage 2 的骨干与分类头，交给 `src/stage4/mobile_deployment/onnx_exporter.ONNXExporter` 导出为 ONNX。Exporter 会自动做一次 PyTorch vs ONNX 输出对齐验证，为每个模型写入元数据，并在 `android/mobile_bundle/` 下生成 `aware_cascade_stage1.onnx`、`aware_cascade_stage2.onnx`、`aware_cascade_manifest.json` 和 `cascade_config.json`。Android 端的 `OnnxCascadeEngine` 从 assets 里加载这两份 ONNX 和配置 JSON，按「小于 τ_low 判真、大于 τ_high 判假、否则升级 Stage 2」的逻辑运行，并通过 `CascadeResult` 返回阶段和时间信息，这就是我们在小米 13 上测得约 92.8% 准确率和 ~180ms 延迟的直接数据来源。
+
+### Script (English)
+
+> On this transition slide I'd like to zoom in on how each contribution is implemented in code.
 >
-> 总的设计理念是：在研究原型和可审计的移动部署之间架起桥梁，通过显式的、可复现的控制机制实现这一目标。
+> First, the cost‑aware cascade. We define Stage‑1 leakage as the fraction of fake samples that Stage 1 confidently labels as "simple real" and therefore never escalates, and Stage‑2 escalation rate as the fraction of all samples routed to Stage 2. On the Python side, `src/stage1/utils.analyze_cascade_performance` analyzes one‑dimensional thresholds for Stage 1, while `src/stage4/benchmark_cascade.py` sweeps a grid of (τ_low, τ_high) over the combined validation manifest and logs FNR, Stage‑2 usage, leakage, and GFLOPs for each pair. The best configuration—AUC≈0.9941, FNR=0.60%, Stage‑2 rate=1.16%—is stored in `outputs/stage4/run_*/best_config.json` and mirrored in the mobile‑side `cascade_config.json`, so downstream components such as the robustness scripts and the Android cascade engine treat these files as the single source of truth for thresholds.
+>
+> Second, cross‑dataset evaluation. The data pipeline starts with unified manifests built by `scripts/preprocess_datasets_v2.py` and `scripts/regenerate_manifests.py`, which turn CelebDF‑v2, FaceForensics++, DFDC, and DeeperForensics‑1.0 into a single pool of about 1.87M training and 389k validation face crops. Stage‑1 and Stage‑2 training scripts depend only on these manifests and a data root. At evaluation time, `src/stage1/evaluate_stage1.py`, `src/stage2/evaluate_stage2.py`, and `src/stage4/benchmark_cascade.py` run three configurations—Stage‑1‑only, Stage‑2‑only, and full cascade—on each of the four in‑domain datasets and on Deepfake‑Eval‑2024 (≈451k validation and ≈402k test samples). For every run we log AUC, F1, FNR, Stage‑2 usage, and a flag indicating whether temperature scaling was enabled, which lets us quantify single vs. cascade and calibrated vs. uncalibrated performance gaps instead of just eyeballing ROC curves.
+>
+> Third, the scriptable pipeline. Stage 0 preprocessing and manifest generation are fully encoded in scripts; Stages 1 and 2 write all checkpoints, curves, and metrics into `outputs/stage*/run_.../` directories with JSON summaries; Stage 3 can optionally turn high‑loss or misclassified samples into a meta‑dataset for hard‑example mining and LightGBM experiments, while the default public pipeline sticks to uniform sampling for simplicity. Stage‑1 `calibrate_model.py` and Stage‑2 `calibrate_stage2.py` perform temperature scaling and store the learned temperatures in small JSON files; and Stage 5's `src/tools/analyze_robustness.py` drives corruption sweeps over JPEG compression, Gaussian noise, motion blur, and brightness changes, emitting both CSV metrics and LaTeX include snippets. There are no hidden manual steps between raw PNGs and the robustness figures in the paper.
+>
+> Fourth, mobile export. After training, we apply dynamic INT8 quantization in PyTorch to obtain 10.1MB and 13.4MB TorchScript variants of Stage 1 and Stage 2, then use `scripts/export_mobile_cascade_onnx.py` together with `src/stage4/mobile_deployment/onnx_exporter.ONNXExporter` to convert the same architectures to ONNX and assemble an `android/mobile_bundle/` directory. The exporter validates PyTorch vs. ONNX outputs, attaches metadata, and creates `aware_cascade_stage1.onnx`, `aware_cascade_stage2.onnx`, an `aware_cascade_manifest.json`, and a `cascade_config.json` capturing τ_low, τ_high, the Stage‑2 decision threshold, and the calibration temperature. On Android, `OnnxCascadeEngine` loads those ONNX files and the JSON, applies the "τ_low → real, τ_high → fake, else escalate" routing rule, and returns a `CascadeResult` with stage and timing information—the same information we use to report ~92.8% accuracy and ~180ms latency on the Xiaomi 13.
 
 ---
 
@@ -392,17 +443,29 @@
   | EfficientNetV2-B3 | 0.9633 | 49.6MB | 精准专家 |
 - 在图中标注"仅~1.2%样本进入Stage2"
 
-### 讲稿
+### 讲稿 (中文)
 
-> 这一部分我主要介绍整个系统的两阶段级联设计。
+> 这一部分我主要介绍整个系统的两阶段级联设计，以及为什么选择这样的架构。
 >
-> 在移动端场景下，我们既要在单帧大约180毫秒的时延预算内完成推理，又要尽可能保证深度伪造检测的准确性。单一的大模型很难同时满足这两个目标，因此我采用了两阶段级联的结构。
+> 在移动端场景下，我们既要在单帧大约 180 毫秒的时延预算内完成推理，又要尽可能保证深度伪造检测的准确性。单一的大模型很难同时满足这两个目标，因此我采用了两阶段级联的结构。
 >
-> 首先，Stage1使用的是轻量级的MobileNetV4，它直接对输入人脸图像输出一个"为假"的概率，记为p1(x)。这个阶段的特点是速度快、模型体积小，只有37.3MB，但在验证集上AUC依然可以达到0.9936，说明它本身就有比较强的判别能力。
+> Stage 1 使用的是 `timm` 库中的 `mobilenetv4_hybrid_medium.ix_e550_r256_in1k`，这是一个专门为移动端优化的轻量级骨干网络。在 `src/stage1/train_stage1.py` 中，我们用 `BCEWithLogitsLoss` 作为损失函数，配合 `AdamW` 优化器和 `CosineAnnealingLR` 调度器进行训练。输入是 256×256 的人脸裁剪图像，输出是一个 logit，经过温度缩放后的 sigmoid 得到假脸概率 `p1(x) = σ(z/T)`，其中 T≈1.34。Stage 1 的 AUC 达到 0.9936，模型大小 37.3MB，计算量仅 0.54 GFLOPs。
 >
-> 第二阶段Stage2则采用了更大、更精细的EfficientNetV2-B3。这个模型不会对所有样本都运行，而是只处理那些Stage1置信度比较低、比较模糊的样本。Stage2的AUC为0.9633，虽然体积更大、计算更重，但因为它只服务于少数边界样本，所以对整体时延影响是可控的。
+> Stage 2 使用的是 `efficientnetv2_b3.in21k_ft_in1k`，这是一个更大、更精细的模型。在 `src/stage2/train_stage2_effnet.py` 中，训练配置与 Stage 1 有明显区别：我们使用 Focal Loss 配合 label smoothing 来处理类别不平衡，额外加入了 `RandAugment` 和 Mixup/CutMix 增强，以及 `CosineAnnealingWarmRestarts` 调度器。Stage 2 的 AUC 为 0.9633，模型大小 49.6MB，计算量 2.87 GFLOPs。虽然单独使用时 FNR 高达 9.43%，但它专门处理 Stage 1 无法确定的边界样本。
 >
-> 通过这样的级联结构，最终系统在保证整体FNR只有大约0.6%的情况下，升级到Stage2的比例仅约1.2%。也就是说，绝大多数样本只需一次轻量推理就能给出结果，只有极少数疑难样本才会触发重模型。
+> 级联的核心逻辑在 `src/stage4/cascade_detector.py` 的 `CascadeDetector.predict()` 方法中实现。`CascadeConfig` 数据类定义了两个关键阈值：`stage1_real_threshold`（τ_low=0.05）和 `stage1_fake_threshold`（τ_high=0.55）。路由规则很简单：如果 `p1(x) < 0.05`，直接判为真实；如果 `p1(x) > 0.55`，直接判为伪造；否则升级到 Stage 2。通过这样的设计，最终系统在保证整体 FNR 只有 0.60% 的情况下，升级到 Stage 2 的比例仅约 1.16%。
+
+### Script (English)
+
+> This section covers the two-stage cascade design and the rationale behind this architecture.
+>
+> On mobile devices, we need to complete inference within roughly 180ms per frame while maintaining high detection accuracy. A single large model cannot satisfy both constraints, so we adopt a two-stage cascade structure.
+>
+> Stage 1 uses `mobilenetv4_hybrid_medium.ix_e550_r256_in1k` from the `timm` library, a lightweight backbone optimized for mobile deployment. In `src/stage1/train_stage1.py`, we train with `BCEWithLogitsLoss`, `AdamW` optimizer, and `CosineAnnealingLR` scheduler. The input is a 256×256 face crop, and the output is a single logit. After temperature scaling, the fake probability is computed as `p1(x) = σ(z/T)` where T≈1.34. Stage 1 achieves AUC=0.9936 with only 37.3MB model size and 0.54 GFLOPs.
+>
+> Stage 2 uses `efficientnetv2_b3.in21k_ft_in1k`, a larger and more precise model. In `src/stage2/train_stage2_effnet.py`, the training configuration differs significantly: we use Focal Loss with label smoothing for class imbalance, add `RandAugment` and Mixup/CutMix augmentation, and use `CosineAnnealingWarmRestarts` scheduler. Stage 2 has AUC=0.9633, 49.6MB size, and 2.87 GFLOPs. While its standalone FNR is 9.43%, it specializes in handling boundary samples that Stage 1 cannot confidently classify.
+>
+> The cascade logic is implemented in `CascadeDetector.predict()` in `src/stage4/cascade_detector.py`. The `CascadeConfig` dataclass defines two key thresholds: `stage1_real_threshold` (τ_low=0.05) and `stage1_fake_threshold` (τ_high=0.55). The routing rule is simple: if `p1(x) < 0.05`, classify as real; if `p1(x) > 0.55`, classify as fake; otherwise escalate to Stage 2. With this design, the system achieves FNR=0.60% while only escalating 1.16% of samples to Stage 2.
 
 ---
 
@@ -439,16 +502,29 @@
 - 右侧：部署场景表 + 校准效果
 - 底部：Key Insight 总结框
 
-### 讲稿
-> 让我进一步展示级联系统的效率和不同操作点的选择。
+### 讲稿 (中文)
+
+> 让我进一步展示级联系统的效率和不同操作点的选择，这些数字直接来自论文的消融实验。
 >
-> 左侧的表格比较了不同配置的计算成本。单独使用 Stage 1 需要 0.54 GFLOPs，FNR 为 3.12%。单独使用 Stage 2 需要 2.87 GFLOPs，但 FNR 反而更高，达到 9.43%。而我们的级联系统只需要 0.59 GFLOPs——因为只有 1.16% 的样本需要经过 Stage 2——但 FNR 降低到了 0.60%。这意味着我们用仅 9% 的额外计算开销，将 FNR 降低了 5 倍。
+> 左侧的表格比较了不同配置的计算成本。单独使用 Stage 1 需要 0.54 GFLOPs，FNR 为 3.12%。单独使用 Stage 2 需要 2.87 GFLOPs，但 FNR 反而更高，达到 9.43%——这说明 Stage 2 并不是一个"更好"的模型，而是专门处理边界样本的专家。我们的级联系统只需要 0.59 GFLOPs——因为只有 1.16% 的样本需要经过 Stage 2——但 FNR 降低到了 0.60%。计算公式是 `Cascade_GFLOPs = 0.54 + r × 2.87`，其中 r 是 Stage-2 升级率。这意味着我们用仅 9.3% 的额外计算开销，将 FNR 降低了 5.2 倍。
 >
-> 在量化方面，通过 INT8 量化，Stage 1 从 37.3 MB 压缩到 10.1 MB，Stage 2 从 49.6 MB 压缩到 13.4 MB，而 AUC 损失都小于 0.01。
+> 在量化方面，我们在 `src/stage4/optimize_for_mobile.py` 中实现了 INT8 动态量化。Stage 1 从 37.3MB 压缩到 10.1MB，Stage 2 从 49.6MB 压缩到 13.4MB，压缩率都是 73%。AUC 损失分别只有 0.003 和 0.007，完全在可接受范围内。
 >
-> 右侧展示了不同部署场景的阈值配置。Safety-first 配置使用 τ_low=0.05, τ_high=0.55，实现 0.60% 的 FNR。如果对延迟更敏感，可以选择 Balanced 或 Speed-first 配置，以略高的 FNR 换取更低的 Stage 2 使用率。
+> 右侧展示了不同部署场景的阈值配置。这些操作点是通过 `src/tools/robustness_threshold_sweep.py` 中的 `sweep_grid` 函数对 (τ_low, τ_high) 进行网格搜索得到的。Safety-first 配置使用 τ_low=0.05, τ_high=0.55，实现 0.60% 的 FNR，适合内容审核场景。Balanced 配置使用 τ_low=0.10, τ_high=0.50，FNR 为 1.2%，适合一般移动部署。Speed-first 配置使用 τ_low=0.15, τ_high=0.45，FNR 为 2.0%，适合对延迟极度敏感的场景。
 >
-> 最后，我们使用 temperature scaling 进行概率校准，将 ECE 降低了 79%，这使得基于阈值的决策更加可靠。
+> 最后，概率校准是让这些阈值有意义的关键。在 `src/stage1/calibrate_model.py` 中，`TemperatureScalingCalibrator` 类通过最小化 NLL 来拟合最优温度 T=1.34。校准后，ECE 从 4.21% 降到 0.89%，相对降低 78.9%，而 AUC 保持在 0.9936 不变。这意味着 τ_low=0.05 真正对应"约 5% 的假脸概率"，而不是一个任意的分数阈值。
+
+### Script (English)
+
+> Let me elaborate on the cascade efficiency and operating point selection, with numbers directly from the ablation study.
+>
+> The left table compares compute costs across configurations. Stage 1 alone requires 0.54 GFLOPs with FNR=3.12%. Stage 2 alone requires 2.87 GFLOPs but has a higher FNR of 9.43%—this shows Stage 2 is not a "better" model but rather a specialist for boundary samples. Our cascade requires only 0.59 GFLOPs—because only 1.16% of samples escalate to Stage 2—while achieving FNR=0.60%. The formula is `Cascade_GFLOPs = 0.54 + r × 2.87` where r is the Stage-2 rate. This means we achieve a 5.2× FNR reduction with only 9.3% compute overhead.
+>
+> For quantization, we implement INT8 dynamic quantization in `src/stage4/optimize_for_mobile.py`. Stage 1 compresses from 37.3MB to 10.1MB, Stage 2 from 49.6MB to 13.4MB—both 73% reduction. AUC loss is only 0.003 and 0.007 respectively, well within acceptable bounds.
+>
+> The right side shows threshold configurations for different deployment scenarios. These operating points are found via grid search over (τ_low, τ_high) using the `sweep_grid` function in `src/tools/robustness_threshold_sweep.py`. Safety-first uses τ_low=0.05, τ_high=0.55 for FNR=0.60%, suitable for content moderation. Balanced uses τ_low=0.10, τ_high=0.50 for FNR=1.2%, suitable for general mobile deployment. Speed-first uses τ_low=0.15, τ_high=0.45 for FNR=2.0%, suitable for latency-critical scenarios.
+>
+> Finally, probability calibration is what makes these thresholds meaningful. In `src/stage1/calibrate_model.py`, the `TemperatureScalingCalibrator` class fits optimal temperature T=1.34 by minimizing NLL. After calibration, ECE drops from 4.21% to 0.89% (78.9% reduction) while AUC remains at 0.9936. This means τ_low=0.05 truly corresponds to "about 5% fake probability" rather than an arbitrary score threshold.
 
 ---
 
@@ -577,16 +653,33 @@
 - 右侧：设备端指标表格 + 运行时栈
 - 底部：Deployment Note 总结框
 
-### 讲稿
-> 让我详细介绍移动端部署的技术细节。
+### 讲稿 (中文)
+
+> 让我详细介绍移动端部署的技术细节，这些内容直接对应到代码实现。
 >
-> 左侧展示了不同导出格式的模型大小。FP32 TorchScript 是原始格式，Stage 1 为 37.3 MB，Stage 2 为 49.6 MB。通过 INT8 动态量化，可以压缩到 10.1 MB 和 13.4 MB。当前 Android 应用使用的是 FP32 ONNX 格式，大小约为 37.5 MB 和 52 MB。
+> 左侧展示了不同导出格式的模型大小。在 `scripts/export_mobile_cascade_onnx.py` 中，我们定义了 `DeepfakeClassifier` 包装类，它把 timm 的骨干网络和自定义分类头组合在一起。Stage 1 使用单层分类器（Dropout + Linear），Stage 2 使用两层分类器（Dropout + Linear + ReLU + Dropout + Linear）。FP32 TorchScript 是原始格式，Stage 1 为 37.3 MB，Stage 2 为 49.6 MB。通过 INT8 动态量化，可以压缩到 10.1 MB 和 13.4 MB。当前 Android 应用使用的是 FP32 ONNX 格式，大小约为 37.5 MB 和 52 MB。
 >
-> 设备端的处理流程是：首先使用 Android FaceDetector API 检测人脸并裁剪到 256×256，然后进行 ImageNet 标准化，接着通过 Stage 1 和级联路由逻辑，必要时调用 Stage 2，最后对 logits 应用 temperature scaling 得到校准后的概率。
+> 导出过程使用 `src/stage4/mobile_deployment/onnx_exporter.py` 中的 `ONNXExporter` 类，它会自动进行 PyTorch vs ONNX 输出对齐验证，确保数值误差小于 1e-5。导出产物包括 `aware_cascade_stage1.onnx`、`aware_cascade_stage2.onnx`、`cascade_config.json` 和 `aware_cascade_manifest.json`，全部放在 `android/mobile_bundle/` 目录下。
 >
-> 右侧是在小米 13 上的实测指标。准确率达到 92.8%，FNR 为 2.5%，FPR 为 12.5%。Stage 2 的调用率约为 7.2%，高于 PC 端的 1.2%，这是因为移动端测试集更具挑战性。延迟方面，预处理约 3.4 毫秒，推理约 176 毫秒，总延迟约 180 毫秒。
+> 设备端的处理流程在 `OnnxCascadeEngine.kt` 中实现。首先使用 Android FaceDetector API 检测人脸并裁剪到 256×256，然后通过 `ImagePreprocessor` 进行 ImageNet 标准化（mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]）。接着运行 Stage 1 推理，根据 `cascade_config.json` 中的阈值（tau_low, tau_high）决定是否升级到 Stage 2。
 >
-> 运行时使用 ONNX Runtime Android 1.19.0，目前只使用 CPU 执行提供者，内部利用 ARM NEON 向量化。NNAPI 和 GPU 加速是未来的工作方向。
+> 右侧是在小米 13（Snapdragon 8 Gen 2）上的实测指标。准确率达到 92.8%，FNR 为 2.5%，FPR 为 12.5%。Stage 2 的调用率约为 7.2%，高于 PC 端的 1.16%，这是因为移动端测试集更具挑战性。延迟方面，预处理约 3.4 毫秒，推理约 176 毫秒，总延迟约 180 毫秒，满足 <200ms 的设计目标。
+>
+> 运行时使用 ONNX Runtime Android 1.19.0，配置 4 个线程进行推理（`sessionOptions.setIntraOpNumThreads(4)`），使用 CPUExecutionProvider 并利用 ARM NEON 向量化。NNAPI 和 GPU 加速是未来的工作方向。
+
+### Script (English)
+
+> Let me elaborate on the mobile deployment technical details, with direct references to the code implementation.
+>
+> The left side shows model sizes across export formats. In `scripts/export_mobile_cascade_onnx.py`, we define a `DeepfakeClassifier` wrapper class that combines the timm backbone with a custom classifier head. Stage 1 uses a single-layer classifier (Dropout + Linear), while Stage 2 uses a two-layer classifier (Dropout + Linear + ReLU + Dropout + Linear). FP32 TorchScript is the original format: Stage 1 is 37.3 MB, Stage 2 is 49.6 MB. INT8 dynamic quantization compresses them to 10.1 MB and 13.4 MB. The current Android app uses FP32 ONNX format, approximately 37.5 MB and 52 MB.
+>
+> The export process uses the `ONNXExporter` class from `src/stage4/mobile_deployment/onnx_exporter.py`, which automatically validates PyTorch vs ONNX output alignment, ensuring numerical error is below 1e-5. Export artifacts include `aware_cascade_stage1.onnx`, `aware_cascade_stage2.onnx`, `cascade_config.json`, and `aware_cascade_manifest.json`, all placed in the `android/mobile_bundle/` directory.
+>
+> The on-device pipeline is implemented in `OnnxCascadeEngine.kt`. First, the Android FaceDetector API detects and crops faces to 256×256, then `ImagePreprocessor` applies ImageNet normalization (mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]). Stage 1 inference runs, and based on thresholds (tau_low, tau_high) from `cascade_config.json`, the system decides whether to escalate to Stage 2.
+>
+> The right side shows on-device metrics from Xiaomi 13 (Snapdragon 8 Gen 2). Accuracy reaches 92.8%, FNR is 2.5%, FPR is 12.5%. Stage-2 rate is about 7.2%, higher than the PC's 1.16% because the mobile test set is more challenging. For latency, preprocessing takes about 3.4 ms, inference about 176 ms, total latency about 180 ms—meeting the <200ms design target.
+>
+> The runtime uses ONNX Runtime Android 1.19.0, configured with 4 threads for inference (`sessionOptions.setIntraOpNumThreads(4)`), using CPUExecutionProvider with ARM NEON vectorization. NNAPI and GPU acceleration are future work.
 
 ---
 
@@ -622,17 +715,29 @@
 - 底层旁边标出: FP32 ONNX、180ms、92.8%
 - 用不同颜色区分"应用逻辑层"和"模型推理层"
 
-### 讲稿
+### 讲稿 (中文)
 
-> 这一页介绍MobileDeepfake在移动端的整体架构设计。
+> 这一页介绍 MobileDeepfake 在移动端的整体架构设计，以及代码层面的实现细节。
 >
-> 首先是模型压缩与量化。我们提供三种导出格式：FP32 TorchScript是原始格式，Stage1约37.3MB，Stage2约49.6MB；INT8 TorchScript通过动态量化压缩到10.1MB和13.4MB；当前Android应用使用的是FP32 ONNX格式，大小约为37.5MB和52MB。
+> 首先是模型压缩与量化。我们提供三种导出格式：FP32 TorchScript 是原始格式，Stage 1 约 37.3MB，Stage 2 约 49.6MB；INT8 TorchScript 通过 `src/stage4/optimize_for_mobile.py` 中的动态量化压缩到 10.1MB 和 13.4MB，压缩率达 73%，AUC 损失分别只有 0.003 和 0.007；当前 Android 应用使用的是 FP32 ONNX 格式，大小约为 37.5MB 和 52MB。
 >
-> 在推理框架方面，训练阶段使用PyTorch完成训练和验证，然后将模型导出为ONNX格式。在手机端，使用ONNX Runtime Android 1.19.0进行推理，目前只使用CPU执行提供者，内部利用ARM NEON向量化。NNAPI和GPU加速是未来的工作方向。
+> 在推理框架方面，训练阶段使用 PyTorch 完成训练和验证，然后通过 `scripts/export_mobile_cascade_onnx.py` 将模型导出为 ONNX 格式。在手机端，使用 ONNX Runtime Android 1.19.0 进行推理，配置 4 个线程（`setIntraOpNumThreads(4)`），目前只使用 CPUExecutionProvider，内部利用 ARM NEON 向量化。NNAPI 和 GPU 加速是未来的工作方向。
 >
-> Android集成方面，整体采用分层架构。最上层是应用层，负责相机预览和用户界面展示。中间层首先对图像做预处理，包括人脸检测与裁剪、缩放归一化等。底层则是推理层，它会加载FP32 ONNX模型，对每一帧首先运行Stage1推理，如果置信度落入双阈值中间区域，再异步调用Stage2进行二次判断。
+> Android 集成方面，核心是 `OnnxCascadeEngine.kt` 类。它在 `initialize()` 方法中加载两个 ONNX 模型，在 `detect()` 方法中实现级联逻辑。具体来说，`detect()` 方法首先调用 `ImagePreprocessor.preprocess()` 将 Bitmap 转换为归一化的 FloatArray，然后调用 `runStage1()` 获取 Stage 1 概率。根据 `CascadeConfig` 中的阈值，如果 `stage1Prob < tauLow` 则直接判为真实，如果 `stage1Prob > tauHigh` 则直接判为伪造，否则调用 `runStage2()` 进行二次判断。
 >
-> 最后，决策结果会被回传到UI层，以标签和颜色的形式标记出"真实"或者"疑似伪造"的人脸。从实测结果看，单帧总延迟约为180毫秒，整体检测准确率约为92.8%。
+> 整体采用分层架构：最上层是应用层（Camera 预览 + 检测 UI），中间层是预处理模块（人脸检测、裁剪、归一化），底层是推理层（ONNX Runtime + 两个模型）。决策结果通过 `CascadeResult` 数据类返回，包含预测标签、置信度、决策阶段和时间信息。从实测结果看，单帧总延迟约为 180 毫秒，整体检测准确率约为 92.8%。
+
+### Script (English)
+
+> This slide covers the overall mobile architecture design of MobileDeepfake, with code-level implementation details.
+>
+> First, model compression and quantization. We provide three export formats: FP32 TorchScript is the original format, Stage 1 is about 37.3MB, Stage 2 is about 49.6MB; INT8 TorchScript via dynamic quantization in `src/stage4/optimize_for_mobile.py` compresses to 10.1MB and 13.4MB—73% reduction with AUC loss of only 0.003 and 0.007 respectively; the current Android app uses FP32 ONNX format, approximately 37.5MB and 52MB.
+>
+> For the inference framework, training uses PyTorch, then `scripts/export_mobile_cascade_onnx.py` exports models to ONNX format. On device, ONNX Runtime Android 1.19.0 runs inference with 4 threads (`setIntraOpNumThreads(4)`), currently using only CPUExecutionProvider with ARM NEON vectorization. NNAPI and GPU acceleration are future work.
+>
+> For Android integration, the core is the `OnnxCascadeEngine.kt` class. Its `initialize()` method loads both ONNX models, and `detect()` implements the cascade logic. Specifically, `detect()` first calls `ImagePreprocessor.preprocess()` to convert Bitmap to normalized FloatArray, then calls `runStage1()` to get Stage 1 probability. Based on thresholds in `CascadeConfig`, if `stage1Prob < tauLow` it classifies as real, if `stage1Prob > tauHigh` it classifies as fake, otherwise it calls `runStage2()` for the final decision.
+>
+> The overall architecture is layered: Application Layer (Camera preview + Detection UI), Middle Layer (face detection, cropping, normalization), and Inference Layer (ONNX Runtime + two models). Results are returned via the `CascadeResult` data class, containing prediction label, confidence, decision stage, and timing info. On-device testing shows total latency of about 180ms with 92.8% accuracy.
 
 ---
 
@@ -699,7 +804,7 @@
 | FF++ | 161K | 161K | 1.00 |
 | DFDC | 516K | 515K | 1.00 |
 | DeeperForensics | 591K | 592K | 1.00 |
-| Eval-2024 | 366K | 488K | 0.75 |
+| Eval-2024 | 519K | 336K | 1.55 |
 
 **评估模式**
 1. Combined validation（所有4个数据集联合）
@@ -722,7 +827,7 @@
 >
 > 平衡Manifests是一个关键设计。我们确保每个数据集中real和fake样本数量大致相等，这样在多数据集联合训练时，不会被某个大数据集（如DFDC或DeeperForensics）主导。
 >
-> 右侧的表格展示了各数据集的类别分布。可以看到，四个训练数据集的real/fake比例都接近1:1。而Deepfake-Eval-2024的比例约为0.75，这反映了真实互联网环境中深度伪造内容的实际分布。
+> 右侧的表格展示了各数据集的类别分布。可以看到，四个训练数据集的real/fake比例都接近1:1。而Deepfake-Eval-2024中Real样本多于Fake样本（比例约1.55:1），反映了该基准中真实内容占多数的特点。
 >
 > 我们的评估分为三种模式：Combined validation在所有四个数据集上联合评估；Per-dataset validation分别在每个数据集上评估；OOD evaluation在Deepfake-Eval-2024上评估跨域泛化能力。
 
@@ -819,7 +924,7 @@
 |------|-----|-----|-----|--------|
 | Stage 1 only | 0.9936 | 0.9561 | 3.12% | 0.54 |
 | Stage 2 only | 0.9633 | 0.8930 | 9.43% | 2.87 |
-| **Cascade** | **0.9941** | **0.9654** | **0.60%** | **0.59** |
+| **Cascade** | **0.9941** | **0.9580** | **0.60%** | **0.59** |
 
 **计算效率**
 - Stage 1: 0.54 GFLOPs
@@ -837,13 +942,13 @@
 
 > 这一页展示为什么我们需要级联架构，而不是单独使用Stage 1或Stage 2。
 >
-> 首先看左侧的对比表格。如果只使用Stage 1，虽然速度快（0.54 GFLOPs），但FNR达到3.12%，意味着每100个深度伪造样本会漏掉3个。如果只使用Stage 2，FNR更高，达到9.43%，而且计算量是Stage 1的5倍多。
+> 首先看左侧的对比表格。如果只使用Stage 1，虽然速度快（0.54 GFLOPs），但FNR达到3.12%，意味着每100个深度伪造样本会漏掉约3个。如果只使用Stage 2，FNR更高，达到9.43%，而且计算量是Stage 1的5倍多。
 >
-> 而我们的级联架构实现了两全其美：FNR降到0.60%，比单独使用Stage 1低了5倍；同时平均计算量只有0.59 GFLOPs，仅比Stage 1多9%。
+> 这里有一个看似反直觉的结果：Stage 2单独使用时FNR比Stage 1更高。这并不是说Stage 2更差，而是说明两者的错误模式不同——Stage 1在大部分易分样本上做得很好，但在一些细节纹理或复杂操控上会出错；而Stage 2在这些难例上更有优势。正是这种**互补性**，使得级联能够显著降低系统级FNR。
 >
-> 右侧的柱状图直观展示了FNR的对比。可以看到，级联的FNR（绿色）远低于单独使用任一阶段。
+> 我们的级联架构实现了两全其美：FNR降到0.60%，比单独使用Stage 1低了5倍；同时平均计算量只有0.59 GFLOPs，仅比Stage 1多9%。
 >
-> 这个结果的关键在于：通过双阈值机制，我们让Stage 1处理大部分"容易"的样本，只把约1.2%的"困难"样本送到Stage 2。这样既保证了低漏检率，又控制了计算开销。
+> 右侧的柱状图直观展示了FNR的对比。关键在于：通过双阈值机制，我们让Stage 1处理大部分"容易"的样本，只把约1.2%的"困难"样本送到Stage 2。这样既保证了低漏检率，又控制了计算开销。
 
 ---
 
@@ -1117,9 +1222,9 @@
 **性能对比**
 | 指标 | PC | Mobile |
 |------|-----|--------|
-| Accuracy | 96.5% | 92.8% |
+| Accuracy | 97% | 92.8% |
 | FNR | 0.6% | 2.5% |
-| FPR | 3.5% | 12.5% |
+| FPR | 3% | 12.5% |
 | Stage2 Rate | 1.2% | 7.2% |
 | Latency | -- | ~180 ms |
 
@@ -1150,7 +1255,7 @@
 
 > 这一页对比了 PC 和 Mobile 部署的性能差异。
 >
-> 左上方的表格展示了关键指标的对比。可以看到，从 PC 到 Mobile，准确率从 96.5% 下降到 92.8%，FNR 从 0.6% 上升到 2.5%，FPR 从 3.5% 上升到 12.5%。Stage2 升级率也从 1.2% 上升到 7.2%。
+> 左上方的表格展示了关键指标的对比。可以看到，从 PC 到 Mobile，准确率从 97% 下降到 92.8%，FNR 从 0.6% 上升到 2.5%，FPR 从 3% 上升到 12.5%。Stage2 升级率也从 1.2% 上升到 7.2%。
 >
 > 这个性能下降主要来自两个因素：一是移动端使用的是 FP32 ONNX 模型而非 INT8 量化模型；二是移动端的评估数据集 mobile_eval 与 PC 端的 combined validation 有所不同。
 >

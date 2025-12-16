@@ -1,3 +1,10 @@
+#Abstract
+Deepfakes threaten media integrity and platform trust, yet many detectors that perform well on curated benchmarks degrade sharply under distribution shift. For practical use, we target on-device detection where latency, footprint, and privacy constraints are strict, and where missed fakes (false negatives) carry disproportionate risk. We present MobileDeepfake, a two-inference cascade: a lightweight MobileNetV4 makes high-confidence decisions quickly, while uncertain samples are escalated to a higher-accuracy EfficientNetV2 expert. The system is trained across multiple datasets and tuned with a cost-aware threshold grid search that explicitly minimizes false negatives under an escalation-rate budget, and we export compact quantized artifacts for mobile integration.
+
+Our pipeline is reproducible end¬to¬end: data manifests and loaders enable multi-source training; optional hard-example mining ablations concentrate the Stage 2 expert on ambiguous cases, while the default released training script uses uniform sampling and corresponds to our main reported results; and a tuning/evaluation suite generates the tables and figures used in the paper. On combined validation, the EfficientNetV2 expert achieves high AUC. The tuned cascade attains high AUC while driving FNR to low, exposing an interpretable recall-vs-compute trade-off. We assess robustness under common perturbations (JPEG, noise, blur, brightness) and apply temperature scaling for probability calibration when thresholds transfer across datasets. Cross-dataset evaluation on Deepfake-Eval-2024 highlights the generalization gap typical of in-the-wild media, reinforcing the need for calibration and domain-aware tuning.
+
+We focus on deployability rather than proposing a new backbone: the contribution is a practical, auditable methodology that couples a two-stage cascade with explicit threshold controls, calibration, and a mobile export path. Released artifacts and scripts allow results to be reproduced and extended (e.g., swapping the expert, adding distillation/QAT, or adopting per-family thresholding for robustness). This work provides a template for balancing recall, efficiency, and maintainability in mobile deepfake detection.
+
 # Introduction
 
 Deepfakes pose growing risks to trust, safety, and platform integrity.
@@ -2075,18 +2082,21 @@ benefit from larger samples, several consistent patterns emerge:
   and require expert passes.
 
 - **Gaussian noise.** Increasing noise (e.g., $\sigma=2\rightarrow 12$)
-  leads to mixed behaviour: in our sweep, F1 may increase at
-  intermediate noise but degrade at the highest levels, with
-  corresponding changes in FNR. A plausible explanation is that strong
+  leads to non-monotonic behaviour: in our sweep, FNR is highest at
+  intermediate noise levels ($\sigma=4,8$: $\sim$96%) and decreases at
+  both low ($\sigma=2$: 91.8%) and high ($\sigma=12$: 67.4%) noise levels.
+  This counter-intuitive pattern suggests complex interactions between
+  noise and the detection features. A plausible explanation is that strong
   noise perturbs real textures more than fake cues under the current
   thresholds, effectively acting as a domain shift; per-family
   calibration (Section [15](#tab:robustness_table){reference-type="ref"
   reference="tab:robustness_table"}) and larger runs are needed to
   stabilise these trends.
 
-- **Motion blur.** For kernel sizes in the range tested (3--13), F1 and
-  FNR change gradually rather than catastrophically, suggesting that the
-  cascade retains partial robustness to modest blur. As with JPEG,
+- **Motion blur.** For kernel sizes in the range tested (3--13), the
+  cascade exhibits near-total failure with FNR ranging from 95.9% to
+  100%. This indicates that motion blur remains a critical vulnerability,
+  and robustness to blur is an important direction for future work. As with JPEG,
   higher blur tends to increase Stage 2 usage because more inputs are
   routed out of the high-confidence band at Stage 1.
 
@@ -2294,7 +2304,7 @@ combined validation set.
 +---------------+-------------+-------------+--------------+----------------------+
 | Stage 2-only  | 0.9633      | 0.8930      | 0.0943       | 2.87G                |
 +---------------+-------------+-------------+--------------+----------------------+
-| Full Cascade  | 0.9941      | 0.9580      | 0.0060       | 0.59G$^*$            |
+| Full Cascade  | 0.9941      | 0.9654      | 0.0060       | 0.59G$^*$            |
 +---------------+-------------+-------------+--------------+----------------------+
 | (threshold:   |             |             |              |                      |
 | 0.05, 0.55)   |             |             |              |                      |
