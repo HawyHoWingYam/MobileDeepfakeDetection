@@ -19,7 +19,7 @@ Temporal modeling via 3D CNNs~\cite{tran2015c3d,carreira2017i3d}, LSTMs~\cite{zh
 
 \paragraph{Model Compression and Efficiency.}
 To bridge the gap between research models and deployable systems, practitioners rely on three primary compression techniques:
-\begin{itemize}[topsep=4pt,itemsep=2pt]
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
   \item \textbf{Pruning}~\cite{han2015learningboth,han2016deepcompression,blalock2020pruningsurvey}: Removing redundant weights or channels to reduce model size and FLOPs. Structured pruning (removing entire filters) offers better hardware efficiency than unstructured (weight\hyp level) pruning.
   \item \textbf{Quantization}~\cite{jacob2017integeronly,esser2020lsq,gholami2021quant_survey}: Representing weights and activations with lower\hyp precision data types (e.g., INT8 instead of FP32). Post\hyp training quantization (PTQ) is fast but limited to 8\hyp bit precision, while quantization\hyp aware training (QAT) enables more aggressive compression (e.g., INT4) at the cost of retraining.
   \item \textbf{Knowledge distillation}~\cite{hinton2015distilling,romero2015fitnets,gou2021kdsurvey}: Transferring knowledge from a large teacher model to a compact student model by matching soft probability distributions or intermediate feature representations.

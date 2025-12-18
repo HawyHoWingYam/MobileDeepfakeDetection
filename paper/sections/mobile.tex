@@ -10,7 +10,7 @@ It supports four distinct detection modes \hyp{} single image selection from the
 \paragraph{On-device Pipeline.}
 The inference pipeline of Android is similar to that of the desktop cascade with slight modifications to suit the mobile runtime environment:
 
-\begin{enumerate}[leftmargin=*,itemsep=2pt]
+\begin{enumerate}[leftmargin=*,itemsep=2pt,parsep=0pt]
   \item Image acquisition: The user selects an image from the system gallery or document picker, or a video; frames are sampled from the video at a configurable interval (default 1 frame per second; max. 200 frames).
   \item Face detection and cropping: A lightweight face detector (Android's built\hyp in \texttt{FaceDetector} API) finds the approximate region around the primary face; in the case of a missing face, a center crop is applied here as a fallback.
   \item Preprocessing: The cropped region is resized to $256\times256$ pixels and normalized using ImageNet statistics ($\mu=[0.485,0.456,0.406]$, $\sigma=[0.229,0.224,0.225]$).
@@ -21,7 +21,7 @@ The inference pipeline of Android is similar to that of the desktop cascade with
 \paragraph{Application Features.}
 The Android app supports various modes of detecting faces:
 
-\begin{itemize}[leftmargin=*,itemsep=2pt]
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
   \item A single image: the user selects an image from their gallery and we display the face crop preview and final result (label, confidence, stage used, timing breakdown).
   \item Batch detection: the user selects multiple images for us to process and display a summary afterward (total count, number of detected deepfakes, Stage~2 usage rate, average latency per image).
   \item Video detection: the app extracts frames every second (up to 200 frames) and processes each frame separately. It then reports the percentage of deepfake frames and the average per\hyp frame latency.
@@ -86,7 +86,7 @@ since all samples pass through Stage~1 and only a fraction $e$ are escalated. In
 \paragraph{Limitations and Future Work.}
 The current on\hyp device evaluation has several limitations that suggest directions for future work:
 
-\begin{itemize}[leftmargin=*,itemsep=2pt]
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
   \item \textbf{Single device}: We report results on one flagship smartphone; multi\hyp device evaluation across different SoC tiers (mid\hyp range, entry\hyp level) would characterize performance variability.
   \item \textbf{Static\hyp image evaluation only}: While the deployed app supports frame\hyp by\hyp frame video processing, the quantitative on\hyp device benchmarks reported here are restricted to a stratified static\hyp image subset (\texttt{mobile\_eval}); systematic video\hyp level evaluation (aggregating frame predictions) remains future work.
   \item \textbf{CPU\hyp only baseline, no hardware acceleration}: The current implementation uses CPU inference only, providing a universally available baseline even on devices without reliable NNAPI/GPU support; enabling NNAPI or GPU delegates in ONNX Runtime is expected to further reduce latency and is left to future work.

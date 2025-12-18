@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.26)  19 DEC 2025 03:04
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.11.26)  19 DEC 2025 03:23
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -577,9 +577,6 @@ Overfull \hbox (130.96222pt too wide) in paragraph at lines 86--98
  []
 
 
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-
 Overfull \hbox (2.45117pt too wide) in paragraph at lines 100--101
 \OT1/cmr/m/n/10.95 fast bi-nary clas-si-fier. Con-cretely, we use timm's [][]\O
 T1/cmtt/m/n/10.95 mobilenetv4_hybrid_medium.ix_e550_r256_in1k
@@ -627,31 +624,28 @@ LaTeX Warning: `h' float specifier changed to `ht'.
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-<figures/outputs_stage1_run_20251023_034316_01_roc_curve.png, id=734, 507.5763p
+<figures/outputs_stage1_run_20251023_034316_01_roc_curve.png, id=736, 507.5763p
 t x 394.5942pt>
 File: figures/outputs_stage1_run_20251023_034316_01_roc_curve.png Graphic file 
 (type png)
 <use figures/outputs_stage1_run_20251023_034316_01_roc_curve.png>
 Package pdftex.def Info: figures/outputs_stage1_run_20251023_034316_01_roc_curv
-e.png  used on input line 32.
+e.png  used on input line 33.
 (pdftex.def)             Requested size: 211.38832pt x 164.33757pt.
-<figures/outputs_stage3_run_20251030_081127_01_roc_curve.png, id=736, 507.5763p
+<figures/outputs_stage3_run_20251030_081127_01_roc_curve.png, id=738, 507.5763p
 t x 394.5942pt>
 File: figures/outputs_stage3_run_20251030_081127_01_roc_curve.png Graphic file 
 (type png)
 <use figures/outputs_stage3_run_20251030_081127_01_roc_curve.png>
 Package pdftex.def Info: figures/outputs_stage3_run_20251030_081127_01_roc_curv
-e.png  used on input line 33.
+e.png  used on input line 34.
 (pdftex.def)             Requested size: 211.38832pt x 164.33757pt.
 
-LaTeX Warning: `h' float specifier changed to `ht'.
 
-
-
-[26]
-
-[27 <./figures/outputs_stage1_run_20251023_034316_01_roc_curve.png> <./figures/
+[26 <./figures/outputs_stage1_run_20251023_034316_01_roc_curve.png> <./figures/
 outputs_stage3_run_20251030_081127_01_roc_curve.png>]
+
+[27]
 
 [28
 
@@ -668,7 +662,7 @@ File: figures/outputs_stage1_run_20251023_034316_03_calibration.png Graphic fil
 e (type png)
 <use figures/outputs_stage1_run_20251023_034316_03_calibration.png>
 Package pdftex.def Info: figures/outputs_stage1_run_20251023_034316_03_calibrat
-ion.png  used on input line 90.
+ion.png  used on input line 93.
 (pdftex.def)             Requested size: 211.38832pt x 157.33836pt.
 <figures/outputs_stage1_run_20251023_034316_confusion_matrix.png, id=770, 541.0
 614pt x 423.5022pt>
@@ -676,7 +670,7 @@ File: figures/outputs_stage1_run_20251023_034316_confusion_matrix.png Graphic f
 ile (type png)
 <use figures/outputs_stage1_run_20251023_034316_confusion_matrix.png>
 Package pdftex.def Info: figures/outputs_stage1_run_20251023_034316_confusion_m
-atrix.png  used on input line 91.
+atrix.png  used on input line 94.
 (pdftex.def)             Requested size: 211.38832pt x 165.46243pt.
 <figures/outputs_stage3_run_20251030_081127_03_calibration.png, id=771, 570.933
 pt x 424.9476pt>
@@ -684,7 +678,7 @@ File: figures/outputs_stage3_run_20251030_081127_03_calibration.png Graphic fil
 e (type png)
 <use figures/outputs_stage3_run_20251030_081127_03_calibration.png>
 Package pdftex.def Info: figures/outputs_stage3_run_20251030_081127_03_calibrat
-ion.png  used on input line 99.
+ion.png  used on input line 102.
 (pdftex.def)             Requested size: 211.38832pt x 157.33836pt.
 <figures/outputs_stage3_run_20251030_081127_confusion_matrix.png, id=772, 541.0
 614pt x 423.5022pt>
@@ -692,7 +686,7 @@ File: figures/outputs_stage3_run_20251030_081127_confusion_matrix.png Graphic f
 ile (type png)
 <use figures/outputs_stage3_run_20251030_081127_confusion_matrix.png>
 Package pdftex.def Info: figures/outputs_stage3_run_20251030_081127_confusion_m
-atrix.png  used on input line 100.
+atrix.png  used on input line 103.
 (pdftex.def)             Requested size: 211.38832pt x 165.46243pt.
 
 
@@ -710,7 +704,7 @@ File: figures/outputs_stage4_run_20251031_075851_heatmap_f1.png Graphic file (t
 ype png)
 <use figures/outputs_stage4_run_20251031_075851_heatmap_f1.png>
 Package pdftex.def Info: figures/outputs_stage4_run_20251031_075851_heatmap_f1.
-png  used on input line 128.
+png  used on input line 132.
 (pdftex.def)             Requested size: 150.32504pt x 109.07568pt.
 <figures/outputs_stage4_run_20251031_075851_heatmap_fnr.png, id=787, 686.565pt 
 x 498.1812pt>
@@ -718,7 +712,7 @@ File: figures/outputs_stage4_run_20251031_075851_heatmap_fnr.png Graphic file (
 type png)
 <use figures/outputs_stage4_run_20251031_075851_heatmap_fnr.png>
 Package pdftex.def Info: figures/outputs_stage4_run_20251031_075851_heatmap_fnr
-.png  used on input line 129.
+.png  used on input line 133.
 (pdftex.def)             Requested size: 150.32504pt x 109.07568pt.
 <figures/outputs_stage4_run_20251031_075851_best_config_metrics.png, id=788, 57
 0.6921pt x 425.6703pt>
@@ -726,7 +720,7 @@ File: figures/outputs_stage4_run_20251031_075851_best_config_metrics.png Graphi
 c file (type png)
 <use figures/outputs_stage4_run_20251031_075851_best_config_metrics.png>
 Package pdftex.def Info: figures/outputs_stage4_run_20251031_075851_best_config
-_metrics.png  used on input line 130.
+_metrics.png  used on input line 134.
 (pdftex.def)             Requested size: 150.32504pt x 112.12009pt.
  (./generated/robustness_figs.tex
 <figures/figures_outputs_stage5_robustness_jpeg_f1.png, id=794, 303.534pt x 231
@@ -808,10 +802,6 @@ LaTeX Warning: `h' float specifier changed to `ht'.
 [38]) (./sections/mobile.tex
 
 [39] (./generated/mobile_tables.tex
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-
 Overfull \hbox (45.34097pt too wide) in paragraph at lines 16--19
  [][] 
  []
@@ -825,16 +815,13 @@ LaTeX Warning: `h' float specifier changed to `ht'.
 )
 
 [40]
+
+[41]
 Overfull \hbox (17.58456pt too wide) in paragraph at lines 67--75
  [][] 
  []
 
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-
-
-[41]) (./sections/discussion.tex
+) (./sections/discussion.tex
 
 [42]
 
@@ -877,11 +864,11 @@ LaTeX Warning: `h' float specifier changed to `ht'.
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 
-
-[53]
-
 LaTeX Warning: `h' float specifier changed to `ht'.
 
+
+
+[53]
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
@@ -939,10 +926,10 @@ Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: 02F3806FCF7DF925C3CD82F77DAA1B4A;6480.
  ) 
 Here is how much of TeX's memory you used:
- 17028 strings out of 473190
- 336476 string characters out of 5715799
- 715351 words of memory out of 5000000
- 39639 multiletter control sequences out of 15000+600000
+ 17035 strings out of 473190
+ 336664 string characters out of 5715799
+ 715878 words of memory out of 5000000
+ 39646 multiletter control sequences out of 15000+600000
  573008 words of font info for 90 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  75i,14n,80p,1585b,1183s stack positions out of 10000i,1000n,20000p,200000b,200000s
@@ -970,7 +957,7 @@ t/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/local/texlive/2025/texmf-dist
 fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/local/texlive/2025/texmf-d
 ist/fonts/type1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2025/texmf-dis
 t/fonts/type1/public/cm-super/sfrm1095.pfb>
-Output written on main.pdf (65 pages, 1463297 bytes).
+Output written on main.pdf (65 pages, 1463080 bytes).
 PDF statistics:
  1307 PDF objects out of 1440 (max. 8388607)
  1150 compressed objects within 12 object streams

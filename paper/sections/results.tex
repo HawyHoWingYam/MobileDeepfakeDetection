@@ -1,6 +1,7 @@
 % Results and Analysis – tables and figures first
 
 \subsection{Single-Model Baselines}
+\label{subsec:single_model_baselines}
 
 \input{generated/auto_tables}
 \input{generated/stage1_eval_summary}
@@ -37,6 +38,7 @@
 \FloatBarrier
 
 \subsection{Per-Dataset Performance Analysis}
+\label{subsec:per_dataset_analysis}
 
 While aggregate metrics on the combined validation split provide a high\hyp level view of system performance, per\hyp dataset breakdowns reveal important differences in detection difficulty and model behavior across manipulation sources. We analyze Stage~1 and Stage~2 performance on four constituent datasets: CelebDF\hyp v2, FaceForensics++, DFDC, and DeeperForensics\hyp 1.0.
 
@@ -65,6 +67,7 @@ Comparing per\hyp dataset results reveals systematic patterns:
 These per\hyp dataset insights inform deployment strategy: for applications prioritizing recall (e.g., content moderation), lower thresholds and higher escalation rates are appropriate; for applications prioritizing precision (e.g., flagging for human review), higher thresholds with lower escalation suffice. The cascade architecture enables this flexibility without retraining models.
 
 \subsection{Meta-Model (Stage 3) Analysis}
+\label{subsec:meta_model_analysis}
 Stage~3 trains a LightGBM meta\hyp model on K\hyp fold out\hyp of\hyp fold features from the Stage~2 experts (EfficientNetV2 and optional GenConViT). In our current runs, the meta\hyp model achieves validation performance similar to, but on average slightly worse than, the strongest single expert (Table~\ref{tab:stage2_stage3}). Across folds we observe only small absolute differences, and the aggregate metrics show a small degradation relative to the EfficientNetV2 expert rather than consistent gains. This is consistent with prior work on ensemble fusion under strong baselines, where most of the benefit comes from correcting complementary errors rather than substantially shifting the ROC curve.
 
 Given these modest deltas and the added complexity of maintaining separate meta\hyp model artifacts, our primary cascade results focus on a two\hyp stage configuration in which Stage~2 uses the best expert (EfficientNetV2) and Stage~3 is treated as an optional enhancement. The meta\hyp model remains valuable as an analysis tool: it confirms that expert features are highly informative and that there is limited residual complementarity to exploit under our current training mix. Future work could revisit this component with more diverse experts (e.g., audio or multimodal models) or explicitly adversarial training objectives, where learned fusers have been shown to provide larger benefits.
@@ -104,6 +107,7 @@ Given these modest deltas and the added complexity of maintaining separate meta\
 \FloatBarrier
 
 \subsection{Cascade Threshold Tuning}
+\label{subsec:cascade_threshold_tuning}
 
 \begin{table}[h]
   \centering
@@ -134,6 +138,7 @@ We adopt probability calibration (temperature scaling) on Stage~2 prior to thres
 \FloatBarrier
 
 \subsection{Cross-Dataset Evaluation (Deepfake-Eval-2024)}
+\label{subsec:cross_dataset_eval}
 % The Deepfake-Eval-2024 calibrated and Stage2-only tables are included in the tables above.
 
 On Deepfake\-Eval\-2024, the calibrated cascade performs substantially worse than on in\-distribution validation (Table~\ref{tab:deepeval_calibrated}): F1 falls below \num{0.30} on both validation and test splits, and FNR remains high ($\approx$\num{0.73}--\num{0.79}) even though only around half of the samples are escalated to Stage~2 (Stage~2 rate $\approx$\num{0.51}). This gap aligns with known failure modes on in\hyp the\hyp wild media~\cite{wilddeepfake2021,pei2024deepfakesurvey,deepeval2024}: (i) preprocessing mismatch (resolution, compression, face crops) between training data and social\hyp media distribution; (ii) missing or underrepresented generation methods and post\-processing pipelines during training; and (iii) detectors inadvertently learning dataset\-specific artifacts that do not transfer.
@@ -148,11 +153,13 @@ Future work includes: (a) fine\-grained error analysis by generator family, post
 \FloatBarrier
 
 \subsection{Routing Strategies: Confidence vs. Entropy vs. Margin}
+\label{subsec:routing_strategies}
 We compare confidence\-based routing (ours) with entropy and margin alternatives (template deferred to future work) \cite{kaya2019shallowdeep}. Confidence routing offers direct control of the escalation rate via $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ and pairs well with calibration; entropy and margin can be emulated within the same framework. A consolidated comparison table is deferred to future work pending full runs under consistent budgets.
 
 \subsection{Robustness to Common Perturbations}
+\label{subsec:robustness}
 We evaluate the tuned cascade under four perturbation types (JPEG compression, Gaussian noise, motion blur, and brightness/contrast) using the same combined validation manifest. Figure~\ref{fig:robustness_curves} plots F1 vs.\ perturbation strength, while Table~\ref{tab:robustness_table} aggregates F1/Acc/FNR/Stage~2 rate for representative levels. Although these experiments are preliminary and would benefit from larger samples, several consistent patterns emerge:
-\begin{itemize}[leftmargin=*]
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
   \item \textbf{JPEG compression.} As JPEG quality decreases from 95 to 20, F1 and accuracy fluctuate but do not collapse; in some settings, moderate compression slightly \emph{improves} F1 and lowers FNR (Table~\ref{tab:robustness_table}). This is consistent with frequency\hyp based analyses~\cite{durall2020watch,qian2020thinkingfrequency}: compression can accentuate artifacts that detectors rely on. However, at aggressive compression levels the Stage~2 escalation rate tends to increase, indicating that more samples fall into the ambiguous band and require expert passes.
   \item \textbf{Gaussian noise.} Increasing noise (e.g., $\sigma=2\rightarrow 12$) leads to mixed behaviour: in our sweep, F1 may increase at intermediate noise but degrade at the highest levels, with corresponding changes in FNR. A plausible explanation is that strong noise perturbs real textures more than fake cues under the current thresholds, effectively acting as a domain shift; per\hyp family calibration (Section~\ref{tab:robustness_table}) and larger runs are needed to stabilise these trends.
   \item \textbf{Motion blur.} For kernel sizes in the range tested (3--13), F1 and FNR change gradually rather than catastrophically, suggesting that the cascade retains partial robustness to modest blur. As with JPEG, higher blur tends to increase Stage~2 usage because more inputs are routed out of the high\hyp confidence band at Stage~1.
@@ -169,6 +176,7 @@ Overall, these results motivate per\hyp family threshold/temperature calibration
 % \FloatBarrier
 
 \subsection{Error Analysis and Failure Mode Taxonomy}
+\label{subsec:error_analysis}
 
 Beyond aggregate metrics, systematic error analysis reveals recurring patterns in false positives and false negatives that inform future improvements. Using qualitative inspection of diagnostic plots and per\hyp sample predictions across Stage~1 and Stage~2, we observe that:
 \begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]

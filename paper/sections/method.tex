@@ -7,7 +7,7 @@ We frame deepfake detection as binary classification over face images. Given an 
 
 \paragraph{Two-Stage Cascade Architecture.}
 Our deployed system consists of two sequential classifiers:
-\begin{itemize}[topsep=4pt,itemsep=2pt]
+\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
   \item \textbf{Stage~1 (Filter):} A lightweight model $f_1: \mathcal{X} \to \mathbb{R}$ producing logit $f_1(x)$ and calibrated probability $p_1(x) = \sigma(f_1(x))$, where $\sigma$ is the sigmoid function.
   \item \textbf{Stage~2 (Expert):} A higher\hyp capacity model $f_2: \mathcal{X} \to \mathbb{R}$ producing logit $f_2(x)$ and calibrated probability $p_2(x) = \sigma(f_2(x) / t)$, where $t$ is the temperature scaling parameter.
 \end{itemize}
@@ -66,7 +66,7 @@ Following the formal setup above, we now describe our six\hyp stage pipeline des
 \begin{figure}[ht]
   \centering
   \small
-  \begin{itemize}[leftmargin=*,itemsep=8pt]
+  \begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
     \item \textbf{Stage 1: MobileNetV4 filter} --- fast frame-level screening on device
     \item $\downarrow$ escalate ambiguous cases
     \item \textbf{Stage 2: EfficientNetV2 expert} --- high-fidelity logits and embeddings
