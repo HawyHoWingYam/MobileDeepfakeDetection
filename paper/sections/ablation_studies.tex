@@ -44,7 +44,7 @@ The cascade exhibits a Pareto frontier between FNR and escalation rate for diffe
 
 \subsection{Hard Example Mining Analysis}
 
-Stage~2 training incorporates hard example mining (HEM) through Focal Loss~\cite{lin2017focal} to focus learning on samples near the decision boundary. We compare two training strategies: \textbf{Standard} (binary cross-entropy loss) vs.\ \textbf{HEM} (Focal Loss with $\gamma=2.0$). Table~\ref{tab:ablation_hem} reports Stage~2\hyp only performance with and without HEM. Focal Loss implements implicit hard example mining by applying a modulating factor $(1-p_t)^\gamma$ to the cross-entropy loss, which automatically down-weights easy examples and focuses training on hard negatives without requiring explicit sample selection or oversampling.
+Stage~2 training incorporates hard example mining (HEM) through Focal Loss to focus learning on samples near the decision boundary. We compare two training strategies: \textbf{Standard} (binary cross-entropy loss) vs.\ \textbf{HEM} (Focal Loss with $\gamma=2.0$). Table~\ref{tab:ablation_hem} reports Stage~2\hyp only performance with and without HEM. Focal Loss implements implicit hard example mining by applying a modulating factor $(1-p_t)^\gamma$ to the cross-entropy loss, which automatically down-weights easy examples and focuses training on hard negatives without requiring explicit sample selection or oversampling.
 
 \begin{table}[h]
 \centering

@@ -1,48 +1,47 @@
 This is BibTeX, Version 0.99d (TeX Live 2025)
 Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
 The top-level auxiliary file: main.aux
-The style file: ieeetr.bst
-Database file #1: references.bib
-Warning--I didn't find a database entry for "chandra2024dfeval"
+I found no \bibdata command---while reading file main.aux
+I found no \bibstyle command---while reading file main.aux
 You've used 105 entries,
-            1876 wiz_defined-function locations,
-            898 strings with 22414 characters,
-and the built_in function-call counts, 20229 in all, are:
-= -- 1347
-> -- 1524
+            0 wiz_defined-function locations,
+            189 strings with 2471 characters,
+and the built_in function-call counts, 0 in all, are:
+= -- 0
+> -- 0
 < -- 0
-+ -- 544
-- -- 439
-* -- 1566
-:= -- 3381
-add.period$ -- 105
-call.type$ -- 105
-change.case$ -- 105
++ -- 0
+- -- 0
+* -- 0
+:= -- 0
+add.period$ -- 0
+call.type$ -- 0
+change.case$ -- 0
 chr.to.int$ -- 0
-cite$ -- 105
-duplicate$ -- 1146
-empty$ -- 2107
-format.name$ -- 439
-if$ -- 4597
+cite$ -- 0
+duplicate$ -- 0
+empty$ -- 0
+format.name$ -- 0
+if$ -- 0
 int.to.chr$ -- 0
-int.to.str$ -- 105
-missing$ -- 104
-newline$ -- 318
-num.names$ -- 105
-pop$ -- 573
-preamble$ -- 1
+int.to.str$ -- 0
+missing$ -- 0
+newline$ -- 0
+num.names$ -- 0
+pop$ -- 0
+preamble$ -- 0
 purify$ -- 0
 quote$ -- 0
-skip$ -- 226
+skip$ -- 0
 stack$ -- 0
-substring$ -- 60
-swap$ -- 146
+substring$ -- 0
+swap$ -- 0
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
 type$ -- 0
 warning$ -- 0
-while$ -- 113
-width$ -- 108
-write$ -- 860
-(There was 1 warning)
+while$ -- 0
+width$ -- 0
+write$ -- 0
+(There were 2 error messages)
