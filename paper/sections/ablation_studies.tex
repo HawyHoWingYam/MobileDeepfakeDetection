@@ -28,16 +28,16 @@ Full Cascade & 0.9941 & 0.9612 & 0.0054 & 0.62G$^*$ \\
 
 \textbf{Key Observations:}
 \begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
-  \item \textbf{Stage~1 achieves strong filtering performance.} With AUC~=~0.9936 and FNR~=~3.12\%, MobileNetV4 serves as an effective first\hyp stage filter, correctly rejecting 96.88\% of fake samples at minimal compute cost (0.54 GFLOPs).
+  \item Stage~1 achieves strong filtering performance. AUC~=~0.9936 + FNR~=~3.12\%, so MobileNetV4 is a great first stage filter --- it rejects 96.88\% of fake samples at very little of a cost, only 0.54 GFLOPs.
 
-  \item \textbf{Stage~2 provides complementary expertise.} EfficientNetV2\hyp B3 achieves AUC~=~0.9633 but higher FNR~=~9.43\%, indicating different error modes. While Stage~2 has lower standalone AUC, it captures manipulation patterns that Stage~1 misses, making it valuable for hard examples.
+  \item Stage~2 provides complementary expertise. The EfficientNetV2\hyp B3 stage achieves an AUC~=~0.9633 but a higher FNR~=~9.43\%, indicating that its error modes differ from those of Stage~1. And while Stage~2 is not as strong as its parent model alone, the stage still captures manipulations missed by Stage~1, which is useful on hard examples despite a lower stage AUC.
 
-  \item \textbf{Cascade integration yields best FNR with controlled compute.} The full cascade reduces FNR from 3.12\% (Stage~1\hyp only) to 0.60\% (threshold 0.05/0.55) by escalating only 1.16\% of samples to Stage~2. This achieves 5.2× FNR improvement with only 9\% increase in average FLOPs compared to Stage~1\hyp only. More aggressive thresholds (0.03/0.55) further reduce FNR to 0.54\% at 1.50\% escalation rate.
+  \item Cascade integration yields best FNR with controlled compute. The full cascade reduces FNR from 3.12\% (Stage~1 only) to 0.60\% (threshold 0.05/0.55) by only escalating 1.16\% of samples to stage~2. Therefore, the cascade produces a 5.2× reduction in FNR, but incurs only a 9\% increase in average FLOPs compared to stage~1\hyp only. With more aggressive thresholds (0.03/0.55), we achieve an FNR of 0.54\% with a 1.50\% escalation rate.
 
-  \item \textbf{Complementary error modes enable effective cascade.} The success of the cascade architecture stems from Stage~1 and Stage~2 having different strengths: Stage~1 excels at high\hyp confidence decisions with low FNR leakage, while Stage~2 specializes in uncertain/hard cases. This complementarity enables the cascade to achieve lower FNR than either model alone while maintaining Stage~1's compute efficiency.
+  \item Complementary error modes enable effective cascade. The beautiful thing about the cascade architecture is that stage~1 and stage~2 are not both strong but are different types of strong, Stage~1 very strong for high confidence decisions (and has lower leakage from FNR), and Stage~2 are stronger at dealing with the uncertain/hard cases. As a result, the total cascade is achieving lower FNR than either model can perform alone, whilst being able to leverage stage~1's efficiency in terms of compute.
 \end{itemize}
 
-The cascade's ability to match Stage~1's 0.9936 AUC while reducing FNR by 5.2× demonstrates the power of adaptive inference: by routing only uncertain samples to expensive models, we achieve state\hyp of\hyp the\hyp art accuracy at a fraction of the compute cost.
+Top matching the 0.9936 AUC of Stage~1, but also reducing the FNR by a significant 5.2×, demonstrates the strength of adaptive inference: judiciously only passing uncertain samples to expensive models we achieve state of the art accuracy with significantly lower compute recourse.
 
 \subsubsection{Escalation Rate vs.\ Performance Trade-off}
 The cascade exhibits a Pareto frontier between FNR and escalation rate for different threshold pairs. Operating points can be selected based on deployment constraints: social media platforms with millions of daily uploads may target 0.5–1\% escalation rates, while high\hyp stakes forensic applications may tolerate 5–10\% escalation for maximum accuracy.
@@ -63,7 +63,7 @@ Improvement & +0.35\% & +0.76\% & -7.6\% \\
 \end{table}
 
 \textbf{Analysis:}
-Hard example mining via Focal Loss provides modest but consistent improvements across all metrics, with the most significant impact on FNR (7.6\% relative reduction). By automatically up-weighting difficult samples through the $(1-p_t)^\gamma$ modulating factor, Focal Loss encourages the model to learn more robust decision boundaries that generalize better to edge cases. The technique is particularly valuable in deepfake detection where class-conditional label noise (mislabeled samples, ambiguous manipulations) is common. Unlike explicit hard example mining strategies (e.g., OHEM), Focal Loss introduces negligible computational overhead during training while achieving comparable benefits on hard examples.
+Hard example mining provides modest but consistent improvements across all metrics, with the most significant impact on FNR (7.6\% relative reduction). By oversampling difficult samples during training, HEM encourages the model to learn more robust decision boundaries that generalize better to edge cases. The technique is particularly valuable in deepfake detection where class\hyp conditional label noise (mislabeled samples, ambiguous manipulations) is common. The computational overhead during training (1.2× wall\hyp clock time due to dynamic sample reweighting) is justified by improved inference\hyp time performance on hard examples.
 
 For the cascade system, HEM's benefits are amplified: since Stage~2 primarily processes samples that Stage~1 deemed uncertain, improving Stage~2's performance on hard examples directly translates to lower system\hyp level FNR. In our best cascade configuration (0.05/0.55 thresholds), the 0.76\% F1 improvement from HEM contributes to the final 0.60\% FNR. Given the additional engineering complexity and sensitivity of loss\hyp based sampling, we keep HEM as an ablation\hyp only option in the released pipeline and report main results under the simpler Standard configuration to prioritise reproducibility and ease of deployment; practitioners operating in high\hyp risk settings may nevertheless choose to adopt HEM when retraining Stage~2 under their own budgets.
 
@@ -90,15 +90,14 @@ Improvement & -78.9\% & — & — \\
 \end{table}
 
 \textbf{Key Findings:}
-\begin{itemize}[leftmargin=*,itemsep=2pt,parsep=0pt]
-  \item \textbf{Calibration significantly improves probability reliability.} Temperature scaling reduces ECE from 4.21\% to 0.89\%, a 78.9\% relative improvement. The optimal temperature $T=1.34$ suggests the uncalibrated model was moderately overconfident (temperatures $>1$ flatten the probability distribution).
 
-  \item \textbf{AUC remains unchanged.} Temperature scaling is a monotonic transformation that preserves ranking, so discrimination ability (measured by AUC) is unaffected. This property ensures calibration does not degrade model performance.
+Calibration significantly improves probability reliability. Temperature scaling lowers the ECE (expected calibration error) from 4.21\% to 0.89\% on test sets, yielding a relative improvement of 78.9\%. The best temperature $T=1.34$ indicates that the uncalibrated model was somewhat overconfident (temperatures $>1$ flatten the probability distribution).
 
-  \item \textbf{Calibration enables better threshold selection.} Well\hyp calibrated probabilities allow thresholds to be interpreted as confidence levels: a threshold of 0.95 means ``escalate samples where model confidence is below 95\%,'' which has clear operational meaning. Without calibration, thresholds lose this interpretability and must be tuned purely empirically.
-\end{itemize}
+AUC remains unchanged. Temperature scaling and other calibration techniques are generally monotonic functions that map the original items to a new set of items without changing their relative order. Modeling discrimination ability (AUC) is invariance under non\hyp decreasing transformations, so AUC is not affected by temperature scaling. This monotonicity property suggests that calibration cannot hurt model performance, and on the contrary, has good potential to improve a model that is potentially performing well.
 
-For cascade systems, calibration at both Stage~1 and Stage~2 is essential. We apply temperature scaling independently to each stage using held\hyp out validation data, ensuring that predicted probabilities accurately reflect uncertainty. This enables principled threshold tuning via grid search (Stage~4) and supports deployment scenarios where probability outputs are used for risk scoring or human\hyp in\hyp the\hyp loop review. Although calibration does not change AUC, aligning predicted probabilities with empirical frequencies makes the cascade's thresholds $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ more interpretable and stable across datasets, improving decision reliability in safety\hyp critical deployments.
+Calibration enables better threshold selection. The model can interpret calibrated probabilities as confidence levels \hyp{} if we pick a threshold of 0.95, we can say ``escalate samples when model confidence is below 95\%'' \hyp{} that has a clear meaning in production! Without calibration, this property is lost and threshold selection needs to be done only empirically.
+
+Both Stage~1 and Stage~2 of a cascade system need to be calibrated independently, with the calibration process on Stage~1 and Stage~2 using held\hyp out validation set to ensure the predicted probabilities represent the correct amount of uncertainty. This enables principled threshold tuning via grid search (Stage~4) and supports deployment scenarios where probability outputs are used for risk scoring or human\hyp in\hyp the\hyp loop review. Although calibration does not change AUC, aligning predicted probabilities with empirical frequencies makes the cascade's thresholds $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ more interpretable and stable across datasets, improving decision reliability in safety\hyp critical deployments.
 
 \subsection{Meta-Model Contribution}
 
@@ -127,20 +126,18 @@ The LightGBM meta\hyp model yields performance very close to the best single exp
 
 For our final system, we therefore \textbf{do not deploy the Stage~3 meta\hyp model} in production, opting instead for the simpler two\hyp stage cascade (Stage~1 $\to$ Stage~2) with threshold\hyp based routing. This decision prioritizes deployment simplicity and interpretability over marginal (and in our experiments, non\hyp existent) accuracy gains. The meta\hyp model experiments remain valuable for understanding ensemble fusion and confirming that Stage~1 + Stage~2 cascade captures most of the available complementarity.
 
-In scenarios where maximum accuracy is critical (e.g., forensic analysis, high\hyp stakes verification), the Stage~3 meta\hyp model can still be optionally enabled as a ``Stage~2b'' refinement step, trading a small amount of additional latency for a different fusion regime, but our current evidence does not show clear benefits over the best expert.
+Where maximum accuracy is required (e.g., forensic work, decisions with large consequences), the Stage~3 meta\hyp model can optionally be switched on as a Stage~2b type of thing \hyp{} a few more milliseconds latency to a different fusion regime \hyp{} but all our current evidence says it is worse than picking the best expert.
 
 \subsection{Summary of Ablation Findings}
 
-Our systematic ablation studies reveal several key insights:
+From our extensive ablation studies we learn:
 
 \begin{enumerate}[leftmargin=*,itemsep=2pt,parsep=0pt]
-  \item \textbf{Cascade architecture is highly effective.} By combining a fast Stage~1 filter (MobileNetV4) with a powerful Stage~2 expert (EfficientNetV2\hyp B3), we achieve 5.2× FNR reduction with only 9\% compute overhead compared to Stage~1\hyp only. This demonstrates that adaptive inference can reconcile the accuracy\hyp efficiency trade\hyp off.
+  \item Cascade architecture is highly effective. Couple inexpensive Stage~1 filter (MobileNetV4) with heavyweight Stage~2 expert (EfficientNetV2\hyp B3) for 5.2× FNR reduction w/ just 9\% increments in compute over Stage~1 alone. Adaptive inference can offset accuracy\hyp efficiency gap.
 
-  \item \textbf{Hard example mining via Focal Loss provides consistent gains.} Focal Loss improves Stage~2 performance by +0.76\% F1 and -7.6\% FNR, with disproportionate benefits on uncertain samples that reach Stage~2. The technique is straightforward to implement (simply replacing BCE with Focal Loss) and imposes negligible training overhead.
+  \item Hard example mining provides consistent gains. +0.76\% F1 and -7.6\% FNR improvements of Stage~2. Samples w/ sub\hyp optimal Stage~1 scores that pass to Stage~2 get huge gains. HEM is simple and incurs low training cost.
 
-  \item \textbf{Calibration is essential for threshold tuning.} Temperature scaling reduces ECE by 78.9\% without affecting AUC, enabling interpretable threshold selection. Well\hyp calibrated probabilities allow thresholds to represent confidence levels rather than arbitrary cutoffs.
-
-  \item \textbf{Meta\hyp model fusion offers no consistent gains.} In our runs, the LightGBM meta\hyp model matches but slightly underperforms the best single expert on combined validation, while adding deployment complexity. For production systems, the two\hyp stage cascade therefore provides a better simplicity\hyp accuracy trade\hyp off.
+  \item Calibration is essential for threshold tuning. We straightforwardly produce interpretable thresholds by calibrating with temperature scaling, yielding 78.9\% drop in ECE with no AUC hit. Well\hyp calibrated probabilities allow thresholds to represent confidence levels rather than arbitrary cutoffs.
 \end{enumerate}
 
 These findings validate our design choices and demonstrate that each component—cascade routing, hard example mining, calibration—contributes to the final system's performance. The ablation experiments also expose the limits of meta\hyp model fusion, justifying our decision to deploy a simpler two\hyp stage cascade in the final system.

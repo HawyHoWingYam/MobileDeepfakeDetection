@@ -31,29 +31,30 @@ We define standard classification metrics on a test set $\mathcal{D}_{\text{test
 \end{align}
 The \textbf{Stage~2 escalation rate} measures the fraction of samples requiring expert evaluation:
 \begin{equation}
-\pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}}) = \Pr(\tau_{\mathrm{low}} \le p_1(x) \le \tau_{\mathrm{high}}) \label{eq:escalation_rate}
+\pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}}) = \Pr(\tau_{\mathrm{low}} \le p_1(x) \le \tau_{\mathrm{high}})
 \end{equation}
+\label{eq:escalation_rate}
 This metric directly governs computational cost, as Stage~2 inference is significantly more expensive than Stage~1.
 
 \paragraph{Optimization Objective.}
 Our cascade tuning (detailed in subsequent subsections) seeks threshold configurations that minimize FNR subject to an escalation budget:
 \begin{equation}
 \min_{\tau_{\mathrm{low}},\tau_{\mathrm{high}},\tau_2} \mathrm{FNR}(\tau_{\mathrm{low}},\tau_{\mathrm{high}},\tau_2) \quad \text{subject to} \quad \pi_2(\tau_{\mathrm{low}},\tau_{\mathrm{high}}) \le B
-\label{eq:cascade_objective}
 \end{equation}
+\label{eq:cascade_objective}
 where $B$ is a platform\hyp defined budget (e.g., $B=0.05$ limits escalation to 5\% of samples). This formulation captures the core trade\hyp off between detection quality (low FNR) and inference cost (bounded escalation).
 
 \paragraph{Hard Example Mining.}
 To improve Stage~2 performance on ambiguous cases, we define a margin\hyp based ambiguity set:
 \begin{equation}
 m(x) = |p_1(x) - 0.5|, \quad \mathcal{A}_\delta = \{x : m(x) \le \delta\}
-\label{eq:ambiguity_set}
 \end{equation}
+\label{eq:ambiguity_set}
 where $\delta$ is a margin threshold (e.g., $\delta=0.4$ corresponds to $p_1(x) \in [0.1, 0.9]$). The hard example set combines misclassifications and ambiguous samples:
 \begin{equation}
 \mathcal{H} = \{(x,y) \in \mathcal{D} : \mathbf{1}[\hat{y}_1(x) \ne y] \text{ or } x \in \mathcal{A}_\delta\}
-\label{eq:hard_set}
 \end{equation}
+\label{eq:hard_set}
 where $\hat{y}_1(x) = \mathbf{1}[p_1(x) > 0.5]$ is the provisional Stage~1 decision. We use this construction to define hard\hyp example subsets for analysis and ablations. When hard\hyp example mining (HEM) is enabled, we upweight $\mathcal{H}$ at the \emph{sampling} level by oversampling its elements rather than changing the loss function; the released Stage~2 training script defaults to uniform sampling on the combined manifest (HEM disabled) and is used for our main results.
 
 \subsection{Pipeline Overview}
@@ -64,30 +65,15 @@ Following the formal setup above, we now describe our six\hyp stage pipeline des
 \begin{figure}[ht]
   \centering
   \small
-  \begin{tabular}{c}
-    \fbox{\begin{minipage}{.9\linewidth}\centering
-      \textbf{Stage 1: MobileNetV4 filter}\\[2pt]
-      fast frame-level screening on device
-    \end{minipage}}
-    \\[6pt]
-    $\downarrow$ escalate ambiguous cases \\[6pt]
-    \fbox{\begin{minipage}{.9\linewidth}\centering
-      \textbf{Stage 2: EfficientNetV2 expert}\\[2pt]
-      high-fidelity logits and embeddings
-    \end{minipage}}
-    \\[6pt]
-    $\downarrow$ offline threshold and policy search (Stage 4) \\[6pt]
-    \fbox{\begin{minipage}{.9\linewidth}\centering
-      \textbf{Stage 4: Cascade tuning}\\[2pt]
-      choose $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ under escalation budget
-    \end{minipage}}
-    \\[6pt]
-    $\downarrow$ robustness and OOD evaluation (Stage 5) \\[6pt]
-    \fbox{\begin{minipage}{.9\linewidth}\centering
-      \textbf{Stage 6: Mobile deployment}\\[2pt]
-      export calibrated models and thresholds to device
-    \end{minipage}}
-  \end{tabular}
+  \begin{itemize}[leftmargin=*,itemsep=8pt]
+    \item \textbf{Stage 1: MobileNetV4 filter} --- fast frame-level screening on device
+    \item $\downarrow$ escalate ambiguous cases
+    \item \textbf{Stage 2: EfficientNetV2 expert} --- high-fidelity logits and embeddings
+    \item $\downarrow$ offline threshold and policy search (Stage 4)
+    \item \textbf{Stage 4: Cascade tuning} --- choose $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ under escalation budget
+    \item $\downarrow$ robustness and OOD evaluation (Stage 5)
+    \item \textbf{Stage 6: Mobile deployment} --- export calibrated models and thresholds to device
+  \end{itemize}
   \caption{System pipeline at a glance. Stage~1 and Stage~2 form the deployed cascade; Stage~3 (LightGBM meta-model) is optional and used for analysis rather than in the default mobile path.}
   \label{fig:pipeline_overview}
 \end{figure}
@@ -96,20 +82,18 @@ Following the formal setup above, we now describe our six\hyp stage pipeline des
   \centering
   \caption{Roles of components by stage (high-level summary).}
   \label{tab:stage_roles}
-  {\scriptsize
-  \setlength{\tabcolsep}{4pt}
-  \begin{tabular}{@{}llp{0.32\textwidth}p{0.36\textwidth}@{}}
+  \begin{tabular}{llll}
     \toprule
     Stage & Component & Backbone / Model & Role \\
     \midrule
-    1 & Fast filter & MobileNetV4\hyp Hybrid\hyp Medium & Frame\hyp level real/fake screening \\
-    2 & Expert & EfficientNetV2\hyp B3 (optional GenConViT) & High\hyp fidelity logits + embeddings \\
-    3 (opt.) & Meta\hyp model & LightGBM & Experimental fusion of expert features \\
+    1 & Fast filter & MobileNetV4 Hybrid Medium & Frame-level real/fake screening \\
+    2 & Expert & EfficientNetV2-B3 (optional GenConViT) & High-fidelity logits + embeddings \\
+    3 (opt.) & Meta-model & LightGBM & Experimental fusion of expert features \\
     4 & Cascade tuning & Threshold grid search & Optimise FNR under escalation budget \\
-    5 & Robustness/OOD & Cascade engine + sweeps & Stress tests (perturbations, Deepfake\hyp Eval\hyp 2024) \\
-    6 & Deployment & TorchScript/ONNX + metadata & On\hyp device inference bundle for mobile \\
+    5 & Robustness/OOD & Cascade engine + sweeps & Stress tests (perturbations, Deepfake-Eval-2024) \\
+    6 & Deployment & ONNX + metadata & On-device inference bundle for mobile \\
     \bottomrule
-  \end{tabular}}
+  \end{tabular}
 \end{table}
 
 \paragraph{Stage~1: Lightweight Filter (MobileNetV4).} A compact MobileNetV4 variant serves as a fast binary classifier. Concretely, we use timm's \verb|mobilenetv4_hybrid_medium.ix_e550_r256_in1k| and fine\hyp tune it with \verb|BCEWithLogitsLoss| on a unified multi\hyp dataset loader built from pre\hyp balanced manifests (Section~\ref{tab:dataset_sizes}) with standard \verb|shuffle=True|. Earlier experiments with explicit \verb|WeightedRandomSampler| showed similar behaviour but added complexity, so the final configuration equalizes dataset contributions at the manifest level and keeps the loader simple. A torchvision transform pipeline provides light augmentation (resize to \SI{256}{px}, random horizontal flip, colour jitter, small random affine perturbations, and Gaussian blur) before normalization. To improve robustness to occasional corrupted images in large video datasets, the data loaders fall back to a zero\hyp valued placeholder frame when an image file cannot be decoded, avoiding training interruptions at the cost of clearly out\hyp of\hyp distribution inputs. We train with AdamW and a cosine annealing scheduler, apply early stopping on validation AUC, and select the best checkpoint for subsequent stages; training runs log curves and metrics for later analysis. The Stage~1 head outputs a single logit per image. A separate calibration step fits a temperature scaling parameter on a validation manifest, producing a JSON file used in cascade tuning and cross\hyp dataset evaluation.
