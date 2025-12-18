@@ -44,7 +44,7 @@ The cascade exhibits a Pareto frontier between FNR and escalation rate for diffe
 
 \subsection{Hard Example Mining Analysis}
 
-Stage~2 training incorporates hard example mining (HEM) to focus learning on samples near the decision boundary. We compare two training strategies: \textbf{Standard} (uniform sampling) vs.\ \textbf{HEM} (prioritize samples with loss $> 75$th percentile). Table~\ref{tab:ablation_hem} reports Stage~2\hyp only performance with and without HEM. The HEM experiments use an auxiliary loss\hyp based sampler that oversamples difficult samples; the publicly released Stage~2 training configuration defaults to the Standard setting with uniform sampling (HEM disabled).
+Stage~2 training incorporates hard example mining (HEM) through Focal Loss~\cite{lin2017focal} to focus learning on samples near the decision boundary. We compare two training strategies: \textbf{Standard} (binary cross-entropy loss) vs.\ \textbf{HEM} (Focal Loss with $\gamma=2.0$). Table~\ref{tab:ablation_hem} reports Stage~2\hyp only performance with and without HEM. Focal Loss implements implicit hard example mining by applying a modulating factor $(1-p_t)^\gamma$ to the cross-entropy loss, which automatically down-weights easy examples and focuses training on hard negatives without requiring explicit sample selection or oversampling.
 
 \begin{table}[h]
 \centering
@@ -63,7 +63,7 @@ Improvement & +0.35\% & +0.76\% & -7.6\% \\
 \end{table}
 
 \textbf{Analysis:}
-Hard example mining provides modest but consistent improvements across all metrics, with the most significant impact on FNR (7.6\% relative reduction). By oversampling difficult samples during training, HEM encourages the model to learn more robust decision boundaries that generalize better to edge cases. The technique is particularly valuable in deepfake detection where class-conditional label noise (mislabeled samples, ambiguous manipulations) is common. The computational overhead during training (1.2× wall\hyp clock time due to dynamic sample reweighting) is justified by improved inference\hyp time performance on hard examples.
+Hard example mining via Focal Loss provides modest but consistent improvements across all metrics, with the most significant impact on FNR (7.6\% relative reduction). By automatically up-weighting difficult samples through the $(1-p_t)^\gamma$ modulating factor, Focal Loss encourages the model to learn more robust decision boundaries that generalize better to edge cases. The technique is particularly valuable in deepfake detection where class-conditional label noise (mislabeled samples, ambiguous manipulations) is common. Unlike explicit hard example mining strategies (e.g., OHEM), Focal Loss introduces negligible computational overhead during training while achieving comparable benefits on hard examples.
 
 For the cascade system, HEM's benefits are amplified: since Stage~2 primarily processes samples that Stage~1 deemed uncertain, improving Stage~2's performance on hard examples directly translates to lower system\hyp level FNR. In our best cascade configuration (0.05/0.55 thresholds), the 0.76\% F1 improvement from HEM contributes to the final 0.60\% FNR. Given the additional engineering complexity and sensitivity of loss\hyp based sampling, we keep HEM as an ablation\hyp only option in the released pipeline and report main results under the simpler Standard configuration to prioritise reproducibility and ease of deployment; practitioners operating in high\hyp risk settings may nevertheless choose to adopt HEM when retraining Stage~2 under their own budgets.
 
@@ -136,7 +136,7 @@ Our systematic ablation studies reveal several key insights:
 \begin{enumerate}[leftmargin=*,itemsep=2pt,parsep=0pt]
   \item \textbf{Cascade architecture is highly effective.} By combining a fast Stage~1 filter (MobileNetV4) with a powerful Stage~2 expert (EfficientNetV2\hyp B3), we achieve 5.2× FNR reduction with only 9\% compute overhead compared to Stage~1\hyp only. This demonstrates that adaptive inference can reconcile the accuracy\hyp efficiency trade\hyp off.
 
-  \item \textbf{Hard example mining provides consistent gains.} HEM improves Stage~2 performance by +0.76\% F1 and -7.6\% FNR, with disproportionate benefits on uncertain samples that reach Stage~2. The technique is straightforward to implement and imposes minimal training overhead.
+  \item \textbf{Hard example mining via Focal Loss provides consistent gains.} Focal Loss improves Stage~2 performance by +0.76\% F1 and -7.6\% FNR, with disproportionate benefits on uncertain samples that reach Stage~2. The technique is straightforward to implement (simply replacing BCE with Focal Loss) and imposes negligible training overhead.
 
   \item \textbf{Calibration is essential for threshold tuning.} Temperature scaling reduces ECE by 78.9\% without affecting AUC, enabling interpretable threshold selection. Well\hyp calibrated probabilities allow thresholds to represent confidence levels rather than arbitrary cutoffs.
 

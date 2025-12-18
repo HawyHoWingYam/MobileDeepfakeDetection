@@ -5,13 +5,13 @@
 \input{generated/auto_tables}
 \input{generated/stage1_eval_summary}
 \input{generated/stage2_eval_summary}
-\noindent The tables above first summarise single\hyp model performance for Stage~1 (MobileNetV4) and the strongest Stage~2 expert on the combined validation split (Table~\ref{tab:single_models_auto}), and then provide per\hyp dataset breakdowns for both stages (Tables~\ref{tab:stage1_per_dataset} and~\ref{tab:stage2_per_dataset}). Across the combined validation manifest, the EfficientNetV2 expert attains higher AUC and F1 than the lightweight Stage~1 filter (AUC~\num{0.9633}, F1~\num{0.8930}, FNR~\num{0.0943}), but at a higher per\hyp sample cost. For Stage~1, datasets with more controlled acquisition conditions (e.g., CelebDF\,v2, FaceForensics++) achieve very high absolute performance, whereas more heterogeneous sources (e.g., DFDC, DeeperForensics) remain more challenging. The corresponding Stage~2 results, computed from the same cached logits at a fixed threshold (0.70), show a similar pattern with different operating points, motivating the cascaded design in which Stage~1 handles easy cases cheaply and escalates ambiguous inputs to the stronger expert, and Stage~4 tunes thresholds explicitly rather than relying on a single global cut\hyp off.
+\noindent The tables above first summarise single\hyp model performance for Stage~1 (MobileNetV4) and the strongest Stage~2 expert on the combined validation split (Table~\ref{tab:single_models_auto}), and then provide per\hyp dataset breakdowns for both stages (Tables~\ref{tab:stage1_per_dataset} and~\ref{tab:stage2_per_dataset}). Across the combined validation manifest, the EfficientNetV2 expert complements the Stage~1 filter with richer features and calibrated outputs (AUC~\num{0.9633}, F1~\num{0.8930}, FNR~\num{0.0943}), while incurring higher per\hyp sample cost. For Stage~1, datasets with more controlled acquisition conditions (e.g., CelebDF\,v2, FaceForensics++) achieve very high absolute performance, whereas more heterogeneous sources (e.g., DFDC, DeeperForensics) remain more challenging. The corresponding Stage~2 results, computed from the same cached logits at a fixed threshold (0.70), show a similar pattern with different operating points, motivating the cascaded design in which Stage~1 handles easy cases cheaply and escalates ambiguous inputs to the stronger expert, and Stage~4 tunes thresholds explicitly rather than relying on a single global cut\hyp off.
 
 \noindent To make the trade\hyp offs between the two stages more explicit, Table~\ref{tab:stage1_stage2_compare} contrasts their combined\hyp validation performance. Stage~1 offers slightly higher AUC but does not by itself achieve the very low FNR that the tuned cascade can reach; Stage~2 provides stronger calibrated probabilities and serves as the high\hyp accuracy expert within the cascade.
 
 \begin{table}[h]
   \centering
-  \caption{Stage~1 vs.\ Stage~2 performance on the combined validation split. Stage~1 is used as a fast filter within the cascade; Stage~2 serves as the high-accuracy expert.}
+  \caption{Stage~1 vs.\ Stage~2 performance on the combined validation split. Stage~1 is used as a fast filter within the cascade; Stage~2 serves as the high-accuracy expert. Stage~1 F1/FNR are N/A because it functions as a routing filter, not a final classifier (see Table~\ref{tab:stage1_per_dataset} for standalone evaluation).}
   \label{tab:stage1_stage2_compare}
   {\small
   \begin{tabular}{lccc}
@@ -31,7 +31,7 @@
   \centering
   \includegraphics[width=.45\textwidth]{figures/outputs_stage1_run_20251023_034316_01_roc_curve.png}\hfill
   \includegraphics[width=.45\textwidth]{figures/outputs_stage3_run_20251030_081127_01_roc_curve.png}
-  \caption{ROC curves for Stage~1 (left) and an expert model (right, EfficientNetV2) on combined validation.}
+  \caption{ROC curves for Stage~1 (left) and Stage~3 meta-model (right) on combined validation.}
   \label{fig:roc_baselines}
 \end{figure}
 \FloatBarrier
@@ -98,8 +98,8 @@ Given these modest deltas and the added complexity of maintaining separate meta\
   \centering
   \includegraphics[width=.45\textwidth]{figures/outputs_stage3_run_20251030_081127_03_calibration.png}\hfill
   \includegraphics[width=.45\textwidth]{figures/outputs_stage3_run_20251030_081127_confusion_matrix.png}
-  \caption{Stage~2 calibration (left) and confusion matrix (right).}
-  \label{fig:stage2_calib_conf}
+  \caption{Stage~3 meta-model calibration (left) and confusion matrix (right).}
+  \label{fig:stage3_calib_conf}
 \end{figure}
 \FloatBarrier
 
@@ -107,7 +107,7 @@ Given these modest deltas and the added complexity of maintaining separate meta\
 
 \begin{table}[h]
   \centering
-  \caption{Best cascade configurations (validation). Low/high thresholds, metrics, and escalation rate.}
+  \caption{Best cascade configuration (validation). Low/high thresholds, metrics, and escalation rate.}
   \label{tab:cascade_best}
   {\small
   \begin{tabular}{cccccc}
@@ -115,12 +115,11 @@ Given these modest deltas and the added complexity of maintaining separate meta\
     Low & High & AUC & F1 & FNR & Escalation \\
     \midrule
     0.05 & 0.55 & \num{0.9941} & \num{0.9654} & \num{0.0060} & \num{0.0116} \\
-    0.03 & 0.55 & \num{0.9941} & \num{0.9644} & \num{0.0054} & \num{0.0150} \\
     \bottomrule
   \end{tabular}}
 \end{table}
 
-The two configurations in Table~\ref{tab:cascade_best} illustrate the core trade\hyp off. Tightening $\tau\_{low}$ from $0.05$ to $0.03$ reduces the false negative rate from \num{0.0060} to \num{0.0054}, but increases the Stage~2 escalation rate from \num{1.16}\% to \num{1.50}\%. In terms of the Stage~1 leakage rate $\pi\_{\mathrm{leak}}$, the lower threshold configuration accepts fewer borderline fakes at Stage~1 and delegates more samples to the expert; this behaviour is desirable in high\hyp risk deployments where missed fakes are costly, and the incremental compute is modest given the low baseline escalation.
+Table~\ref{tab:cascade_best} shows the selected operating point $(\tau_{\mathrm{low}}, \tau_{\mathrm{high}}) = (0.05, 0.55)$. This configuration achieves a very low false negative rate (FNR~\num{0.0060}) while keeping the Stage~2 escalation rate at only \num{1.16}\%, meaning that the vast majority of samples are resolved efficiently at Stage~1. The low Stage~1 leakage rate $\pi\_{\mathrm{leak}}$ ensures that few borderline fakes are incorrectly accepted as real; this conservative behaviour is desirable in deployments where missed fakes are costly.
 
 We adopt probability calibration (temperature scaling) on Stage~2 prior to threshold selection when transferring thresholds across datasets, following \cite{guo2017calibration}; under distribution shift, calibration effects can vary and should be reported with care \cite{minderer2021revisiting}. In our experiments, calibration slightly improves alignment between predicted probabilities and empirical frequencies on the combined validation set and stabilises the Pareto frontier of $(\mathrm{FNR}, \pi\_2)$ across nearby operating points, but does not fully close the gap on Deepfake\hyp Eval\hyp 2024.
 
@@ -152,7 +151,7 @@ Future work includes: (a) fine\-grained error analysis by generator family, post
 We compare confidence\-based routing (ours) with entropy and margin alternatives (template deferred to future work) \cite{kaya2019shallowdeep}. Confidence routing offers direct control of the escalation rate via $(\tau_{\mathrm{low}},\tau_{\mathrm{high}})$ and pairs well with calibration; entropy and margin can be emulated within the same framework. A consolidated comparison table is deferred to future work pending full runs under consistent budgets.
 
 \subsection{Robustness to Common Perturbations}
-We evaluate the tuned cascade under four perturbation types (JPEG compression, Gaussian noise, motion blur, and brightness/contrast) using the same combined validation manifest. Figure~\ref{fig:robustness_curves} plots F1 vs.\ perturbation strength, while Table~\ref{tab:robustness_table} aggregates F1/Acc/FNR/Stage~2 rate for representative levels, and Figure~\ref{fig:robustness_tradeoff} shows FNR vs.\ Stage~2 rate under threshold sweeps. Although these experiments are preliminary and would benefit from larger samples, several consistent patterns emerge:
+We evaluate the tuned cascade under four perturbation types (JPEG compression, Gaussian noise, motion blur, and brightness/contrast) using the same combined validation manifest. Figure~\ref{fig:robustness_curves} plots F1 vs.\ perturbation strength, while Table~\ref{tab:robustness_table} aggregates F1/Acc/FNR/Stage~2 rate for representative levels. Although these experiments are preliminary and would benefit from larger samples, several consistent patterns emerge:
 \begin{itemize}[leftmargin=*]
   \item \textbf{JPEG compression.} As JPEG quality decreases from 95 to 20, F1 and accuracy fluctuate but do not collapse; in some settings, moderate compression slightly \emph{improves} F1 and lowers FNR (Table~\ref{tab:robustness_table}). This is consistent with frequency\hyp based analyses~\cite{durall2020watch,qian2020thinkingfrequency}: compression can accentuate artifacts that detectors rely on. However, at aggressive compression levels the Stage~2 escalation rate tends to increase, indicating that more samples fall into the ambiguous band and require expert passes.
   \item \textbf{Gaussian noise.} Increasing noise (e.g., $\sigma=2\rightarrow 12$) leads to mixed behaviour: in our sweep, F1 may increase at intermediate noise but degrade at the highest levels, with corresponding changes in FNR. A plausible explanation is that strong noise perturbs real textures more than fake cues under the current thresholds, effectively acting as a domain shift; per\hyp family calibration (Section~\ref{tab:robustness_table}) and larger runs are needed to stabilise these trends.
@@ -166,8 +165,8 @@ Overall, these results motivate per\hyp family threshold/temperature calibration
 \input{generated/robustness_table}
 \FloatBarrier
 
-\input{generated/robustness_tradeoff}
-\FloatBarrier
+% \input{generated/robustness_tradeoff}  % Disabled: fnr_vs_s2 plots not available
+% \FloatBarrier
 
 \subsection{Error Analysis and Failure Mode Taxonomy}
 

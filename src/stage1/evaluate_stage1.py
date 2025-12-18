@@ -95,7 +95,7 @@ def apply_temperature_scaling(logits, temperature):
 def create_roc_curve_plot(y_true, y_pred_proba, save_path=None, title="ROC Curve"):
     """
     Create ROC curve plot
-    
+
     Args:
         y_true (array-like): True labels
         y_pred_proba (array-like): Predicted probabilities
@@ -104,17 +104,16 @@ def create_roc_curve_plot(y_true, y_pred_proba, save_path=None, title="ROC Curve
     """
     fpr, tpr, thresholds = roc_curve(y_true, y_pred_proba)
     auc = roc_auc_score(y_true, y_pred_proba)
-    
+
     plt.figure(figsize=(8, 6))
-    plt.plot(fpr, tpr, linewidth=2, label=f'ROC Curve (AUC = {auc:.4f})')
-    plt.plot([0, 1], [0, 1], 'k--', linewidth=1, label='Random Classifier')
-    
+    plt.plot(fpr, tpr, color='#FF7F0E', linewidth=2, label=f'ROC curve (AUC = {auc:.4f})')
+
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
     plt.title(title)
-    plt.legend()
+    plt.legend(loc='lower right')
     plt.grid(True, alpha=0.3)
-    
+
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()

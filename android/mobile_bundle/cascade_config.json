@@ -22,7 +22,7 @@
       "input_size": 256,
       "output": "Single logit (binary classification)",
       "file": "aware_cascade_stage2.onnx",
-      "size_mb": 52.45,
+      "size_mb": 51.89,
       "has_temperature_scaling": true
     }
   },

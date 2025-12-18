@@ -299,7 +299,7 @@ def write_tables_tex() -> None:
     # Robustness table (if metrics CSVs are present)
     rob_dir = ROOT / 'outputs' / 'stage5' / 'robustness'
     rows: List[Dict[str, Any]] = []
-    for kind in ['jpeg','gaussian','motion','brightness']:
+    for kind in ['jpeg','gaussian','motion','brightness','downscale']:
         mfile = rob_dir / f'{kind}_metrics.csv'
         if not mfile.exists():
             continue
@@ -319,7 +319,7 @@ def write_tables_tex() -> None:
                 except Exception:
                     pass
     if rows:
-        rows_sorted = sorted(rows, key=lambda x: (x['kind'], str(x['level'])))
+        rows_sorted = sorted(rows, key=lambda x: (x['kind'], float(x['level'])))
         with (PAPER_GEN / 'robustness_table.tex').open('w') as f:
             f.write('% Auto-generated robustness table\n')
             f.write('\\begin{table}[h]\n  \\centering\n')

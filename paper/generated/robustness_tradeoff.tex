@@ -1,11 +1,16 @@
 % Robustness trade-off figures (FNR vs Stage-2 rate under threshold sweeps)
 % Note: These figures are generated from outputs/stage5/robustness using the
-% robustness_threshold_sweep utility; paths are relative to the paper directory.
-\begin{figure}[h]
-  \centering
-  \includegraphics[width=.32\textwidth]{../outputs/stage5/robustness/fnr_vs_s2_jpeg_20.0.png}\hfill
-  \includegraphics[width=.32\textwidth]{../outputs/stage5/robustness/fnr_vs_s2_jpeg_95.0.png}\hfill
-  \includegraphics[width=.32\textwidth]{../outputs/stage5/robustness/fnr_vs_s2_gaussian_12.0.png}
-  \caption{Representative FNR vs Stage-2 escalation rate trade-off curves under threshold sweeps. Left: JPEG quality 20 (heavy compression); middle: JPEG quality 95 (light compression); right: Gaussian noise with $\sigma=12$.}
-  \label{fig:robustness_tradeoff}
-\end{figure}
+% robustness_threshold_sweep utility. To regenerate, run:
+%   python -m src.tools.robustness_threshold_sweep [args...]
+%
+% Currently disabled: fnr_vs_s2 plots are not available (outputs/ directory is gitignored).
+% To re-enable, regenerate the plots and uncomment the figure below.
+%
+% \begin{figure}[h]
+%   \centering
+%   \includegraphics[width=.32\textwidth]{../outputs/stage5/robustness/fnr_vs_s2_jpeg_20.0.png}\hfill
+%   \includegraphics[width=.32\textwidth]{../outputs/stage5/robustness/fnr_vs_s2_jpeg_95.0.png}\hfill
+%   \includegraphics[width=.32\textwidth]{../outputs/stage5/robustness/fnr_vs_s2_gaussian_12.0.png}
+%   \caption{Representative FNR vs Stage-2 escalation rate trade-off curves under threshold sweeps. Left: JPEG quality 20 (heavy compression); middle: JPEG quality 95 (light compression); right: Gaussian noise with $\sigma=12$.}
+%   \label{fig:robustness_tradeoff}
+% \end{figure}
